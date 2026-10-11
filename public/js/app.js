@@ -1442,20 +1442,18 @@ function renderGodBanner(me) {
   // Ruta: Super admin › CPV › Coordinador de zona › … (cada nivel superior permite regresar a él)
   const chain = me.godMode.chain || [];
   banner.innerHTML = `
-    <span class="god-banner__icon" aria-hidden="true">${ICONS.eye}</span>
     <nav class="god-banner__text" aria-label="Ruta de navegación en modo dios">
-      <strong>Modo dios:</strong>
       <ol class="god-path">
         ${chain
           .map((u, i) =>
             i === chain.length - 1
-              ? `<li aria-current="page" title="${esc(u.roleName)}"><strong>${esc(u.name)}</strong> <span class="god-path__role">· ${esc(u.roleName)}</span></li>`
+              ? `<li aria-current="page" title="${esc(u.name)} · ${esc(u.roleName)}"><strong>${esc(u.name)}</strong></li>`
               : `<li><button type="button" class="god-path__link" data-god="${u.role === 'superadmin' ? 'exit' : u.id}" data-role="${u.role}" title="Regresar a ${esc(u.name)} · ${esc(u.roleName)}">${esc(u.name)}</button></li>`
           )
           .join('')}
       </ol>
     </nav>
-    <button class="btn btn--sm god-banner__exit" type="button" data-god="exit">Salir del modo dios</button>`;
+    <button class="icon-btn god-banner__exit" type="button" data-god="exit" title="Salir del modo dios" aria-label="Salir del modo dios">${ICONS.logout}</button>`;
   banner.hidden = false;
   banner.onclick = (e) => {
     const target = e.target.closest('[data-god]');

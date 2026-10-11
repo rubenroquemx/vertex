@@ -7,7 +7,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch-path=server.js --watch-path=src server.js",
+    "dev": "node --env-file-if-exists=.env --watch-path=server.js --watch-path=src server.js",
     "icons": "node scripts/generate-icons.js",
     "empaquetar": "node scripts/empaquetar.js"
   },
@@ -20,6 +20,7 @@
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "leaflet": "^1.9.4",
+    "pg": "^8.13.1",
     "proj4": "^2.12.1",
     "shapefile": "^0.6.6"
   },

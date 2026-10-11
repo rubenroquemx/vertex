@@ -19,7 +19,7 @@ const EQUIVALENTE = {
 };
 
 // Al arrancar: las zonas con colores fuera de la paleta reciben el equivalente (o el primero libre)
-function migrarColores() {
+async function migrarColores() {
   const porCpv = new Map();
   for (const z of users.all().filter((u) => u.role === 'coord_zona')) {
     if (!porCpv.has(z.parentId)) porCpv.set(z.parentId, []);
@@ -32,7 +32,7 @@ function migrarColores() {
       const preferido = EQUIVALENTE[z.zona.color];
       const color = preferido && !usados.has(preferido) ? preferido : PALETA.find((c) => !usados.has(c)) || PALETA[0];
       usados.add(color);
-      users.update(z.id, { zona: { ...z.zona, color } });
+      await users.update(z.id, { zona: { ...z.zona, color } });
     }
   }
 }

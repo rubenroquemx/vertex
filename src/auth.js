@@ -19,13 +19,13 @@ function readCookie(req, name) {
   return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
 }
 
-function startSession(res, userId) {
-  const token = sessions.create(userId, SESSION_TTL);
+async function startSession(res, userId) {
+  const token = await sessions.create(userId, SESSION_TTL);
   res.cookie(COOKIE, token, { ...cookieOpts, maxAge: SESSION_TTL });
 }
 
-function endSession(req, res) {
-  sessions.destroy(readCookie(req, COOKIE));
+async function endSession(req, res) {
+  await sessions.destroy(readCookie(req, COOKIE));
   res.clearCookie(COOKIE, cookieOpts);
 }
 
@@ -62,7 +62,7 @@ function registerFail(key) {
   else a.count += 1;
 }
 
-function login(req, res) {
+async function login(req, res) {
   const username = String(req.body.username || '').trim().toLowerCase();
   const password = String(req.body.password || '');
   const keys = [`u:${username}`, `ip:${req.ip}`];
@@ -77,8 +77,8 @@ function login(req, res) {
     return res.status(401).json({ error: 'Usuario o contraseña incorrectos.' });
   }
   keys.forEach((k) => attempts.delete(k));
-  startSession(res, user.id);
-  audit.add({ action: 'login', by: user.id });
+  await startSession(res, user.id);
+  await audit.add({ action: 'login', by: user.id });
   res.json({ ok: true });
 }
 
@@ -95,25 +95,25 @@ function confirmPassword(user, password) {
   return { ok: true };
 }
 
-function logout(req, res) {
-  endSession(req, res);
+async function logout(req, res) {
+  await endSession(req, res);
   res.json({ ok: true });
 }
 
 // --- Modo dios --------------------------------------------------------------
-function startGodMode(req, res) {
+async function startGodMode(req, res) {
   if (req.realUser.role !== 'superadmin') return res.status(403).json({ error: 'Solo el super administrador puede usar el modo dios' });
   const target = users.get(req.body.userId);
   if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
   if (target.role === 'superadmin') return res.status(422).json({ error: 'No es posible entrar como otro super administrador' });
-  sessions.update(req.sessionToken, { godAs: target.id });
-  audit.add({ action: 'god_mode.start', by: req.realUser.id, as: target.id });
+  await sessions.update(req.sessionToken, { godAs: target.id });
+  await audit.add({ action: 'god_mode.start', by: req.realUser.id, as: target.id });
   res.json({ ok: true });
 }
 
-function stopGodMode(req, res) {
-  if (inGodMode(req)) audit.add({ action: 'god_mode.stop', by: req.realUser.id, as: req.user.id });
-  sessions.update(req.sessionToken, { godAs: null });
+async function stopGodMode(req, res) {
+  if (inGodMode(req)) await audit.add({ action: 'god_mode.stop', by: req.realUser.id, as: req.user.id });
+  await sessions.update(req.sessionToken, { godAs: null });
   res.json({ ok: true });
 }
 
@@ -125,7 +125,7 @@ function stopGodMode(req, res) {
 //   VERTEX_ADMIN_PASSWORD   contraseña inicial (mín. 8 caracteres, con letras y números)
 //   VERTEX_ADMIN_RESET=1    reaplica usuario y contraseña de las variables aunque ya existan
 //                           (para recuperar el acceso; quitarla después del arranque)
-function ensureAdminCredentials() {
+async function ensureAdminCredentials() {
   const admin = users.all().find((u) => u.role === 'superadmin');
   if (!admin) return;
   const envUser = String(process.env.VERTEX_ADMIN_USER || '').trim().toLowerCase();
@@ -146,9 +146,9 @@ function ensureAdminCredentials() {
     const patch = {};
     if (userOk && !taken) patch.username = userOk;
     if (passOk) patch.passwordHash = passwords.hash(passOk);
-    users.update(admin.id, patch);
-    if (passOk) sessions.destroyAllFor(admin.id);
-    audit.add({ action: 'admin.reset', by: admin.id });
+    await users.update(admin.id, patch);
+    if (passOk) await sessions.destroyAllFor(admin.id);
+    await audit.add({ action: 'admin.reset', by: admin.id });
     console.log('VERTEX: credenciales del super administrador restablecidas desde variables de entorno. Quita VERTEX_ADMIN_RESET.');
     return;
   }
@@ -156,7 +156,7 @@ function ensureAdminCredentials() {
   if (admin.username && admin.passwordHash) return;
   const password = passOk || `${crypto.randomBytes(9).toString('base64url')}7a`;
   const username = admin.username || (userOk && !taken ? userOk : 'admin');
-  users.update(admin.id, { username, passwordHash: passwords.hash(password) });
+  await users.update(admin.id, { username, passwordHash: passwords.hash(password) });
   if (!passOk) {
     const file = path.join(DATA_DIR, 'CREDENCIAL_ADMIN.txt');
     fs.writeFileSync(file, `Usuario: ${username}\nContraseña inicial: ${password}\n\nCámbiala desde "Mi perfil" y borra este archivo.\n`);

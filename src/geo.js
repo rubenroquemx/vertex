@@ -2,14 +2,12 @@
 //
 // Flujo: .zip (admite zips anidados y varios estados) → capas conocidas → reproyección a WGS84
 // (lon/lat) → GeoJSON por capa + catálogo territorial normalizado, guardados en data/geo/<entidad>/.
-const fs = require('fs');
 const path = require('path');
-const { DATA_DIR } = require('./paths');
 const AdmZip = require('adm-zip');
+const { query, tx } = require('./db');
 const shapefile = require('shapefile');
 const proj4 = require('proj4');
 
-const GEO_DIR = path.join(DATA_DIR, 'geo');
 
 // Límites de seguridad al descomprimir
 const MAX_UNCOMPRESSED = 1.5 * 1024 ** 3;
@@ -231,24 +229,35 @@ function detectEntidad(layers) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Guardado (reemplaza por completo la carga anterior de la misma entidad)
+// 4. Guardado en PostgreSQL (reemplaza por completo la carga anterior de la entidad)
+//    Metadatos y catálogo se mantienen en memoria; las capas se leen de la base al pedirse.
 // ---------------------------------------------------------------------------
-const entDir = (clave) => path.join(GEO_DIR, String(clave).padStart(2, '0'));
+const states = new Map(); // clave → { meta, catalog }
 
-function persist(clave, layers, meta, catalog) {
-  fs.mkdirSync(GEO_DIR, { recursive: true });
-  const final = entDir(clave);
-  const tmp = `${final}.tmp-${Date.now()}`;
-  fs.mkdirSync(tmp);
-  for (const l of Object.values(layers)) {
-    fs.writeFileSync(path.join(tmp, `${l.layer.key}.geojson`), JSON.stringify(l.geojson));
+async function persistAll(results) {
+  await tx(async (c) => {
+    for (const { clave, layers, meta, catalog } of results) {
+      await c.query('DELETE FROM geo_states WHERE clave = $1', [clave]);
+      await c.query('INSERT INTO geo_states (clave, meta, catalog) VALUES ($1, $2, $3)', [clave, meta, catalog]);
+      for (const l of Object.values(layers)) {
+        await c.query('INSERT INTO geo_layers (clave, layer, geojson) VALUES ($1, $2, $3)', [clave, l.layer.key, JSON.stringify(l.geojson)]);
+      }
+    }
+  });
+  for (const { clave, meta, catalog } of results) {
+    states.set(clave, { meta, catalog });
+    for (const k of [...layerCache.keys()]) if (k.startsWith(`${clave}:`)) layerCache.delete(k);
   }
-  fs.writeFileSync(path.join(tmp, 'catalog.json'), JSON.stringify(catalog));
-  fs.writeFileSync(path.join(tmp, 'meta.json'), JSON.stringify(meta, null, 2));
-  const old = `${final}.old-${Date.now()}`;
-  if (fs.existsSync(final)) fs.renameSync(final, old);
-  fs.renameSync(tmp, final);
-  fs.rmSync(old, { recursive: true, force: true });
+}
+
+// Capas recientes en memoria (las de sección pesan varios MB)
+const layerCache = new Map();
+const LAYER_CACHE_MAX = 12;
+
+async function init() {
+  const { rows } = await query('SELECT clave, meta, catalog FROM geo_states');
+  states.clear();
+  for (const r of rows) states.set(r.clave, { meta: r.meta, catalog: r.catalog });
 }
 
 // ---------------------------------------------------------------------------
@@ -301,40 +310,52 @@ async function importZip(buffer, { fileName, importedBy }) {
   }
 
   // Se guarda solo si todas las entidades del archivo se procesaron sin errores
-  for (const r of results) persist(r.clave, r.layers, r.meta, r.catalog);
+  await persistAll(results);
   return results.map((r) => r.meta);
 }
 
 function listStates() {
-  if (!fs.existsSync(GEO_DIR)) return [];
-  return fs
-    .readdirSync(GEO_DIR)
-    .filter((d) => /^\d{2}$/.test(d) && fs.existsSync(path.join(GEO_DIR, d, 'meta.json')))
-    .map((d) => JSON.parse(fs.readFileSync(path.join(GEO_DIR, d, 'meta.json'), 'utf8')))
-    .sort((a, b) => a.clave - b.clave);
+  return [...states.values()].map((x) => x.meta).sort((a, b) => a.clave - b.clave);
 }
 
-const validClave = (c) => /^\d{1,2}$/.test(String(c)) && fs.existsSync(path.join(entDir(Number(c)), 'meta.json'));
+const toClave = (c) => (/^\d{1,2}$/.test(String(c)) ? Number(c) : null);
 
 function getState(clave) {
-  if (!validClave(clave)) return null;
-  const dir = entDir(Number(clave));
-  return {
-    meta: JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8')),
-    catalog: JSON.parse(fs.readFileSync(path.join(dir, 'catalog.json'), 'utf8')),
-  };
+  const st = states.get(toClave(clave));
+  return st ? { meta: st.meta, catalog: st.catalog } : null;
 }
 
-function layerFile(clave, layerKey) {
-  if (!validClave(clave) || !LAYER_BY_KEY.has(layerKey)) return null;
-  const file = path.join(entDir(Number(clave)), `${layerKey}.geojson`);
-  return fs.existsSync(file) ? file : null;
+// GeoJSON (texto) de una capa; null si no existe
+async function layerText(clave, layerKey) {
+  const c = toClave(clave);
+  if (c === null || !states.has(c) || !LAYER_BY_KEY.has(layerKey)) return null;
+  const k = `${c}:${layerKey}`;
+  if (layerCache.has(k)) {
+    const v = layerCache.get(k);
+    layerCache.delete(k);
+    layerCache.set(k, v);
+    return v;
+  }
+  const { rows } = await query('SELECT geojson FROM geo_layers WHERE clave = $1 AND layer = $2', [c, layerKey]);
+  if (!rows.length) return null;
+  layerCache.set(k, rows[0].geojson);
+  if (layerCache.size > LAYER_CACHE_MAX) layerCache.delete(layerCache.keys().next().value);
+  return rows[0].geojson;
 }
 
-function removeState(clave) {
-  if (!validClave(clave)) return false;
-  fs.rmSync(entDir(Number(clave)), { recursive: true, force: true });
+// GeoJSON ya interpretado (para cálculos en el servidor)
+async function layer(clave, layerKey) {
+  const t = await layerText(clave, layerKey);
+  return t ? JSON.parse(t) : null;
+}
+
+async function removeState(clave) {
+  const c = toClave(clave);
+  if (c === null || !states.has(c)) return false;
+  await query('DELETE FROM geo_states WHERE clave = $1', [c]);
+  states.delete(c);
+  for (const k of [...layerCache.keys()]) if (k.startsWith(`${c}:`)) layerCache.delete(k);
   return true;
 }
 
-module.exports = { importZip, listStates, getState, layerFile, removeState, ImportError, LAYERS };
+module.exports = { init, importZip, persistAll, listStates, getState, layerText, layer, removeState, ImportError, LAYERS };

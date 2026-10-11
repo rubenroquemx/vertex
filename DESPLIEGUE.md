@@ -18,12 +18,23 @@ conecta un repositorio Git con el contenido de este paquete.
 | Variable | Valor | Para qué |
 |----------|-------|----------|
 | `NODE_ENV` | `production` | Ya viene en la imagen; apaga los accesos de desarrollo |
+| `DATABASE_URL` | URL **interna** del servicio Postgres (`postgres://usuario:contraseña@proyecto_servicio:5432/vertex`) | **Obligatoria.** Sin ella la app no arranca |
 | `VERTEX_ADMIN_USER` | p. ej. `rroque` | Usuario del Super administrador (por defecto `admin`). 3 a 30 caracteres: minúsculas, números, punto, guion o guion bajo |
 | `VERTEX_ADMIN_PASSWORD` | una contraseña segura | Contraseña inicial del Super administrador (mín. 8 caracteres, con letras y números). Se aplica **solo en el primer arranque** |
 | `VERTEX_ADMIN_RESET` | `1` | Opcional, para **recuperar el acceso**: reaplica usuario y contraseña de las variables aunque el admin ya exista. Quítala después de desplegar |
 | `PORT` | `3000` | Opcional (ya es el valor por defecto) |
 
-## 4. Volumen (¡indispensable!)
+## 4. Base de datos
+
+Crea en el mismo proyecto un servicio **Postgres** (de preferencia con la imagen
+`postgis/postgis:16-3.4`), base `vertex`, y copia su **URL interna** en `DATABASE_URL`.
+Al arrancar, la app crea sus tablas, activa PostGIS si está disponible y, si la base está
+vacía y el volumen tiene datos de la versión anterior (`db.json`), los **importa** y deja
+`db.json.migrado` como respaldo. Programa los respaldos en el servicio Postgres (**Backups**).
+
+## 5. Volumen
+
+
 
 En **Mounts / Volúmenes** agrega un volumen montado en:
 
@@ -33,12 +44,12 @@ En **Mounts / Volúmenes** agrega un volumen montado en:
 
 Sin este volumen, cada redespliegue borraría usuarios, mapas y padrón.
 
-## 5. Dominio
+## 6. Dominio
 
 En **Domains**, asigna tu dominio con HTTPS y apunta al **puerto 3000**.
 La app requiere HTTPS en producción (la sesión usa cookies seguras).
 
-## 6. Desplegar
+## 7. Desplegar
 
 Pulsa **Deploy**. Cuando el estado sea saludable, abre el dominio.
 
@@ -62,6 +73,5 @@ Sube el nuevo paquete y vuelve a desplegar. El volumen `/app/data` conserva los 
 ## Antes de la operación real
 
 - Respaldos automáticos del volumen `/app/data` (Easypanel permite programarlos).
-- Migración a PostgreSQL + PostGIS (los datos viven hoy en archivos JSON).
 - Proveedor de mapas base (OpenStreetMap no permite uso intensivo).
 - Aviso de privacidad antes de capturar datos personales de promovidos.

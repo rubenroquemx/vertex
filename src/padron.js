@@ -5,15 +5,11 @@
 //  - "Entidad de origen": columnas LN_<ESTADO>, LN87, LN88 y PAD_<ESTADO>, PAD87, PAD88,
 //    que se suman para obtener la lista nominal y el padrón de la sección.
 // Siempre se omiten los residentes en el extranjero (sección 0) y las filas de totales.
-const fs = require('fs');
 const path = require('path');
-const { DATA_DIR } = require('./paths');
 const { Readable } = require('stream');
 const ExcelJS = require('exceljs');
-const { atomicWrite } = require('./fsutil');
+const { query, tx } = require('./db');
 
-const DIR = path.join(DATA_DIR, 'padron');
-const META_FILE = path.join(DIR, 'meta.json');
 
 class PadronError extends Error {}
 
@@ -169,8 +165,42 @@ async function readWorkbook(buffer) {
   return { sheetName, format: cols.format, states, skipped, splitSections };
 }
 
-function readMeta() {
-  return fs.existsSync(META_FILE) ? JSON.parse(fs.readFileSync(META_FILE, 'utf8')) : { states: {} };
+// ---------------------------------------------------------------------------
+// Guardado en PostgreSQL. Metadatos y datos por sección se mantienen en memoria.
+// ---------------------------------------------------------------------------
+const mem = { states: new Map(), lastImport: null }; // clave → { meta, data: { municipios, secciones } }
+const built = new Map(); // clave → Map<sección, {...}> ya construido
+
+async function init() {
+  const { rows } = await query('SELECT clave, meta, data FROM padron_states');
+  mem.states = new Map(rows.map((r) => [r.clave, { meta: r.meta, data: r.data }]));
+  const m = await query('SELECT last_import FROM padron_meta WHERE id = 1');
+  mem.lastImport = m.rows[0]?.last_import || null;
+  built.clear();
+}
+
+// Guarda entidades del padrón (reemplaza las existentes con la misma clave)
+async function persist(entries, lastImport) {
+  await tx(async (c) => {
+    for (const { clave, meta, data } of entries) {
+      await c.query(
+        `INSERT INTO padron_states (clave, meta, data, updated_at) VALUES ($1, $2, $3, now())
+         ON CONFLICT (clave) DO UPDATE SET meta = $2, data = $3, updated_at = now()`,
+        [clave, meta, data]
+      );
+    }
+    if (lastImport !== undefined) {
+      await c.query(
+        'INSERT INTO padron_meta (id, last_import) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET last_import = $1',
+        [lastImport]
+      );
+    }
+  });
+  for (const e of entries) {
+    mem.states.set(e.clave, { meta: e.meta, data: e.data });
+    built.delete(e.clave);
+  }
+  if (lastImport !== undefined) mem.lastImport = lastImport;
 }
 
 async function importXlsx(buffer, { fileName, importedBy }) {
@@ -178,9 +208,7 @@ async function importXlsx(buffer, { fileName, importedBy }) {
   const corte = detectCorte(fileName, sheetName);
   const importedAt = new Date().toISOString();
 
-  fs.mkdirSync(DIR, { recursive: true });
-  const meta = readMeta();
-  const summary = [];
+  const entries = [];
   for (const [clave, st] of [...states].sort((a, b) => a[0] - b[0])) {
     const secciones = Object.fromEntries([...st.secciones].sort((a, b) => a[0] - b[0]));
     const totals = { secciones: st.secciones.size, ln: 0, padron: 0 };
@@ -193,37 +221,34 @@ async function importXlsx(buffer, { fileName, importedBy }) {
       }
     }
     if (!hasPadron) totals.padron = null;
-    const file = path.join(DIR, `${String(clave).padStart(2, '0')}.json`);
-    atomicWrite(file, JSON.stringify({ municipios: Object.fromEntries(st.municipios), secciones }));
-    meta.states[clave] = { clave, nombre: st.nombre, ...totals, fileName, corte, importedAt, importedBy };
-    summary.push(meta.states[clave]);
+    entries.push({
+      clave,
+      meta: { clave, nombre: st.nombre, ...totals, fileName, corte, importedAt, importedBy },
+      data: { municipios: Object.fromEntries(st.municipios), secciones },
+    });
   }
-  meta.lastImport = { fileName, corte, format, importedAt, importedBy, states: summary.length, skipped, splitSections };
-  fs.writeFileSync(META_FILE, JSON.stringify(meta, null, 2));
-  return { ...meta.lastImport, totals: summary.reduce((t, s) => ({ secciones: t.secciones + s.secciones, ln: t.ln + s.ln }), { secciones: 0, ln: 0 }) };
+  const lastImport = { fileName, corte, format, importedAt, importedBy, states: entries.length, skipped, splitSections };
+  await persist(entries, lastImport);
+  return { ...lastImport, totals: entries.reduce((t, e) => ({ secciones: t.secciones + e.meta.secciones, ln: t.ln + e.meta.ln }), { secciones: 0, ln: 0 }) };
 }
 
 function summary() {
-  const meta = readMeta();
-  return { lastImport: meta.lastImport || null, states: Object.values(meta.states).sort((a, b) => a.clave - b.clave) };
+  return { lastImport: mem.lastImport, states: [...mem.states.values()].map((x) => x.meta).sort((a, b) => a.clave - b.clave) };
 }
 
 // Lista nominal por sección de una entidad: Map<sección, { ln, padron, hombres, mujeres, municipio, distritoFederal }>
-const cache = new Map();
 function sectionsOf(clave) {
-  const file = path.join(DIR, `${String(clave).padStart(2, '0')}.json`);
-  if (!fs.existsSync(file)) return null;
-  const mtime = fs.statSync(file).mtimeMs;
-  const hit = cache.get(clave);
-  if (hit && hit.mtime === mtime) return hit.data;
-  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const c = Number(clave);
+  const st = mem.states.get(c);
+  if (!st) return null;
+  if (built.has(c)) return built.get(c);
   const data = new Map(
-    Object.entries(raw.secciones).map(([k, [ln, padron, hombres, mujeres, municipio, distritoFederal]]) => [
+    Object.entries(st.data.secciones).map(([k, [ln, padron, hombres, mujeres, municipio, distritoFederal]]) => [
       Number(k),
       { ln, padron, hombres, mujeres, municipio, distritoFederal },
     ])
   );
-  cache.set(clave, { mtime, data });
+  built.set(c, data);
   return data;
 }
 
@@ -237,13 +262,13 @@ function crossCheck(clave, catalog) {
   return { matched: geo.size - onlyMap.length, onlyPadron, onlyMap };
 }
 
-function removeState(clave) {
-  const meta = readMeta();
-  if (!meta.states[clave]) return false;
-  delete meta.states[clave];
-  fs.rmSync(path.join(DIR, `${String(clave).padStart(2, '0')}.json`), { force: true });
-  fs.writeFileSync(META_FILE, JSON.stringify(meta, null, 2));
+async function removeState(clave) {
+  const c = Number(clave);
+  if (!mem.states.has(c)) return false;
+  await query('DELETE FROM padron_states WHERE clave = $1', [c]);
+  mem.states.delete(c);
+  built.delete(c);
   return true;
 }
 
-module.exports = { importXlsx, summary, sectionsOf, crossCheck, removeState, PadronError };
+module.exports = { init, importXlsx, persist, summary, sectionsOf, crossCheck, removeState, PadronError };

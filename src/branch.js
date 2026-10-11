@@ -1,7 +1,6 @@
 // Rama de una cuenta (ella y todos sus subordinados, en cualquier nivel): resumen, respaldo y eliminación.
-const fs = require('fs');
 const AdmZip = require('adm-zip');
-const { users, avatars, sessions } = require('./store');
+const { users, avatars } = require('./store');
 const { getRole, ROLES } = require('./roles');
 const territory = require('./territory');
 const { PARTIDOS } = require('./partidos');
@@ -51,7 +50,7 @@ function territorioTexto(t) {
   return r ? `${r.entidad} · ${r.tipo}: ${r.nombre}` : `${t.tipo} ${t.clave} (entidad ${t.entidad})`;
 }
 
-function backupZip(rootId, { by }) {
+async function backupZip(rootId, { by }) {
   const branch = branchOf(rootId);
   if (!branch.length) return null;
   const byId = new Map(branch.map((u) => [u.id, u]));
@@ -87,7 +86,9 @@ function backupZip(rootId, { by }) {
   zip.addFile('cuentas.csv', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(csv, 'utf8')]));
 
   for (const u of branch) {
-    if (u.avatarAt && fs.existsSync(avatars.file(u.id))) zip.addFile(`fotos/${u.id}.jpg`, fs.readFileSync(avatars.file(u.id)));
+    if (!u.avatarAt) continue;
+    const img = await avatars.get(u.id);
+    if (img) zip.addFile(`fotos/${u.id}.jpg`, img);
   }
 
   zip.addFile(
@@ -111,14 +112,10 @@ function backupZip(rootId, { by }) {
 }
 
 // --- Eliminación ---------------------------------------------------------------
-function removeBranch(rootId) {
+// Las sesiones y fotos de las cuentas se borran en cascada en la base
+async function removeBranch(rootId) {
   const branch = branchOf(rootId);
-  const ids = new Set(branch.map((u) => u.id));
-  for (const id of ids) {
-    avatars.remove(id);
-    sessions.destroyAllFor(id);
-  }
-  users.removeMany(ids);
+  await users.removeMany(new Set(branch.map((u) => u.id)));
   return branch.length;
 }
 

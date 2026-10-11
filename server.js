@@ -2,7 +2,10 @@ const path = require('path');
 const express = require('express');
 const compression = require('compression');
 const { ROLES, getRole } = require('./src/roles');
-const { users, avatars, passwords, audit, sessions } = require('./src/store');
+const db = require('./src/db');
+const store = require('./src/store');
+const { users, avatars, passwords, audit, sessions } = store;
+const { importarSiHaceFalta } = require('./src/importar-json');
 const { visibleUsers, canView, creatableRole, chainOf } = require('./src/access');
 const auth = require('./src/auth');
 const { requireUser, inGodMode } = auth;
@@ -23,6 +26,27 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const isProd = process.env.NODE_ENV === 'production';
 
 app.disable('x-powered-by');
+for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
+  const original = app[method].bind(app);
+  app[method] = (route, ...handlers) => {
+    if (!handlers.length) return original(route); // app.get('ajuste')
+    return original(
+      route,
+      ...handlers.map((h) =>
+        typeof h === 'function' && h.length < 4
+          ? (req, res, next) => {
+              try {
+                const r = h(req, res, next);
+                if (r && typeof r.then === 'function') r.catch(next);
+              } catch (err) {
+                next(err);
+              }
+            }
+          : h
+      )
+    );
+  };
+}
 // Detrás del proxy de Easypanel (Traefik) se confía en el primer salto para conocer la IP real
 // del usuario (límite de intentos de acceso). En desarrollo, solo en localhost.
 app.set('trust proxy', process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY : isProd ? 1 : 'loopback');
@@ -31,8 +55,6 @@ app.use(compression());
 const jsonBody = express.json();
 app.use((req, res, next) => (req.path === '/api/me/avatar' ? next() : jsonBody(req, res, next)));
 
-auth.ensureAdminCredentials();
-zonas.migrarColores();
 
 const publicUser = (u, all) => {
   const parent = u.parentId ? all.find((p) => p.id === u.parentId) : null;
@@ -58,7 +80,7 @@ const requireRole = (role) => (req, res, next) =>
   req.user.role === role ? next() : res.status(403).json({ error: 'No tienes permiso para esta sección' });
 
 // --- API -------------------------------------------------------------------
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   res.json({ status: 'ok', app: 'VERTEX', time: new Date().toISOString() });
 });
 
@@ -68,7 +90,7 @@ app.get('/api/roles', (req, res) => res.json(ROLES));
 app.post('/api/auth/login', auth.login);
 app.post('/api/auth/logout', auth.logout);
 
-app.get('/api/me', requireUser, (req, res) => {
+app.get('/api/me', requireUser, async (req, res) => {
   res.json({
     user: { ...publicUser(req.user, users.all()), hasPassword: Boolean(req.user.passwordHash) },
     role: getRole(req.user.role),
@@ -92,13 +114,13 @@ app.post('/api/god-mode', requireUser, auth.startGodMode);
 app.delete('/api/god-mode', requireUser, auth.stopGodMode);
 
 // Cuentas visibles para el usuario: solo su inmediato inferior
-app.get('/api/users', requireUser, (req, res) => {
+app.get('/api/users', requireUser, async (req, res) => {
   const all = users.all();
   res.json(visibleUsers(req.user, all).map((u) => publicUser(u, all)));
 });
 
 // Alta rápida de cuentas (niveles sin formulario propio): solo el nivel inmediato inferior
-app.post('/api/users', requireUser, (req, res) => {
+app.post('/api/users', requireUser, async (req, res) => {
   const role = creatableRole(req.user);
   if (!role) return res.status(403).json({ error: 'Tu nivel no puede crear cuentas' });
   if (role.key === 'coord_promocion') return res.status(422).json({ error: 'Usa el formulario de Coordinador de Promoción.' });
@@ -108,7 +130,7 @@ app.post('/api/users', requireUser, (req, res) => {
   const { data, errors } = cleanContact(req.body);
   if (Object.keys(errors).length) return invalid(res, errors);
 
-  const created = users.create({ ...data, role: role.key, parentId: req.user.id });
+  const created = await users.create({ ...data, role: role.key, parentId: req.user.id });
   res.status(201).json(publicUser(created, users.all()));
 });
 
@@ -131,15 +153,15 @@ function deletableTarget(req, res) {
   return target;
 }
 
-app.get('/api/users/:id/branch', requireUser, (req, res) => {
+app.get('/api/users/:id/branch', requireUser, async (req, res) => {
   if (!deletableTarget(req, res)) return;
   res.json(branch.summary(req.params.id));
 });
 
-app.get('/api/users/:id/backup', requireUser, (req, res) => {
+app.get('/api/users/:id/backup', requireUser, async (req, res) => {
   const target = deletableTarget(req, res);
   if (!target) return;
-  const b = branch.backupZip(target.id, { by: req.realUser.name });
+  const b = await branch.backupZip(target.id, { by: req.realUser.name });
   const slug = (target.username || target.name)
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -147,7 +169,7 @@ app.get('/api/users/:id/backup', requireUser, (req, res) => {
     .replace(/-+/g, '-')
     .toLowerCase();
   const fileName = `respaldo-vertex-${slug}-${new Date().toISOString().slice(0, 10)}.zip`;
-  audit.add({ action: 'user.backup', by: req.realUser.id, as: req.user.id, user: target.id, accounts: b.count });
+  await audit.add({ action: 'user.backup', by: req.realUser.id, as: req.user.id, user: target.id, accounts: b.count });
   res.set({
     'Content-Type': 'application/zip',
     'Content-Disposition': `attachment; filename="${fileName}"`,
@@ -156,15 +178,15 @@ app.get('/api/users/:id/backup', requireUser, (req, res) => {
   res.send(b.buffer);
 });
 
-app.delete('/api/users/:id', requireUser, (req, res) => {
+app.delete('/api/users/:id', requireUser, async (req, res) => {
   const target = deletableTarget(req, res);
   if (!target) return;
   const check = auth.confirmPassword(req.realUser, req.body?.password);
   if (!check.ok) {
     return res.status(check.status).json(check.field ? { error: check.error, fields: { password: check.error } } : { error: check.error });
   }
-  const removed = branch.removeBranch(target.id);
-  audit.add({
+  const removed = await branch.removeBranch(target.id);
+  await audit.add({
     action: 'user.delete',
     by: req.realUser.id,
     as: req.user.id,
@@ -177,10 +199,10 @@ app.delete('/api/users/:id', requireUser, (req, res) => {
 });
 
 // --- Nombres de usuario -----------------------------------------------------
-app.get('/api/usernames/suggest', requireUser, (req, res) => {
+app.get('/api/usernames/suggest', requireUser, async (req, res) => {
   res.json({ username: suggestUsername(req.query.name, req.query.exclude || null) });
 });
-app.get('/api/usernames/check', requireUser, (req, res) => {
+app.get('/api/usernames/check', requireUser, async (req, res) => {
   const error = checkUsername(req.query.username, req.query.exclude || null);
   res.json({ available: !error, error });
 });
@@ -198,32 +220,32 @@ const coordinadorDetail = (u) => ({
 app.get('/api/catalogos/partidos', requireUser, (req, res) => res.json(PARTIDOS));
 
 // Entidades con cartografía cargada y opciones de territorio de cada una
-app.get('/api/territorio/entidades', requireUser, requireRole('superadmin'), (req, res) => {
+app.get('/api/territorio/entidades', requireUser, requireRole('superadmin'), async (req, res) => {
   const pad = new Map(padron.summary().states.map((s) => [s.clave, s]));
   res.json(geo.listStates().map((s) => ({ clave: s.clave, nombre: s.nombre, padron: Boolean(pad.get(s.clave)) })));
 });
-app.get('/api/territorio/:entidad/opciones', requireUser, requireRole('superadmin'), (req, res) => {
+app.get('/api/territorio/:entidad/opciones', requireUser, requireRole('superadmin'), async (req, res) => {
   const opts = territory.options(req.params.entidad);
   if (!opts) return res.status(404).json({ error: 'Entidad sin cartografía' });
   res.json(opts);
 });
 
-app.get('/api/coordinadores/:id', requireUser, requireRole('superadmin'), (req, res) => {
+app.get('/api/coordinadores/:id', requireUser, requireRole('superadmin'), async (req, res) => {
   const u = users.get(req.params.id);
   if (!u || u.role !== 'coord_promocion') return res.status(404).json({ error: 'Coordinador no encontrado' });
   res.json(coordinadorDetail(u));
 });
 
-app.post('/api/coordinadores', requireUser, requireRole('superadmin'), (req, res) => {
+app.post('/api/coordinadores', requireUser, requireRole('superadmin'), async (req, res) => {
   const v = validateCoordinador(req.body);
   if (Object.keys(v.errors).length) return invalid(res, v.errors);
-  const created = users.create({ ...v.data, role: 'coord_promocion', parentId: req.user.id });
-  users.update(created.id, { passwordHash: passwords.hash(v.password) });
-  audit.add({ action: 'user.create', by: req.realUser.id, user: created.id });
+  const created = await users.create({ ...v.data, role: 'coord_promocion', parentId: req.user.id });
+  await users.update(created.id, { passwordHash: passwords.hash(v.password) });
+  await audit.add({ action: 'user.create', by: req.realUser.id, user: created.id });
   res.status(201).json(coordinadorDetail(users.get(created.id)));
 });
 
-app.put('/api/coordinadores/:id', requireUser, requireRole('superadmin'), (req, res) => {
+app.put('/api/coordinadores/:id', requireUser, requireRole('superadmin'), async (req, res) => {
   const current = users.get(req.params.id);
   if (!current || current.role !== 'coord_promocion') return res.status(404).json({ error: 'Coordinador no encontrado' });
   const v = validateCoordinador(req.body, { current });
@@ -231,10 +253,10 @@ app.put('/api/coordinadores/:id', requireUser, requireRole('superadmin'), (req, 
   const patch = { ...v.data };
   if (v.password) {
     patch.passwordHash = passwords.hash(v.password);
-    sessions.destroyAllFor(current.id); // la contraseña nueva cierra sus sesiones abiertas
+    await sessions.destroyAllFor(current.id); // la contraseña nueva cierra sus sesiones abiertas
   }
-  users.update(current.id, patch);
-  audit.add({ action: 'user.update', by: req.realUser.id, user: current.id, password: Boolean(v.password) });
+  await users.update(current.id, patch);
+  await audit.add({ action: 'user.update', by: req.realUser.id, user: current.id, password: Boolean(v.password) });
   res.json(coordinadorDetail(users.get(current.id)));
 });
 
@@ -258,34 +280,31 @@ const zonaPropia = (req, res) => {
 };
 
 // --- Configuración del CPV: factor de conversión (metas de promovidos y promotores) ---
-function historialConfig(cpvId) {
+async function historialConfig(cpvId) {
   const nombre = (id) => users.get(id)?.name || 'Cuenta eliminada';
-  return audit
-    .list((a) => a.action === 'config.update' && a.as === cpvId)
-    .slice(-20)
-    .reverse()
-    .map((a) => ({ at: a.at, by: nombre(a.by), before: a.before, after: a.after }));
+  const rows = await audit.query({ action: 'config.update', as: cpvId, limit: 20 });
+  return rows.map((a) => ({ at: a.at, by: nombre(a.by), before: a.before, after: a.after }));
 }
 
-app.get('/api/configuracion/cpv', requireUser, requireCPV, (req, res) => {
+app.get('/api/configuracion/cpv', requireUser, requireCPV, async (req, res) => {
   res.json({
     config: metas.configDe(req.user),
     defaults: metas.DEFAULTS,
     actualizado: req.user.config?.updatedAt ? { at: req.user.config.updatedAt, by: users.get(req.user.config.updatedBy)?.name || null } : null,
     metas: metas.resumen(req.user),
-    historial: historialConfig(req.user.id),
+    historial: await historialConfig(req.user.id),
     confirm: { name: req.realUser.name, hasPassword: Boolean(req.realUser.passwordHash) },
   });
 });
 
 // Vista previa: calcula las metas con valores no guardados
-app.post('/api/configuracion/cpv/simular', requireUser, requireCPV, (req, res) => {
+app.post('/api/configuracion/cpv/simular', requireUser, requireCPV, async (req, res) => {
   const v = metas.validar(req.body);
   if (Object.keys(v.errors).length) return invalid(res, v.errors);
   res.json(metas.resumen(req.user, v.config));
 });
 
-app.put('/api/configuracion/cpv', requireUser, requireCPV, (req, res) => {
+app.put('/api/configuracion/cpv', requireUser, requireCPV, async (req, res) => {
   const v = metas.validar(req.body);
   if (Object.keys(v.errors).length) return invalid(res, v.errors);
   const check = auth.confirmPassword(req.realUser, req.body?.password);
@@ -296,8 +315,8 @@ app.put('/api/configuracion/cpv', requireUser, requireCPV, (req, res) => {
   const after = v.config;
   const cambio = ['participacion', 'conversion', 'factor'].some((k) => before[k] !== after[k]);
   if (cambio) {
-    users.update(req.user.id, { config: { ...after, updatedAt: new Date().toISOString(), updatedBy: req.realUser.id } });
-    audit.add({
+    await users.update(req.user.id, { config: { ...after, updatedAt: new Date().toISOString(), updatedBy: req.realUser.id } });
+    await audit.add({
       action: 'config.update',
       by: req.realUser.id,
       as: req.user.id,
@@ -306,7 +325,7 @@ app.put('/api/configuracion/cpv', requireUser, requireCPV, (req, res) => {
     });
   }
   const cpv = users.get(req.user.id);
-  res.json({ cambio, config: metas.configDe(cpv), metas: metas.resumen(cpv), historial: historialConfig(cpv.id) });
+  res.json({ cambio, config: metas.configDe(cpv), metas: metas.resumen(cpv), historial: await historialConfig(cpv.id) });
 });
 
 // Escritorio del CPV: cifras agregadas de su estructura
@@ -314,29 +333,29 @@ app.get('/api/escritorio/cpv', requireUser, requireCPV, (req, res) => res.json(e
 
 app.get('/api/zonas', requireUser, requireCPV, (req, res) => res.json(zonas.resumen(req.user)));
 
-app.get('/api/zonas/opciones', requireUser, requireCPV, (req, res) => {
+app.get('/api/zonas/opciones', requireUser, requireCPV, async (req, res) => {
   const opts = zonas.opciones(req.user, req.query.exclude || null);
   if (!opts) return res.status(409).json({ error: 'Tu cuenta no tiene territorio asignado. Pide al administrador que te asigne uno.' });
   res.json(opts);
 });
 
-app.get('/api/zonas/:id', requireUser, requireCPV, (req, res) => {
+app.get('/api/zonas/:id', requireUser, requireCPV, async (req, res) => {
   const z = zonaPropia(req, res);
   if (z) res.json(zonaDetail(z));
 });
 
-app.post('/api/zonas', requireUser, requireCPV, (req, res) => {
+app.post('/api/zonas', requireUser, requireCPV, async (req, res) => {
   const cuenta = validateCuenta(req.body);
   const zona = zonas.validar(req.user, req.body);
   const errors = { ...cuenta.errors, ...zona.errors };
   if (Object.keys(errors).length) return invalid(res, errors);
-  const created = users.create({ ...cuenta.data, role: 'coord_zona', parentId: req.user.id, zona: zona.zona, territorio: zona.territorio });
-  users.update(created.id, { passwordHash: passwords.hash(cuenta.password) });
-  audit.add({ action: 'zona.create', by: req.realUser.id, as: req.user.id, user: created.id, secciones: zona.territorio.secciones.length });
+  const created = await users.create({ ...cuenta.data, role: 'coord_zona', parentId: req.user.id, zona: zona.zona, territorio: zona.territorio });
+  await users.update(created.id, { passwordHash: passwords.hash(cuenta.password) });
+  await audit.add({ action: 'zona.create', by: req.realUser.id, as: req.user.id, user: created.id, secciones: zona.territorio.secciones.length });
   res.status(201).json(zonaDetail(users.get(created.id)));
 });
 
-app.put('/api/zonas/:id', requireUser, requireCPV, (req, res) => {
+app.put('/api/zonas/:id', requireUser, requireCPV, async (req, res) => {
   const current = zonaPropia(req, res);
   if (!current) return;
   const cuenta = validateCuenta(req.body, { current });
@@ -346,10 +365,10 @@ app.put('/api/zonas/:id', requireUser, requireCPV, (req, res) => {
   const patch = { ...cuenta.data, zona: zona.zona, territorio: zona.territorio };
   if (cuenta.password) {
     patch.passwordHash = passwords.hash(cuenta.password);
-    sessions.destroyAllFor(current.id);
+    await sessions.destroyAllFor(current.id);
   }
-  users.update(current.id, patch);
-  audit.add({ action: 'zona.update', by: req.realUser.id, as: req.user.id, user: current.id, password: Boolean(cuenta.password) });
+  await users.update(current.id, patch);
+  await audit.add({ action: 'zona.update', by: req.realUser.id, as: req.user.id, user: current.id, password: Boolean(cuenta.password) });
   res.json(zonaDetail(users.get(current.id)));
 });
 
@@ -369,29 +388,29 @@ const rsDetail = (u) => ({ ...publicUser(u, users.all()), territorio: u.territor
 
 app.get('/api/responsables', requireUser, requireCZ, (req, res) => res.json(responsables.resumen(req.user)));
 
-app.get('/api/responsables/opciones', requireUser, requireCZ, (req, res) => {
+app.get('/api/responsables/opciones', requireUser, requireCZ, async (req, res) => {
   const opts = responsables.opciones(req.user, req.query.exclude || null);
   if (!opts) return res.status(409).json({ error: 'Tu zona aún no tiene secciones asignadas.' });
   res.json(opts);
 });
 
-app.get('/api/responsables/:id', requireUser, requireCZ, (req, res) => {
+app.get('/api/responsables/:id', requireUser, requireCZ, async (req, res) => {
   const r = rsPropio(req, res);
   if (r) res.json(rsDetail(r));
 });
 
-app.post('/api/responsables', requireUser, requireCZ, (req, res) => {
+app.post('/api/responsables', requireUser, requireCZ, async (req, res) => {
   const cuenta = validateCuenta(req.body);
   const t = responsables.validar(req.user, req.body);
   const errors = { ...cuenta.errors, ...t.errors };
   if (Object.keys(errors).length) return invalid(res, errors);
-  const created = users.create({ ...cuenta.data, role: 'resp_seccion', parentId: req.user.id, territorio: t.territorio });
-  users.update(created.id, { passwordHash: passwords.hash(cuenta.password) });
-  audit.add({ action: 'responsable.create', by: req.realUser.id, as: req.user.id, user: created.id, secciones: t.territorio.secciones.length });
+  const created = await users.create({ ...cuenta.data, role: 'resp_seccion', parentId: req.user.id, territorio: t.territorio });
+  await users.update(created.id, { passwordHash: passwords.hash(cuenta.password) });
+  await audit.add({ action: 'responsable.create', by: req.realUser.id, as: req.user.id, user: created.id, secciones: t.territorio.secciones.length });
   res.status(201).json(rsDetail(users.get(created.id)));
 });
 
-app.put('/api/responsables/:id', requireUser, requireCZ, (req, res) => {
+app.put('/api/responsables/:id', requireUser, requireCZ, async (req, res) => {
   const current = rsPropio(req, res);
   if (!current) return;
   const cuenta = validateCuenta(req.body, { current });
@@ -401,42 +420,42 @@ app.put('/api/responsables/:id', requireUser, requireCZ, (req, res) => {
   const patch = { ...cuenta.data, territorio: t.territorio };
   if (cuenta.password) {
     patch.passwordHash = passwords.hash(cuenta.password);
-    sessions.destroyAllFor(current.id);
+    await sessions.destroyAllFor(current.id);
   }
-  users.update(current.id, patch);
-  audit.add({ action: 'responsable.update', by: req.realUser.id, as: req.user.id, user: current.id, password: Boolean(cuenta.password) });
+  await users.update(current.id, patch);
+  await audit.add({ action: 'responsable.update', by: req.realUser.id, as: req.user.id, user: current.id, password: Boolean(cuenta.password) });
   res.json(rsDetail(users.get(current.id)));
 });
 
 // --- Perfil personal (todos los niveles) -----------------------------------
-app.patch('/api/me', requireUser, (req, res) => {
+app.patch('/api/me', requireUser, async (req, res) => {
   const { data, errors } = cleanContact(req.body);
   const about = String(req.body.about || '').trim();
   if (about.length > 500) errors.about = 'Máximo 500 caracteres.';
   if (Object.keys(errors).length) return invalid(res, errors);
-  const updated = users.update(req.user.id, { ...data, about });
+  const updated = await users.update(req.user.id, { ...data, about });
   res.json(publicUser(updated, users.all()));
 });
 
 // Foto: el navegador la recorta y comprime a JPEG antes de enviarla
-app.put('/api/me/avatar', requireUser, express.json({ limit: '3mb' }), (req, res) => {
+app.put('/api/me/avatar', requireUser, express.json({ limit: '3mb' }), async (req, res) => {
   const match = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body.image || ''));
   const buffer = match ? Buffer.from(match[1], 'base64') : null;
   const isJpeg = buffer && buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
   if (!isJpeg) return res.status(422).json({ error: 'La imagen no es válida.' });
   if (buffer.length > 2 * 1024 * 1024) return res.status(413).json({ error: 'La imagen es demasiado grande (máx. 2 MB).' });
-  avatars.save(req.user.id, buffer);
-  const updated = users.update(req.user.id, { avatarAt: new Date().toISOString() });
+  await avatars.save(req.user.id, buffer);
+  const updated = await users.update(req.user.id, { avatarAt: new Date().toISOString() });
   res.json(publicUser(updated, users.all()));
 });
 
-app.delete('/api/me/avatar', requireUser, (req, res) => {
-  avatars.remove(req.user.id);
-  const updated = users.update(req.user.id, { avatarAt: null });
+app.delete('/api/me/avatar', requireUser, async (req, res) => {
+  await avatars.remove(req.user.id);
+  const updated = await users.update(req.user.id, { avatarAt: null });
   res.json(publicUser(updated, users.all()));
 });
 
-app.put('/api/me/password', requireUser, (req, res) => {
+app.put('/api/me/password', requireUser, async (req, res) => {
   if (inGodMode(req)) return res.status(403).json({ error: 'En modo dios no se puede cambiar la contraseña del usuario.' });
   const current = String(req.body.current || '');
   const next = String(req.body.next || '');
@@ -446,16 +465,18 @@ app.put('/api/me/password', requireUser, (req, res) => {
   if (!auth.validPassword(next)) errors.next = auth.PASSWORD_HINT;
   else if (next !== confirm) errors.confirm = 'Las contraseñas no coinciden.';
   if (Object.keys(errors).length) return invalid(res, errors);
-  users.update(req.user.id, { passwordHash: passwords.hash(next) });
+  await users.update(req.user.id, { passwordHash: passwords.hash(next) });
   res.json({ ok: true });
 });
 
 // Foto de perfil de una cuenta: solo si la cuenta es propia o está en la rama visible
-app.get('/api/users/:id/avatar', requireUser, (req, res) => {
+app.get('/api/users/:id/avatar', requireUser, async (req, res) => {
   const target = users.get(req.params.id);
   if (!target || !target.avatarAt || !canView(req.user, target, users.all())) return res.status(404).end();
   res.set('Cache-Control', 'private, max-age=31536000, immutable');
-  res.sendFile(avatars.file(target.id));
+  const img = await avatars.get(target.id);
+  if (!img) return res.status(404).end();
+  res.type('image/jpeg').send(img);
 });
 
 // --- Bases de datos (Super administrador) ----------------------------------
@@ -493,29 +514,29 @@ app.post(
   )
 );
 
-app.get('/api/geo/states', requireUser, requireRole('superadmin'), (req, res) => {
+app.get('/api/geo/states', requireUser, requireRole('superadmin'), async (req, res) => {
   const pad = new Map(padron.summary().states.map((s) => [s.clave, s]));
   res.json(geo.listStates().map((s) => ({ ...s, padron: pad.get(s.clave) || null })));
 });
 
-app.get('/api/geo/states/:clave', requireUser, requireRole('superadmin'), (req, res) => {
+app.get('/api/geo/states/:clave', requireUser, requireRole('superadmin'), async (req, res) => {
   const state = geo.getState(req.params.clave);
   if (!state) return res.status(404).json({ error: 'Entidad no cargada' });
   const pad = padron.summary().states.find((s) => s.clave === state.meta.clave) || null;
   res.json({ ...state, padron: pad ? { ...pad, cruce: padron.crossCheck(state.meta.clave, state.catalog) } : null });
 });
 
-app.delete('/api/geo/states/:clave', requireUser, requireRole('superadmin'), (req, res) => {
-  if (!geo.removeState(req.params.clave)) return res.status(404).json({ error: 'Entidad no cargada' });
+app.delete('/api/geo/states/:clave', requireUser, requireRole('superadmin'), async (req, res) => {
+  if (!(await geo.removeState(req.params.clave))) return res.status(404).json({ error: 'Entidad no cargada' });
   res.json({ ok: true });
 });
 
 // Geometrías (GeoJSON en WGS84) para uso de los módulos de mapas
-app.get('/api/geo/states/:clave/layers/:layer', requireUser, (req, res) => {
-  const file = geo.layerFile(req.params.clave, req.params.layer);
-  if (!file) return res.status(404).json({ error: 'Capa no disponible' });
-  res.type('application/geo+json');
-  res.sendFile(file);
+app.get('/api/geo/states/:clave/layers/:layer', requireUser, async (req, res) => {
+  const text = await geo.layerText(req.params.clave, req.params.layer);
+  if (!text) return res.status(404).json({ error: 'Capa no disponible' });
+  res.set('Cache-Control', 'private, max-age=300');
+  res.type('application/geo+json').send(text);
 });
 
 // Padrón electoral / lista nominal (.xlsx del INE)
@@ -532,7 +553,7 @@ app.post(
   )
 );
 
-app.get('/api/padron', requireUser, requireRole('superadmin'), (req, res) => {
+app.get('/api/padron', requireUser, requireRole('superadmin'), async (req, res) => {
   const cartografia = new Set(geo.listStates().map((s) => s.clave));
   const { lastImport, states } = padron.summary();
   res.json({
@@ -546,7 +567,7 @@ app.get('/api/padron', requireUser, requireRole('superadmin'), (req, res) => {
 });
 
 // Electores por sección de una entidad (para pintar mapas)
-app.get('/api/padron/:clave/secciones', requireUser, requireRole('superadmin'), (req, res) => {
+app.get('/api/padron/:clave/secciones', requireUser, requireRole('superadmin'), async (req, res) => {
   const data = padron.sectionsOf(Number(req.params.clave));
   if (!data) return res.status(404).json({ error: 'Sin padrón para esta entidad' });
   res.json(Object.fromEntries([...data].map(([k, v]) => [k, v.ln])));
@@ -554,7 +575,7 @@ app.get('/api/padron/:clave/secciones', requireUser, requireRole('superadmin'), 
 
 // --- Solo desarrollo: entrar como cualquier usuario para probar cada nivel ----
 if (!isProd) {
-  app.get('/api/dev/users', (req, res) => {
+  app.get('/api/dev/users', async (req, res) => {
     const all = users.all();
     res.json(
       [...all]
@@ -563,10 +584,10 @@ if (!isProd) {
     );
   });
 
-  app.post('/api/dev/session', (req, res) => {
+  app.post('/api/dev/session', async (req, res) => {
     const user = users.get(req.body.userId);
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    auth.startSession(res, user.id);
+    await auth.startSession(res, user.id);
     res.json({ ok: true });
   });
 }
@@ -595,10 +616,24 @@ app.use('/vendor/leaflet', express.static(path.join(__dirname, 'node_modules', '
 app.use(express.static(PUBLIC_DIR, { maxAge: isProd ? '1h' : 0 }));
 
 // --- Fallback SPA ----------------------------------------------------------
-app.get('*', (req, res) => {
+app.get('*', async (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`VERTEX escuchando en http://localhost:${PORT}`);
+async function start() {
+  await db.migrate();
+  await importarSiHaceFalta();
+  await store.init();
+  await geo.init();
+  await padron.init();
+  await auth.ensureAdminCredentials();
+  await zonas.migrarColores();
+  app.listen(PORT, () => {
+    console.log(`VERTEX escuchando en http://localhost:${PORT}`);
+  });
+}
+
+start().catch((err) => {
+  console.error('VERTEX: no se pudo arrancar:', err.message);
+  process.exit(1);
 });

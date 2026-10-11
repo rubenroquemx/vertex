@@ -1565,3 +1565,4 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .god-banner .god-banner__exit { display: inline-grid; place-items: center; width: 36px; height: 36px; min-height: 36px; padding: 0; border-radius: 50%; background: #fff; color: #0a0a0a; }
 .god-banner .god-banner__exit svg { width: 18px; height: 18px; }
 .god-path { margin: 0; }
+.god-banner, .god-banner .god-path, .god-banner .god-path strong { font-size: 10px; }

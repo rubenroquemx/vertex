@@ -4,13 +4,10 @@ import { ICONS, esc, fmtNum, api } from './lib.js';
 
 const pct = (v) => `${fmtNum(v)}%`;
 
-export async function viewPanelSeccion(_route, _params, state) {
+export async function viewPanelSeccion() {
   const d = await api('/api/panel/seccion');
-  const head = `
-    <div class="page-head">
-      <h2>Panel</h2>
-      <p>${esc(state.me.role.name)}${d.zona ? ` · ${esc(d.zona.codigo ? `${d.zona.codigo} · ` : '')}${esc(d.zona.nombre)}` : ''}</p>
-    </div>`;
+  // Sin encabezado: el título «Panel» ya está en la barra superior
+  const head = '';
 
   if (!d.secciones.length) {
     return `${head}

@@ -63,7 +63,7 @@ function buildMenu(me) {
     key === 'coord_promocion'
       ? { path: '/', title: 'Escritorio', icon: 'dashboard', view: viewEscritorioCPV, mount: mountEscritorioCPV }
       : key === 'resp_seccion'
-        ? { path: '/', title: 'Panel', icon: 'dashboard', view: (r, p) => viewPanelSeccion(r, p, state) }
+        ? { path: '/', title: 'Panel', icon: 'dashboard', view: viewPanelSeccion }
         : { path: '/', title: 'Panel', icon: 'dashboard', view: () => DASHBOARDS[key](me) };
   const groups = [{ label: 'General', items: [inicio] }];
 

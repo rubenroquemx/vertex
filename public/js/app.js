@@ -1201,7 +1201,6 @@ async function showLogin() {
   const box = $('#login');
   box.hidden = false;
   box.innerHTML = `
-    <div class="login__bg" aria-hidden="true"><span></span><span></span><span></span></div>
     <main class="login__card">
       <img src="/brand/logo-claro.svg" alt="VERTEX" class="login__logo" width="220" height="50">
       <h1 class="login__title">Inicia sesión</h1>

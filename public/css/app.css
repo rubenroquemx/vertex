@@ -1300,46 +1300,43 @@ select.input { padding-right: 32px; }
 .boot.is-error .spinner { display: none; }
 .boot .btn { margin-top: var(--space-md); }
 
-/* ---------- Pantalla de acceso: fondo negro con degradados radiales en movimiento ---------- */
+/* ---------- Pantalla de acceso: fondo negro con resplandor de degradado animado ----------
+   Técnica: una copia difuminada del recuadro, más grande y detrás de él, con un degradado
+   lineal cuyo fondo se desplaza (background-position) en un ciclo de 10 s. */
 .login {
+  --glow-a: #0fffc1;   /* colores del resplandor */
+  --glow-b: #7e0fff;
   position: relative; overflow: hidden; isolation: isolate;
   background: #050505;
   grid-template-rows: 1fr auto;
 }
-.login__bg { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
-.login__bg span {
-  position: absolute; border-radius: 50%; filter: blur(40px); will-change: transform;
+.login__card { position: relative; align-self: center; box-shadow: 0 0 0 1px rgba(255, 255, 255, .06), 0 30px 60px -20px rgba(0, 0, 0, .8); }
+.login__card::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--glow-a), var(--glow-b));
+  background-size: 200% 200%;
+  filter: blur(40px);
+  transform: scale(1.15);
+  opacity: .75;
+  animation: vx-glow 10s ease infinite;
 }
-.login__bg span:nth-child(1) {
-  width: 70vmax; height: 70vmax; left: -15vmax; top: -25vmax;
-  background: radial-gradient(circle, rgba(255, 255, 255, .16) 0%, rgba(255, 255, 255, .05) 40%, transparent 70%);
-  animation: vx-drift-a 28s ease-in-out infinite alternate;
+@keyframes vx-glow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
-.login__bg span:nth-child(2) {
-  width: 60vmax; height: 60vmax; right: -20vmax; bottom: -25vmax;
-  background: radial-gradient(circle, rgba(163, 163, 163, .18) 0%, rgba(115, 115, 115, .06) 45%, transparent 70%);
-  animation: vx-drift-b 34s ease-in-out infinite alternate;
-}
-.login__bg span:nth-child(3) {
-  width: 45vmax; height: 45vmax; left: 30%; top: 35%;
-  background: radial-gradient(circle, rgba(212, 212, 212, .10) 0%, transparent 65%);
-  animation: vx-drift-c 40s ease-in-out infinite alternate;
-}
-@keyframes vx-drift-a { from { transform: translate(0, 0) scale(1); } to { transform: translate(12vmax, 8vmax) scale(1.15); } }
-@keyframes vx-drift-b { from { transform: translate(0, 0) scale(1.1); } to { transform: translate(-10vmax, -12vmax) scale(.95); } }
-@keyframes vx-drift-c { from { transform: translate(-6vmax, 4vmax) scale(.9); } to { transform: translate(8vmax, -6vmax) scale(1.1); } }
-/* Viñeta sutil para dar profundidad */
+/* Viñeta para que las orillas se mantengan negras */
 .login::after {
   content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, .55) 100%);
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, .6) 100%);
 }
-.login__card { align-self: center; box-shadow: 0 0 0 1px rgba(255, 255, 255, .06), 0 30px 60px -20px rgba(0, 0, 0, .8); }
 .login__footer { padding: var(--space-xl) 0 calc(var(--space-md) + env(safe-area-inset-bottom)); font-size: 12px; color: #a3a3a3; text-align: center; }
 .login__footer a { color: #fafafa; text-decoration: underline; text-underline-offset: 2px; }
 .login__footer a:hover { color: #fff; }
 
 @media (prefers-reduced-motion: reduce) {
-  .login__bg span { animation: none !important; }
+  .login__card::before { animation: none !important; }
 }
 
 /* Autocompletado del navegador: conserva el relleno gris del diseño (sin azul) */

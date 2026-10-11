@@ -1299,3 +1299,64 @@ select.input { padding-right: 32px; }
 .boot__msg { margin: 0; font-size: 14px; line-height: 1.6; }
 .boot.is-error .spinner { display: none; }
 .boot .btn { margin-top: var(--space-md); }
+
+/* ---------- Pantalla de acceso: fondo negro con degradados radiales en movimiento ---------- */
+.login {
+  position: relative; overflow: hidden; isolation: isolate;
+  background: #050505;
+  grid-template-rows: 1fr auto;
+}
+.login__bg { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.login__bg span {
+  position: absolute; border-radius: 50%; filter: blur(40px); will-change: transform;
+}
+.login__bg span:nth-child(1) {
+  width: 70vmax; height: 70vmax; left: -15vmax; top: -25vmax;
+  background: radial-gradient(circle, rgba(255, 255, 255, .16) 0%, rgba(255, 255, 255, .05) 40%, transparent 70%);
+  animation: vx-drift-a 28s ease-in-out infinite alternate;
+}
+.login__bg span:nth-child(2) {
+  width: 60vmax; height: 60vmax; right: -20vmax; bottom: -25vmax;
+  background: radial-gradient(circle, rgba(163, 163, 163, .18) 0%, rgba(115, 115, 115, .06) 45%, transparent 70%);
+  animation: vx-drift-b 34s ease-in-out infinite alternate;
+}
+.login__bg span:nth-child(3) {
+  width: 45vmax; height: 45vmax; left: 30%; top: 35%;
+  background: radial-gradient(circle, rgba(212, 212, 212, .10) 0%, transparent 65%);
+  animation: vx-drift-c 40s ease-in-out infinite alternate;
+}
+@keyframes vx-drift-a { from { transform: translate(0, 0) scale(1); } to { transform: translate(12vmax, 8vmax) scale(1.15); } }
+@keyframes vx-drift-b { from { transform: translate(0, 0) scale(1.1); } to { transform: translate(-10vmax, -12vmax) scale(.95); } }
+@keyframes vx-drift-c { from { transform: translate(-6vmax, 4vmax) scale(.9); } to { transform: translate(8vmax, -6vmax) scale(1.1); } }
+/* Viñeta sutil para dar profundidad */
+.login::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, .55) 100%);
+}
+.login__card { align-self: center; box-shadow: 0 0 0 1px rgba(255, 255, 255, .06), 0 30px 60px -20px rgba(0, 0, 0, .8); }
+.login__footer { padding: var(--space-xl) 0 calc(var(--space-md) + env(safe-area-inset-bottom)); font-size: 12px; color: #a3a3a3; text-align: center; }
+.login__footer a { color: #fafafa; text-decoration: underline; text-underline-offset: 2px; }
+.login__footer a:hover { color: #fff; }
+
+@media (prefers-reduced-motion: reduce) {
+  .login__bg span { animation: none !important; }
+}
+
+/* Autocompletado del navegador: conserva el relleno gris del diseño (sin azul) */
+.input:-webkit-autofill,
+.input:-webkit-autofill:hover,
+.input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-foreground);
+  -webkit-box-shadow: 0 0 0 40px var(--color-muted) inset;
+  transition: background-color 9999s ease-out 0s;
+}
+
+/* ---------- Pie de página de la app ---------- */
+.app-footer {
+  margin-top: auto;
+  padding: var(--space-lg) var(--space-2xl) calc(var(--space-lg) + env(safe-area-inset-bottom));
+  font-size: 12px; color: var(--color-muted-foreground); text-align: center;
+}
+.app-footer a { color: var(--color-foreground); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.app-footer a:hover { text-decoration-thickness: 2px; }
+.content:has(> .split) + .app-footer { padding-top: var(--space-md); }

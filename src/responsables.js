@@ -1,6 +1,6 @@
 // Responsables de Sección: el Coordinador de Zona reparte las secciones de su zona.
 // Reglas:
-//  - Solo secciones de la zona del coordinador; asignación sección por sección (una o varias).
+//  - Solo secciones de la zona del coordinador; cada responsable tiene una sola sección.
 //  - Cada sección puede tener un solo Responsable de Sección.
 const geo = require('./geo');
 const padron = require('./padron');
@@ -65,7 +65,8 @@ function validar(zona, body, excludeId = null) {
   const taken = ocupadas(zona.id, excludeId);
   const pedidas = [...new Set((Array.isArray(body.secciones) ? body.secciones : []).map(Number))].sort((a, b) => a - b);
   const errors = {};
-  if (!pedidas.length) errors.territorio = 'Elige al menos una sección.';
+  if (!pedidas.length) errors.territorio = 'Elige la sección.';
+  else if (pedidas.length > 1) errors.territorio = 'Cada responsable puede tener una sola sección.';
   else if (pedidas.some((s) => !propias.has(s))) errors.territorio = 'Hay secciones fuera de tu zona.';
   else {
     const ocupada = pedidas.find((s) => taken.has(s));

@@ -1,5 +1,5 @@
 // Responsables de Sección del Coordinador de Zona: resumen + alta/edición con mapa.
-// Se asignan secciones (una o varias) de la zona; cada sección admite un solo responsable.
+// Se asigna una sola sección de la zona; cada sección admite un solo responsable.
 import { ICONS, $, esc, fmtNum, api, fieldErrorSetter, submitWith, toast, homeControl, navigate } from './lib.js';
 import { I, generatePassword, debounce, showAccessDialog } from './coordinador.js';
 import { baseMap, seccionesGeo } from './zonas.js';
@@ -245,10 +245,10 @@ export async function viewResponsable(route, params = []) {
           <section class="card form-card" aria-labelledby="rs2">
             <header class="form-card__head">
               <span class="form-card__icon" aria-hidden="true">${I.map}</span>
-              <h3 id="rs2">2. Secciones</h3>
-              <span class="form-card__aside">Una o varias</span>
+              <h3 id="rs2">2. Sección</h3>
+              <span class="form-card__aside">Solo una</span>
             </header>
-            <p class="units__help">Marca las secciones en la lista o haz clic sobre ellas en el mapa. Cada sección solo puede tener un responsable.</p>
+            <p class="units__help">Elige la sección en la lista o haz clic sobre ella en el mapa. Cada responsable tiene una sola sección y cada sección, un solo responsable.</p>
             <div class="units">
               <div class="units__search">
                 <span aria-hidden="true">${ICONS.search}</span>
@@ -273,7 +273,7 @@ export async function viewResponsable(route, params = []) {
       </div>
       <aside class="split__map" aria-label="Mapa de secciones de la zona">
         <div class="map map--split" id="rMap"></div>
-        <ul class="legend"><li><span class="vz-sw" style="background:${C_SELECCION}"></span>Seleccionadas</li><li><span class="vz-sw" style="background:${C_CUBIERTA}"></span>Con otro responsable</li><li><span class="vz-sw vz-sw--vacant"></span>Sin responsable</li></ul>
+        <ul class="legend"><li><span class="vz-sw" style="background:${C_SELECCION}"></span>Seleccionada</li><li><span class="vz-sw" style="background:${C_CUBIERTA}"></span>Con otro responsable</li><li><span class="vz-sw vz-sw--vacant"></span>Sin responsable</li></ul>
         <p class="map-card__info" id="rInfo" aria-live="polite">Cargando mapa…</p>
       </aside>
     </div>
@@ -349,7 +349,7 @@ export function mountResponsable(root, route) {
         : styleVacante;
   const secLabel = (s) =>
     `Sección ${s.clave} · ${munName(s.municipio)}${s.electores !== null ? ` · ${fmtNum(s.electores)} electores` : ''}${s.responsable ? ` · Responsable: ${s.responsable.name}` : ''}`;
-  const totalsText = () => (sel.size ? `${fmtNum(sel.size)} secciones seleccionadas` : 'Haz clic en el mapa o en la lista para elegir.');
+  const totalsText = () => (sel.size ? `Sección ${[...sel][0]} seleccionada` : 'Haz clic en el mapa o en la lista para elegir la sección.');
 
   function toggle(clave) {
     const s = bySec.get(clave);
@@ -358,10 +358,13 @@ export function mountResponsable(root, route) {
       info.textContent = `La sección ${clave} ya tiene responsable: ${s.responsable.name}.`;
       return;
     }
-    if (sel.has(clave)) sel.delete(clave);
-    else sel.add(clave);
+    // Una sola sección: elegir otra reemplaza la anterior
+    const previas = [...sel];
+    sel.clear();
+    sel.add(clave);
     $('#rTerr-err', root).textContent = '';
-    featureBySec.get(clave)?.setStyle(styleFor(s));
+    for (const c of [...previas, clave]) featureBySec.get(c)?.setStyle(styleFor(bySec.get(c)));
+    featureBySec.get(clave)?.bringToFront();
     renderList();
     renderTotals();
   }
@@ -407,7 +410,7 @@ export function mountResponsable(root, route) {
       ? rows
           .map(
             (s) => `<label class="unit unit--sec ${sel.has(s.clave) ? 'is-selected' : ''} ${s.responsable ? 'is-disabled' : ''}">
-              <input type="checkbox" value="${s.clave}" ${sel.has(s.clave) ? 'checked' : ''} ${s.responsable ? 'disabled' : ''}>
+              <input type="radio" name="rSeccion" value="${s.clave}" ${sel.has(s.clave) ? 'checked' : ''} ${s.responsable ? 'disabled' : ''}>
               <span class="unit__name">Sección ${s.clave}<small>${esc(munName(s.municipio))}${s.responsable ? ` · ${esc(s.responsable.name)}` : ''}</small></span>
               <span class="unit__stats">${s.electores !== null ? `${fmtNum(s.electores)} electores` : ''}</span>
             </label>`
@@ -417,12 +420,12 @@ export function mountResponsable(root, route) {
   }
   function renderTotals() {
     const electores = op.hasPadron ? [...sel].reduce((t, c) => t + (bySec.get(c)?.electores || 0), 0) : null;
-    $('#rTotSecc', root).textContent = `${fmtNum(sel.size)} ${sel.size === 1 ? 'sección' : 'secciones'}${sel.size ? `: ${[...sel].sort((a, b) => a - b).join(', ')}` : ''}`;
+    $('#rTotSecc', root).textContent = sel.size ? `Sección ${[...sel].sort((a, b) => a - b).join(', ')}` : 'Ninguna sección elegida';
     $('#rTotElect', root).textContent = electores !== null ? `${fmtNum(electores)} electores` : 'Sin padrón cargado';
     info.textContent = totalsText();
   }
   list.addEventListener('change', (e) => {
-    if (e.target.type === 'checkbox') toggle(Number(e.target.value));
+    if (e.target.type === 'radio') toggle(Number(e.target.value));
   });
   search.addEventListener('input', renderList);
   onlyFree.addEventListener('change', renderList);

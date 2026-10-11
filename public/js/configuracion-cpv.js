@@ -1,6 +1,6 @@
 // Configuración del CPV: factor de conversión (participación, conversión y promovidos por promotor).
 // Vista previa en vivo; guardar pide contraseña y queda en bitácora.
-import { ICONS, $, esc, fmtNum, fmtDateTime, api, fieldErrorSetter, toast } from './lib.js';
+import { ICONS, $, esc, fmtNum, fmtDateTime, api, fieldErrorSetter, toast, abrirEnArea } from './lib.js';
 import { debounce } from './coordinador.js';
 
 const ceil = (x) => Math.ceil(x - 1e-9);
@@ -265,7 +265,7 @@ export function mountConfiguracionCPV(root, route) {
         btn.textContent = 'Guardar cambios';
       }
     });
-    dlg.showModal();
+    abrirEnArea(dlg);
     $('#cfgPass', dlg)?.focus();
   });
 

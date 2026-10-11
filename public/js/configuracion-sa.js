@@ -1,5 +1,5 @@
 // Configuración del Super administrador: pestañas "General" y "WhatsApp (Evolution API)".
-import { icon, ICONS, $, esc, fmtDateTime, api, fieldErrorSetter, toast } from './lib.js';
+import { icon, ICONS, $, esc, fmtDateTime, api, fieldErrorSetter, toast, abrirEnArea } from './lib.js';
 
 const TABS = [
   { key: 'whatsapp', name: 'WhatsApp (Evolution API)' },
@@ -279,7 +279,7 @@ function mountWhatsapp(root, route) {
         btn.textContent = 'Guardar';
       }
     });
-    dlg.showModal();
+    abrirEnArea(dlg);
     $('#waPass', dlg)?.focus();
   });
 }

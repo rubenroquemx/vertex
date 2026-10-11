@@ -174,6 +174,46 @@ function homeControl(onClick) {
 // Navegación interna sin recargar la página (la atiende el router de app.js)
 const navigate = (path) => window.dispatchEvent(new CustomEvent('vx:navigate', { detail: path }));
 
+// ---------------------------------------------------------------------------
+// Paneles en el área de trabajo (VERTEX no usa ventanas modales)
+// Muestra un <dialog> dentro de #view en lugar del contenido de la página; al cerrarse
+// (dlg.close()) el contenido vuelve a mostrarse tal como estaba.
+// ---------------------------------------------------------------------------
+function abrirEnArea(dlg) {
+  if (dlg.open) return;
+  const area = document.getElementById('view');
+  const origen = { parent: dlg.parentNode, next: dlg.nextSibling };
+  const scroll = window.scrollY;
+  const ocultos = [...area.children].filter((el) => el !== dlg && !el.hasAttribute('data-area-oculto'));
+  ocultos.forEach((el) => el.setAttribute('data-area-oculto', ''));
+  const volver = document.createElement('button');
+  volver.type = 'button';
+  volver.className = 'back-link area-back';
+  volver.innerHTML = `${ICONS.back}<span>Volver</span>`;
+  volver.addEventListener('click', () => dlg.close());
+  area.prepend(volver, dlg);
+  area.classList.add('is-area');
+  dlg.classList.add('dialog--area');
+  const onKey = (e) => e.key === 'Escape' && dlg.close();
+  document.addEventListener('keydown', onKey);
+  dlg.addEventListener(
+    'close',
+    () => {
+      document.removeEventListener('keydown', onKey);
+      volver.remove();
+      dlg.classList.remove('dialog--area');
+      area.classList.remove('is-area');
+      ocultos.forEach((el) => el.removeAttribute('data-area-oculto'));
+      if (origen.parent && origen.parent !== area && origen.parent.isConnected) origen.parent.insertBefore(dlg, origen.next);
+      window.scrollTo(0, scroll);
+    },
+    { once: true }
+  );
+  dlg.show();
+  window.scrollTo(0, 0);
+  (dlg.querySelector('[autofocus], input:not([type=hidden]), select, textarea') || dlg).focus?.({ preventScroll: true });
+}
+
 export {
   icon,
   ICONS,
@@ -193,4 +233,5 @@ export {
   GEO_STYLE,
   homeControl,
   navigate,
+  abrirEnArea,
 };

@@ -1,6 +1,6 @@
 // Alta y edición del Coordinador de Promoción del Voto (super administrador).
 // Pantalla dividida: formulario (50 %) + mapa del territorio (50 %).
-import { icon, ICONS, $, esc, fmtNum, api, fieldErrorSetter, submitWith, toast, GEO_STYLE, homeControl, navigate } from './lib.js';
+import { icon, ICONS, $, esc, fmtNum, api, fieldErrorSetter, submitWith, toast, GEO_STYLE, homeControl, navigate, abrirEnArea } from './lib.js';
 
 export const I = {
   user: icon('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 16 0v1"/>'),
@@ -96,7 +96,7 @@ export function showAccessDialog(dlg, { user, password, wasEditing, roleLabel, s
     if (action === 'close') dlg.close();
   };
   dlg.onclose = () => navigate(backPath);
-  dlg.showModal();
+  abrirEnArea(dlg);
 }
 
 // ---------------------------------------------------------------------------

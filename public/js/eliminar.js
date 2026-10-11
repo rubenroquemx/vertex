@@ -2,7 +2,7 @@
 // Pasos: 1) recomendar respaldo → 2a) respaldo descargado: eliminar con seguridad
 //                              → 2b) sin respaldo: advertencia de pérdida irreversible
 // En ambos casos se confirma con la contraseña de quien inició sesión.
-import { icon, ICONS, $, esc, fmtNum, api, toast } from './lib.js';
+import { icon, ICONS, $, esc, fmtNum, api, toast, abrirEnArea } from './lib.js';
 
 const I = {
   shield: icon('<path d="M12 3 4 6v6c0 5 3.4 8.5 8 9 4.6-.5 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>'),
@@ -187,5 +187,5 @@ export async function openDeleteFlow(user, me, onDeleted) {
   };
 
   show('intro');
-  dlg.showModal();
+  abrirEnArea(dlg);
 }

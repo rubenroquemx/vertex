@@ -16,10 +16,12 @@ import {
   uploadFile,
   GEO_STYLE,
   homeControl,
+  abrirEnArea,
+  navigate,
 } from './lib.js';
 import { viewCoordinador, mountCoordinador, I as CI, showAccessDialog } from './coordinador.js';
 import { openDeleteFlow } from './eliminar.js';
-import { viewZonas, mountZonas, viewZona, mountZona } from './zonas.js';
+import { viewZonas, mountZonas, viewZona, mountZona, baseMap, seccionesGeo } from './zonas.js';
 import { viewEscritorioCPV, mountEscritorioCPV } from './escritorio-cpv.js';
 import { viewResponsables, mountResponsables, viewResponsable, mountResponsable } from './responsables.js';
 import { viewConfiguracionCPV, mountConfiguracionCPV } from './configuracion-cpv.js';
@@ -241,75 +243,145 @@ function dialogo(id) {
     dlg = document.createElement('dialog');
     dlg.id = id;
     dlg.className = 'dialog dialog--wide';
-    document.body.append(dlg);
+    view.append(dlg);
   }
   return dlg;
 }
 
-// Ficha de solo lectura del Coordinador de Promoción del Voto
-function abrirFichaCpv(u, catalogo, onAction) {
-  const dlg = dialogo('cpvFicha');
+// Ficha del Coordinador de Promoción del Voto: datos (izquierda) + mapa del territorio (derecha)
+async function viewFichaCpv(route, params) {
+  const [u, catalogo] = await Promise.all([api(`/api/coordinadores/${params[0]}`), api('/api/catalogos/partidos')]);
+  route.cpv = u;
+  currentPartidos = catalogo;
   const t = u.territorioResumen;
   const parts = partidosDe(u, catalogo);
   const dato = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
-  dlg.setAttribute('aria-labelledby', 'fichaTitle');
-  dlg.innerHTML = `
-    <div class="dialog__body ficha">
-      <div class="dialog__head">
-        <div>
-          <p class="cpv-card__label">Candidato</p>
-          <h3 id="fichaTitle" class="ficha__title">${esc(u.candidato || 'Sin candidato')}</h3>
+  const canDelete = Boolean(state.me.canDelete);
+  return `
+    <div class="split">
+      <div class="split__form ficha">
+        <a class="back-link" href="/usuarios" data-link>${ICONS.back}<span>Usuarios</span></a>
+        <p class="cpv-card__label">Candidato</p>
+        <h2 class="ficha__title">${esc(u.candidato || 'Sin candidato')}</h2>
+        <p class="ficha__sub">${esc(candidaturaTexto(t))}</p>
+        ${parts.length ? `<div class="ficha__parties">${parts.map((p) => `<span class="cpv-party"><span class="cpv-party__dot" style="background:${p.color}" aria-hidden="true"></span>${esc(p.name)}</span>`).join('')}${parts.length > 1 ? '<span class="badge">Coalición</span>' : ''}</div>` : ''}
+
+        <section class="ficha__sec" aria-label="Territorio">
+          <h4>Territorio</h4>
+          <dl class="ficha__grid">
+            ${dato('Entidad', esc(t ? titleCase(t.entidad) : '—'))}
+            ${dato('Asignación', esc(t ? (t.tipo === 'Estatal' ? 'Toda la entidad' : t.tipo === 'Municipio' ? `Municipio de ${titleCase(t.nombre)}` : titleCase(t.nombre)) : '—'))}
+            ${dato('Secciones', t ? fmtNum(t.secciones) : '—')}
+            ${dato('Electores', t && t.electores !== null ? fmtNum(t.electores) : '—')}
+            ${dato('Zonas creadas', fmtNum(u.zonas || 0))}
+          </dl>
+          <ul class="ficha__zonas" id="fZonasList" hidden></ul>
+        </section>
+
+        <section class="ficha__sec" aria-label="Titular">
+          <h4>Titular</h4>
+          <div class="ficha__holder">
+            <span class="avatar ficha__avatar" aria-hidden="true">${avatarInner(u)}</span>
+            <div><strong>${esc(u.name)}</strong><span class="muted-block">Coordinador de Promoción del Voto</span></div>
+          </div>
+          <dl class="ficha__grid">
+            ${dato('Teléfono', u.phone ? `<a href="tel:+52${esc(u.phone)}">${esc(fmtPhone(u.phone))}</a>` : '—')}
+            ${dato('Correo', u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—')}
+            ${dato('Usuario', u.username ? `<span class="mono">@${esc(u.username)}</span>` : 'Sin acceso')}
+            ${dato('Alta', fmtDate(u.createdAt))}
+          </dl>
+        </section>
+
+        <div class="ficha__actions">
+          <div class="cpv-card__group">
+            ${u.phone ? `<a class="icon-btn cpv-card__act" href="tel:+52${esc(u.phone)}" title="Llamar" aria-label="Llamar a ${esc(u.name)}">${CI.phone}</a>
+            <a class="icon-btn cpv-card__act" href="https://wa.me/52${esc(u.phone)}" target="_blank" rel="noopener" title="WhatsApp" aria-label="WhatsApp con ${esc(u.name)}">${CI.whatsapp}</a>` : ''}
+            <button class="icon-btn cpv-card__act" type="button" data-f="acceso" title="Compartir acceso (genera contraseña nueva)" aria-label="Compartir acceso">${CI.copy}</button>
+            ${canDelete ? `<button class="icon-btn cpv-card__act" type="button" data-f="delete" data-danger title="Eliminar ${esc(u.name)} y su rama" aria-label="Eliminar ${esc(u.name)} y su rama">${ICONS.trash}</button>` : ''}
+          </div>
+          <div class="cpv-card__group">
+            <a class="btn btn--secondary btn--sm" href="/usuarios/${u.id}/editar" data-link>${ICONS.edit}<span>Editar</span></a>
+            <button class="btn btn--sm" type="button" data-f="god">${ICONS.eye}<span>Entrar a la cuenta</span></button>
+          </div>
         </div>
-        <button class="icon-btn icon-btn--always" type="button" data-f="close" aria-label="Cerrar">${ICONS.close}</button>
       </div>
-      <p class="ficha__sub">${esc(candidaturaTexto(t))}</p>
-      ${parts.length ? `<div class="ficha__parties">${parts.map((p) => `<span class="cpv-party"><span class="cpv-party__dot" style="background:${p.color}" aria-hidden="true"></span>${esc(p.name)}</span>`).join('')}${parts.length > 1 ? '<span class="badge">Coalición</span>' : ''}</div>` : ''}
 
-      <section class="ficha__sec" aria-label="Territorio">
-        <h4>Territorio</h4>
-        <dl class="ficha__grid">
-          ${dato('Entidad', esc(t ? titleCase(t.entidad) : '—'))}
-          ${dato('Asignación', esc(t ? (t.tipo === 'Estatal' ? 'Toda la entidad' : t.tipo === 'Municipio' ? `Municipio de ${titleCase(t.nombre)}` : titleCase(t.nombre)) : '—'))}
-          ${dato('Secciones', t ? fmtNum(t.secciones) : '—')}
-          ${dato('Electores', t && t.electores !== null ? fmtNum(t.electores) : '—')}
-          ${dato('Zonas creadas', fmtNum(u.zonas || 0))}
-        </dl>
-      </section>
-
-      <section class="ficha__sec" aria-label="Titular">
-        <h4>Titular</h4>
-        <div class="ficha__holder">
-          <span class="avatar ficha__avatar" aria-hidden="true">${avatarInner(u)}</span>
-          <div><strong>${esc(u.name)}</strong><span class="muted-block">Coordinador de Promoción del Voto</span></div>
-        </div>
-        <dl class="ficha__grid">
-          ${dato('Teléfono', u.phone ? `<a href="tel:+52${esc(u.phone)}">${esc(fmtPhone(u.phone))}</a>` : '—')}
-          ${dato('Correo', u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—')}
-          ${dato('Usuario', u.username ? `<span class="mono">@${esc(u.username)}</span>` : 'Sin acceso')}
-          ${dato('Alta', fmtDate(u.createdAt))}
-        </dl>
-      </section>
-
-      <div class="ficha__actions">
-        <div class="cpv-card__group">
-          ${u.phone ? `<a class="icon-btn cpv-card__act" href="tel:+52${esc(u.phone)}" title="Llamar" aria-label="Llamar a ${esc(u.name)}">${CI.phone}</a>
-          <a class="icon-btn cpv-card__act" href="https://wa.me/52${esc(u.phone)}" target="_blank" rel="noopener" title="WhatsApp" aria-label="WhatsApp con ${esc(u.name)}">${CI.whatsapp}</a>` : ''}
-          <button class="icon-btn cpv-card__act" type="button" data-f="acceso" title="Compartir acceso (genera contraseña nueva)" aria-label="Compartir acceso">${CI.copy}</button>
-        </div>
-        <div class="cpv-card__group">
-          <button class="btn btn--secondary btn--sm" type="button" data-f="edit">${ICONS.edit}<span>Editar</span></button>
-          <button class="btn btn--sm" type="button" data-f="god">${ICONS.eye}<span>Entrar a la cuenta</span></button>
-        </div>
-      </div>
+      <aside class="split__map" aria-label="Mapa del territorio">
+        <div class="map map--split" id="fMap"></div>
+        <p class="map-card__info" id="fMapInfo" aria-live="polite">${t ? 'Cargando mapa…' : 'Sin territorio asignado.'}</p>
+      </aside>
     </div>`;
-  dlg.onclick = (e) => {
-    const a = e.target.closest('[data-f]')?.dataset.f;
-    if (!a) return;
-    if (a === 'close') return dlg.close();
-    dlg.close();
-    onAction(a, u);
+}
+
+function mountFichaCpv(root, route) {
+  const u = route.cpv;
+  root.onclick = (e) => {
+    const btn = e.target.closest('[data-f]');
+    const a = btn?.dataset.f;
+    if (a === 'acceso') compartirAccesoCpv(u);
+    if (a === 'delete') openDeleteFlow(u, state.me, () => navigate('/usuarios'));
+    if (a === 'god') {
+      btn.disabled = true;
+      enterGodMode(u.id, landingFor(u.role)).catch((err) => {
+        btn.disabled = false;
+        toast(err.message);
+      });
+    }
   };
-  dlg.showModal();
+
+  const mapEl = $('#fMap', root);
+  const info = $('#fMapInfo', root);
+  const { map, destroy } = baseMap(mapEl);
+  let vivo = true;
+  if (u.territorio) {
+    mapEl.classList.add('is-busy');
+    api(`/api/coordinadores/${u.id}/mapa`)
+      .then(async (m) => {
+        const [ent, secc] = await Promise.all([api(`/api/geo/states/${m.entidad}/layers/entidad`), seccionesGeo(m.entidad, m.secciones)]);
+        if (!vivo) return;
+        const zonaDe = new Map();
+        for (const z of m.zonas) for (const s of z.secciones) zonaDe.set(s, z);
+        L.geoJSON(ent, { style: GEO_STYLE.outline }).addTo(map);
+        const capa = L.geoJSON(secc, {
+          style: (f) => {
+            const z = zonaDe.get(f.properties.seccion);
+            return z
+              ? { color: z.color, weight: 0.8, opacity: 0.9, fillColor: z.color, fillOpacity: 0.45 }
+              : { color: '#0a0a0a', weight: 0.8, opacity: 0.8, fillColor: '#171717', fillOpacity: 0.2 };
+          },
+          onEachFeature(f, layer) {
+            const z = zonaDe.get(f.properties.seccion);
+            layer.bindTooltip(esc(`Sección ${f.properties.seccion}${z ? ` · ${z.nombre}` : ''}`), { sticky: true, direction: 'top', className: 'map-tip' });
+          },
+        }).addTo(map);
+        const bounds = capa.getBounds();
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [16, 16] });
+          homeControl(() => map.fitBounds(bounds, { padding: [16, 16] })).addTo(map);
+        }
+        const libres = m.secciones.length - zonaDe.size;
+        info.textContent = m.zonas.length
+          ? `${fmtNum(m.secciones.length)} secciones · ${fmtNum(m.zonas.length)} ${m.zonas.length === 1 ? 'zona' : 'zonas'} · ${fmtNum(libres)} sin zona`
+          : `${fmtNum(m.secciones.length)} secciones · aún sin zonas`;
+        const lista = $('#fZonasList', root);
+        if (m.zonas.length) {
+          lista.innerHTML = m.zonas
+            .map((z) => `<li><span class="ficha__swatch" style="background:${z.color}" aria-hidden="true"></span><span>${esc(z.nombre)}</span><span class="muted">${fmtNum(z.secciones.length)} secc.</span></li>`)
+            .join('');
+          lista.hidden = false;
+        }
+      })
+      .catch((err) => {
+        if (vivo) info.textContent = `No se pudo cargar el mapa: ${err.message}`;
+      })
+      .finally(() => mapEl.classList.remove('is-busy'));
+  } else {
+    map.setView([23.6, -102.5], 5);
+  }
+  return () => {
+    vivo = false;
+    destroy();
+  };
 }
 
 // Compartir acceso: confirma, genera contraseña nueva y muestra el mensaje para el cliente
@@ -346,8 +418,8 @@ function compartirAccesoCpv(u) {
         wasEditing: true,
         roleLabel: 'Coordinador de Promoción del Voto',
         subtitle: candidaturaTexto(r.user.territorioResumen),
-        backLabel: 'Cerrar',
-        backPath: '/usuarios',
+        backLabel: 'Listo',
+        backPath: location.pathname,
       });
     } catch (err) {
       $('#accErr', dlg).textContent = err.message;
@@ -355,7 +427,7 @@ function compartirAccesoCpv(u) {
       btn.textContent = 'Generar y compartir';
     }
   };
-  if (!dlg.open) dlg.showModal();
+  abrirEnArea(dlg);
 }
 
 function renderCpvCards(root, list, catalogo) {
@@ -475,12 +547,7 @@ function mountEstructura(root, route) {
       return;
     }
     if (action === 'view') {
-      const u = route.data.find((x) => x.id === e.target.closest('[data-action]').dataset.id);
-      abrirFichaCpv(u, currentPartidos, (a, cpv) => {
-        if (a === 'edit') navigate(`/usuarios/${cpv.id}/editar`);
-        if (a === 'god') enterGodMode(cpv.id, landingFor(cpv.role)).catch((err) => toast(err.message));
-        if (a === 'acceso') compartirAccesoCpv(cpv);
-      });
+      navigate(`/usuarios/${e.target.closest('[data-action]').dataset.id}`);
       return;
     }
     if (action === 'delete') {
@@ -503,7 +570,7 @@ function mountEstructura(root, route) {
       form.reset();
       setErrors();
       formErr.textContent = '';
-      dialog.showModal();
+      abrirEnArea(dialog);
       $('#nuName', root).focus();
     }
     if (action === 'close') dialog.close();
@@ -957,7 +1024,7 @@ function mountEntidadGeo(root, route) {
     if (!btn) return;
     if (btn.dataset.layer) return show(btn.dataset.layer);
     const action = btn.dataset.action;
-    if (action === 'delete') delDialog.showModal();
+    if (action === 'delete') abrirEnArea(delDialog);
     if (action === 'cancel') delDialog.close();
     if (action === 'confirm-delete') {
       btn.disabled = true;
@@ -1667,6 +1734,7 @@ async function boot() {
   }
   if (state.me.role.key === 'superadmin') {
     state.routes.set('/usuarios/nuevo', { path: '/usuarios/nuevo', title: 'Nuevo coordinador', view: viewCoordinador, mount: mountCoordinador });
+    state.patternRoutes.push({ pattern: /^\/usuarios\/([0-9a-f-]{36})$/, title: 'Coordinador de Promoción del Voto', view: viewFichaCpv, mount: mountFichaCpv });
     state.patternRoutes.push({
       pattern: /^\/usuarios\/([0-9a-f-]{36})\/editar$/,
       title: 'Editar coordinador',

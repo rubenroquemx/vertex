@@ -270,6 +270,23 @@ app.get('/api/coordinadores/:id', requireUser, requireRole('superadmin'), async 
   res.json(coordinadorDetail(u));
 });
 
+// Mapa de la ficha: secciones del territorio y zonas creadas (con su color)
+app.get('/api/coordinadores/:id/mapa', requireUser, requireRole('superadmin'), async (req, res) => {
+  const u = users.get(req.params.id);
+  if (!u || u.role !== 'coord_promocion') return res.status(404).json({ error: 'Coordinador no encontrado' });
+  if (!u.territorio) return res.status(404).json({ error: 'Sin territorio asignado' });
+  res.json({
+    entidad: u.territorio.entidad,
+    secciones: [...territory.sectionsOf(u.territorio)],
+    zonas: zonas.zonasDe(u.id).map((z) => ({
+      id: z.id,
+      nombre: z.zona?.nombre || z.name,
+      color: z.zona?.color || '#94a3b8',
+      secciones: z.territorio?.secciones || [],
+    })),
+  });
+});
+
 app.post('/api/coordinadores', requireUser, requireRole('superadmin'), async (req, res) => {
   const v = validateCoordinador(req.body);
   if (Object.keys(v.errors).length) return invalid(res, v.errors);

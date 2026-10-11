@@ -1510,3 +1510,52 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .ficha__swatch { width: 12px; height: 12px; border-radius: 4px; flex-shrink: 0; }
 .ficha__zonas[hidden] { display: none; }
 .content.is-area > [data-area-oculto] { display: none !important; }
+
+/* ==========================================================================
+   Celulares: sin barra lateral; barra fija inferior solo con íconos
+   ========================================================================== */
+.dock, .countdown-mini, .topbar__user, .topbar__logout { display: none; }
+@media (max-width: 767px) {
+  :root { --dock-h: 64px; --dock-space: calc(var(--dock-h) + env(safe-area-inset-bottom)); }
+  .sidebar, .backdrop, #menuBtn { display: none !important; }
+  .layout { padding-bottom: var(--dock-space); }
+
+  .topbar { gap: var(--space-sm); }
+  .topbar__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+  .status[data-online="true"] { display: none; }
+  .countdown-mini:not(:empty) {
+    display: inline-flex; align-items: baseline; gap: 4px; flex-shrink: 0;
+    padding: 5px 10px; border-radius: var(--radius-pill);
+    background: #171717; color: #fafafa; font-size: 12px; font-weight: 700; white-space: nowrap;
+  }
+  .countdown-mini strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+  .topbar__user { display: inline-flex; flex-shrink: 0; border-radius: 50%; text-decoration: none; }
+  .topbar__user .user__avatar { width: 34px; height: 34px; font-size: 13px; background: #171717; color: #fafafa; }
+  .topbar__user[aria-current="page"] .user__avatar { box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px #171717; }
+  .topbar__logout { display: inline-grid; place-items: center; flex-shrink: 0; }
+  .topbar__logout svg { width: 20px; height: 20px; }
+
+  .dock {
+    position: fixed; z-index: 30; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    height: var(--dock-space); padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    overflow-x: auto; scrollbar-width: none;
+    border-radius: 20px 20px 0 0; background: #1c1c1e;
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, .18);
+  }
+  .dock::-webkit-scrollbar { display: none; }
+  .dock__group { display: flex; gap: 6px; }
+  .dock__sep { flex-shrink: 0; width: 1px; height: 28px; margin: 0 4px; background: #3f3f46; }
+  .dock__link {
+    flex-shrink: 0; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%;
+    color: #a1a1aa; text-decoration: none;
+    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+  }
+  .dock__link svg { width: 22px; height: 22px; }
+  .dock__link[aria-current="page"] { background: #fafafa; color: #0a0a0a; }
+  .dock :focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+  .app-footer { padding-bottom: var(--space-lg); }
+  .form-footer { bottom: var(--dock-space); }
+  .toast { bottom: calc(var(--dock-space) + var(--space-lg)); }
+}

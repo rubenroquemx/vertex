@@ -1282,6 +1282,17 @@ function renderNav(menu) {
     .join('');
 }
 
+// Celulares: barra fija inferior solo con los íconos de las funciones
+function renderDock(menu) {
+  $('#dock').innerHTML = menu
+    .map(
+      (g) => `<div class="dock__group" role="group" aria-label="${esc(g.label)}">${g.items
+        .map((r) => `<a class="dock__link" href="${r.path}" data-link title="${esc(r.title)}" aria-label="${esc(r.title)}">${ICONS[r.icon]}</a>`)
+        .join('')}</div>`
+    )
+    .join('<span class="dock__sep" aria-hidden="true"></span>');
+}
+
 const NOT_AVAILABLE = {
   title: 'No disponible',
   view: () => `<div class="empty"><strong>Página no disponible</strong><span>La página no existe o no está disponible para tu nivel.</span></div>`,
@@ -1304,7 +1315,7 @@ async function render() {
   route = route || NOT_AVAILABLE;
   $('#pageTitle').textContent = route.title;
   document.title = `${route.title} · VERTEX`;
-  sidebar.querySelectorAll('.nav__link, .user').forEach((a) => {
+  document.querySelectorAll('.nav__link, .user, .dock__link, #topUser').forEach((a) => {
     const href = a.getAttribute('href');
     const active = href === location.pathname || (href !== '/' && location.pathname.startsWith(`${href}/`));
     if (active) a.setAttribute('aria-current', 'page');
@@ -1400,6 +1411,8 @@ document.addEventListener('keydown', (e) => e.key === 'Escape' && setSidebar(fal
 // ---------------------------------------------------------------------------
 function renderUser(me) {
   $('#userAvatar').innerHTML = avatarInner(me.user);
+  $('#topUserAvatar').innerHTML = avatarInner(me.user);
+  $('#topUser').title = `Mi perfil · ${me.user.name}`;
   $('#userName').textContent = me.user.name;
   $('#userRole').textContent = me.role.name;
 }
@@ -1693,6 +1706,8 @@ async function showLogin() {
 
 const logoutBtn = $('#logoutBtn');
 logoutBtn.innerHTML = `${ICONS.logout}<span>Cerrar sesión</span>`;
+$('#topLogout').innerHTML = ICONS.logout;
+$('#topLogout').addEventListener('click', () => logoutBtn.click());
 logoutBtn.addEventListener('click', async () => {
   logoutBtn.disabled = true;
   await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
@@ -1749,6 +1764,7 @@ async function boot() {
     });
   }
   renderNav(menu);
+  renderDock(menu);
   renderUser(state.me);
   renderGodBanner(state.me);
   render();
@@ -1783,6 +1799,10 @@ function renderCountdown() {
     <span class="countdown__date">${ELECCION.texto}</span>`;
   el.title = `Faltan ${fmtNum(dias)} días para la elección del ${ELECCION.texto}`;
   el.setAttribute('aria-label', el.title);
+  const mini = $('#countdownMini');
+  mini.innerHTML = `<strong>${fmtNum(dias)}</strong> ${dias === 1 ? 'día' : 'días'}`;
+  mini.title = el.title;
+  mini.setAttribute('aria-label', el.title);
 }
 renderCountdown();
 setInterval(renderCountdown, 30000);

@@ -69,11 +69,21 @@
         <img src="/brand/icono.svg" alt="" class="topbar__mark" width="28" height="28">
         <h1 class="topbar__title" id="pageTitle">Panel</h1>
         <span class="status" id="netStatus" data-online="true" role="status">En línea</span>
+        <!-- Solo en celulares (sin barra lateral) -->
+        <span class="countdown-mini" id="countdownMini"></span>
+        <a class="topbar__user" href="/perfil" data-link id="topUser" title="Mi perfil">
+          <span class="user__avatar" id="topUserAvatar" aria-hidden="true"></span>
+          <span class="sr-only">Mi perfil</span>
+        </a>
+        <button class="icon-btn topbar__logout" type="button" id="topLogout" title="Cerrar sesión" aria-label="Cerrar sesión"></button>
       </header>
 
       <main class="content" id="view" tabindex="-1"></main>
       <footer class="app-footer">Creado por <a href="https://www.instagram.com/rubenroqueguzman/" target="_blank" rel="noopener noreferrer">Rubén Roque</a></footer>
     </div>
+
+    <!-- Celulares: barra fija inferior solo con los íconos de las funciones -->
+    <nav class="dock" id="dock" aria-label="Funciones"></nav>
   </div>
 
   <script src="/vendor/leaflet/leaflet.js"></script>

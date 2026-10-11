@@ -1566,3 +1566,23 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .god-banner .god-banner__exit svg { width: 18px; height: 18px; }
 .god-path { margin: 0; }
 .god-banner, .god-banner .god-path, .god-banner .god-path strong { font-size: 10px; }
+
+/* ---------- Panel del Responsable de Sección ---------- */
+.ps-hero { margin-bottom: var(--space-xl); padding: 24px; border-radius: var(--radius-lg); background: #0a0a0a; color: #fafafa; box-shadow: var(--shadow-card); }
+.ps-hero__label { margin: 0; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #a3a3a3; }
+.ps-hero__num { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 2px; }
+.ps-hero__num strong { font-size: 56px; line-height: 1; font-variant-numeric: tabular-nums; }
+.ps-hero__num span { font-size: 18px; font-weight: 700; }
+.ps-hero__sub { margin: 0; font-size: 14px; color: #d4d4d4; }
+.ps-hero__progress { margin-top: 20px; }
+.ps-hero__progress p { margin: 8px 0 0; font-size: 14px; color: #d4d4d4; }
+.ps-hero__progress strong { color: #fff; }
+.ps-bar { height: 8px; border-radius: 999px; background: #3f3f46; overflow: hidden; }
+.ps-bar span { display: block; height: 100%; border-radius: inherit; background: #fafafa; }
+.ps-calc { max-width: 560px; }
+.ps-calc__intro { margin: 0 0 12px; font-size: 14px; color: var(--color-muted-foreground); }
+.ps-steps { list-style: none; margin: 0 0 12px; padding: 0; font-size: 14px; }
+.ps-steps li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--color-border); }
+.ps-steps strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ps-steps__res { font-weight: 700; }
+.ps-steps li:last-child { border-bottom: 0; font-size: 16px; }

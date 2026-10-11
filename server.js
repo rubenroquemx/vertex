@@ -18,6 +18,7 @@ const zonas = require('./src/zonas');
 const escritorio = require('./src/escritorio');
 const responsables = require('./src/responsables');
 const metas = require('./src/metas');
+const panelSeccion = require('./src/panel-seccion');
 const padron = require('./src/padron');
 const territory = require('./src/territory');
 const { PARTIDOS } = require('./src/partidos');
@@ -402,6 +403,12 @@ app.put('/api/configuracion/cpv', requireUser, requireCPV, async (req, res) => {
   }
   const cpv = users.get(req.user.id);
   res.json({ cambio, config: metas.configDe(cpv), metas: metas.resumen(cpv), historial: await historialConfig(cpv.id) });
+});
+
+// Panel del Responsable de Sección: promotores que debe tener según el cálculo de su CPV
+app.get('/api/panel/seccion', requireUser, (req, res) => {
+  if (req.user.role !== 'resp_seccion') return res.status(403).json({ error: 'Solo para Responsables de Sección' });
+  res.json(panelSeccion.resumen(req.user));
 });
 
 // Escritorio del CPV: cifras agregadas de su estructura

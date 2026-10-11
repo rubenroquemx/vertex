@@ -26,6 +26,7 @@ import { viewEscritorioCPV, mountEscritorioCPV } from './escritorio-cpv.js';
 import { viewResponsables, mountResponsables, viewResponsable, mountResponsable } from './responsables.js';
 import { viewConfiguracionCPV, mountConfiguracionCPV } from './configuracion-cpv.js';
 import { viewConfiguracionSA, mountConfiguracionSA } from './configuracion-sa.js';
+import { viewPanelSeccion } from './panel-seccion.js';
 
 const state = { me: null, routes: new Map() };
 
@@ -61,7 +62,9 @@ function buildMenu(me) {
   const inicio =
     key === 'coord_promocion'
       ? { path: '/', title: 'Escritorio', icon: 'dashboard', view: viewEscritorioCPV, mount: mountEscritorioCPV }
-      : { path: '/', title: 'Panel', icon: 'dashboard', view: () => DASHBOARDS[key](me) };
+      : key === 'resp_seccion'
+        ? { path: '/', title: 'Panel', icon: 'dashboard', view: (r, p) => viewPanelSeccion(r, p, state) }
+        : { path: '/', title: 'Panel', icon: 'dashboard', view: () => DASHBOARDS[key](me) };
   const groups = [{ label: 'General', items: [inicio] }];
 
   if (key === 'superadmin') {

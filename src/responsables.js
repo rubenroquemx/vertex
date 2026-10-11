@@ -107,4 +107,4 @@ function resumen(zona) {
   };
 }
 
-module.exports = { responsablesDe, opciones, validar, resumen };
+module.exports = { responsablesDe, contexto, opciones, validar, resumen };

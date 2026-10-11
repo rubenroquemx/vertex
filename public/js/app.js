@@ -1265,22 +1265,36 @@ function mountPerfil(root) {
 // ---------------------------------------------------------------------------
 const nav = $('#nav');
 const view = $('#view');
-const sidebar = $('#sidebar');
-const backdrop = $('#backdrop');
-const menuBtn = $('#menuBtn');
 let renderSeq = 0;
 
+// Barra fija inferior: solo los íconos de las funciones (separadas por grupo)
 function renderNav(menu) {
   nav.innerHTML = menu
     .map(
-      (g) => `
-    <div class="nav__group">
-      <div class="nav__label">${g.label}</div>
-      ${g.items.map((r) => `<a class="nav__link" href="${r.path}" data-link title="${r.title}">${ICONS[r.icon]}<span>${r.title}</span></a>`).join('')}
-    </div>`
+      (g) => `<div class="dock__group" role="group" aria-label="${esc(g.label)}">${g.items
+        .map((r) => `<a class="dock__link" href="${r.path}" data-link title="${esc(r.title)}" aria-label="${esc(r.title)}" data-label="${esc(r.title)}">${ICONS[r.icon]}</a>`)
+        .join('')}</div>`
     )
-    .join('');
+    .join('<span class="dock__sep" aria-hidden="true"></span>');
 }
+
+// Nombre de cada función al pasar el mouse sobre su ícono (escritorio)
+const dockTip = document.createElement('div');
+dockTip.className = 'dock__tip';
+dockTip.hidden = true;
+dockTip.setAttribute('aria-hidden', 'true');
+document.body.append(dockTip);
+nav.addEventListener('mouseover', (e) => {
+  const a = e.target.closest('.dock__link');
+  if (!a || !matchMedia('(hover: hover)').matches) return;
+  const r = a.getBoundingClientRect();
+  dockTip.textContent = a.dataset.label;
+  dockTip.style.left = `${r.left + r.width / 2}px`;
+  dockTip.style.top = `${r.top - 10}px`;
+  dockTip.hidden = false;
+});
+nav.addEventListener('mouseout', () => (dockTip.hidden = true));
+nav.addEventListener('click', () => (dockTip.hidden = true));
 
 const NOT_AVAILABLE = {
   title: 'No disponible',
@@ -1304,7 +1318,7 @@ async function render() {
   route = route || NOT_AVAILABLE;
   $('#pageTitle').textContent = route.title;
   document.title = `${route.title} · VERTEX`;
-  sidebar.querySelectorAll('.nav__link, .user').forEach((a) => {
+  document.querySelectorAll('.dock__link, #userLink').forEach((a) => {
     const href = a.getAttribute('href');
     const active = href === location.pathname || (href !== '/' && location.pathname.startsWith(`${href}/`));
     if (active) a.setAttribute('aria-current', 'page');
@@ -1333,54 +1347,12 @@ async function render() {
   view.focus({ preventScroll: true });
 }
 
-// Escritorio: el sidebar se contrae a solo íconos (preferencia recordada).
-// Móvil/tableta: el sidebar es un panel deslizable.
-const mobileMq = window.matchMedia('(max-width: 1023px)');
-const COLLAPSE_KEY = 'vx.sidebarCollapsed';
-const layout = $('.layout');
-
-function readCollapsed() {
-  try {
-    return localStorage.getItem(COLLAPSE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function syncMenuBtn() {
-  const expanded = mobileMq.matches ? sidebar.classList.contains('is-open') : !layout.classList.contains('is-collapsed');
-  menuBtn.setAttribute('aria-expanded', String(expanded));
-  menuBtn.setAttribute('aria-label', mobileMq.matches ? (expanded ? 'Cerrar menú' : 'Abrir menú') : expanded ? 'Contraer menú' : 'Expandir menú');
-}
-
-function setCollapsed(collapsed) {
-  layout.classList.toggle('is-collapsed', collapsed);
-  try {
-    localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
-  } catch {}
-  syncMenuBtn();
-}
-
-function setSidebar(open) {
-  sidebar.classList.toggle('is-open', open);
-  backdrop.hidden = !open;
-  syncMenuBtn();
-}
-
-layout.classList.toggle('is-collapsed', readCollapsed());
-mobileMq.addEventListener('change', () => {
-  setSidebar(false);
-  syncMenuBtn();
-});
-syncMenuBtn();
-
 document.addEventListener('click', (e) => {
   const a = e.target.closest('a[data-link]');
   if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
   e.preventDefault();
   if (a.getAttribute('href') !== location.pathname) history.pushState(null, '', a.href);
   render();
-  setSidebar(false);
 });
 
 window.addEventListener('popstate', render);
@@ -1388,20 +1360,13 @@ window.addEventListener('vx:navigate', (e) => {
   if (e.detail !== location.pathname) history.pushState(null, '', e.detail);
   render();
 });
-menuBtn.addEventListener('click', () => {
-  if (mobileMq.matches) setSidebar(!sidebar.classList.contains('is-open'));
-  else setCollapsed(!layout.classList.contains('is-collapsed'));
-});
-backdrop.addEventListener('click', () => setSidebar(false));
-document.addEventListener('keydown', (e) => e.key === 'Escape' && setSidebar(false));
 
 // ---------------------------------------------------------------------------
 // Usuario en sesión + selector de usuario (solo desarrollo)
 // ---------------------------------------------------------------------------
 function renderUser(me) {
   $('#userAvatar').innerHTML = avatarInner(me.user);
-  $('#userName').textContent = me.user.name;
-  $('#userRole').textContent = me.role.name;
+  $('#userLink').title = `Mi perfil · ${me.user.name} · ${me.role.name}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1692,7 +1657,7 @@ async function showLogin() {
 }
 
 const logoutBtn = $('#logoutBtn');
-logoutBtn.innerHTML = `${ICONS.logout}<span>Cerrar sesión</span>`;
+logoutBtn.innerHTML = ICONS.logout;
 logoutBtn.addEventListener('click', async () => {
   logoutBtn.disabled = true;
   await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
@@ -1768,8 +1733,8 @@ function renderCountdown() {
   if (ms <= 0) {
     const fin = new Date(ELECCION.fecha.getTime() + 10 * 3600 * 1000); // cierre de casillas 18:00
     el.innerHTML = Date.now() < fin
-      ? `<span class="countdown__days">¡Hoy!</span><span class="countdown__label">Jornada electoral</span>`
-      : `<span class="countdown__label">Jornada electoral concluida</span><span class="countdown__date">${ELECCION.texto}</span>`;
+      ? `<span class="countdown__label">Jornada electoral</span><span class="countdown__days">¡Hoy!</span>`
+      : `<span class="countdown__label">Elección concluida</span>`;
     el.title = `Jornada electoral: ${ELECCION.texto}`;
     return;
   }
@@ -1777,11 +1742,10 @@ function renderCountdown() {
   const horas = Math.floor((ms % 86400000) / 3600000);
   const min = Math.floor((ms % 3600000) / 60000);
   el.innerHTML = `
-    <span class="countdown__label">Faltan para la elección</span>
+    <span class="countdown__label">Elección</span>
     <span class="countdown__main"><span class="countdown__days">${fmtNum(dias)}</span><span class="countdown__unit">${dias === 1 ? 'día' : 'días'}</span></span>
-    <span class="countdown__time">${String(horas).padStart(2, '0')} h ${String(min).padStart(2, '0')} min</span>
-    <span class="countdown__date">${ELECCION.texto}</span>`;
-  el.title = `Faltan ${fmtNum(dias)} días para la elección del ${ELECCION.texto}`;
+    <span class="countdown__time">${String(horas).padStart(2, '0')} h ${String(min).padStart(2, '0')} min</span>`;
+  el.title = `Faltan ${fmtNum(dias)} días, ${horas} h ${min} min para la elección del ${ELECCION.texto}`;
   el.setAttribute('aria-label', el.title);
 }
 renderCountdown();
@@ -1827,6 +1791,7 @@ if ('serviceWorker' in navigator) {
 
 let deferredPrompt = null;
 const installBtn = $('#installBtn');
+installBtn.innerHTML = icon('<path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/>');
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;

@@ -18,7 +18,9 @@ conecta un repositorio Git con el contenido de este paquete.
 | Variable | Valor | Para qué |
 |----------|-------|----------|
 | `NODE_ENV` | `production` | Ya viene en la imagen; apaga los accesos de desarrollo |
-| `VERTEX_ADMIN_PASSWORD` | una contraseña segura | Contraseña del usuario `admin` **solo si el sistema arranca vacío** (sin datos iniciales) |
+| `VERTEX_ADMIN_USER` | p. ej. `rroque` | Usuario del Super administrador (por defecto `admin`). 3 a 30 caracteres: minúsculas, números, punto, guion o guion bajo |
+| `VERTEX_ADMIN_PASSWORD` | una contraseña segura | Contraseña inicial del Super administrador (mín. 8 caracteres, con letras y números). Se aplica **solo en el primer arranque** |
+| `VERTEX_ADMIN_RESET` | `1` | Opcional, para **recuperar el acceso**: reaplica usuario y contraseña de las variables aunque el admin ya exista. Quítala después de desplegar |
 | `PORT` | `3000` | Opcional (ya es el valor por defecto) |
 
 ## 4. Volumen (¡indispensable!)

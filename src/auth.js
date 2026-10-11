@@ -120,17 +120,46 @@ function stopGodMode(req, res) {
 // --- Usuario del super administrador ----------------------------------------
 // Al arrancar: si el super administrador no tiene usuario/contraseña, se le asigna "admin"
 // y una contraseña aleatoria que se escribe en data/CREDENCIAL_ADMIN.txt (o VERTEX_ADMIN_PASSWORD).
+// Variables de entorno:
+//   VERTEX_ADMIN_USER       usuario del super administrador (por defecto "admin")
+//   VERTEX_ADMIN_PASSWORD   contraseña inicial (mín. 8 caracteres, con letras y números)
+//   VERTEX_ADMIN_RESET=1    reaplica usuario y contraseña de las variables aunque ya existan
+//                           (para recuperar el acceso; quitarla después del arranque)
 function ensureAdminCredentials() {
   const admin = users.all().find((u) => u.role === 'superadmin');
-  if (!admin || (admin.username && admin.passwordHash)) return;
-  const password = process.env.VERTEX_ADMIN_PASSWORD || `${crypto.randomBytes(9).toString('base64url')}7a`;
-  users.update(admin.id, { username: admin.username || 'admin', passwordHash: passwords.hash(password) });
-  if (!process.env.VERTEX_ADMIN_PASSWORD) {
+  if (!admin) return;
+  const envUser = String(process.env.VERTEX_ADMIN_USER || '').trim().toLowerCase();
+  const envPass = process.env.VERTEX_ADMIN_PASSWORD || '';
+  const reset = process.env.VERTEX_ADMIN_RESET === '1';
+  if (envUser && !USERNAME_RE.test(envUser)) {
+    console.error('VERTEX_ADMIN_USER no es válido (3 a 30: minúsculas, números, punto, guion o guion bajo). Se ignora.');
+  }
+  if (envPass && !validPassword(envPass)) {
+    console.error(`VERTEX_ADMIN_PASSWORD no es válida: ${PASSWORD_HINT} Se ignora.`);
+  }
+  const userOk = envUser && USERNAME_RE.test(envUser) ? envUser : null;
+  const passOk = envPass && validPassword(envPass) ? envPass : null;
+  const taken = userOk && users.byUsername(userOk) && users.byUsername(userOk).id !== admin.id;
+  if (taken) console.error(`VERTEX_ADMIN_USER "${userOk}" ya lo usa otra cuenta. Se ignora.`);
+
+  if (reset && (userOk || passOk)) {
+    const patch = {};
+    if (userOk && !taken) patch.username = userOk;
+    if (passOk) patch.passwordHash = passwords.hash(passOk);
+    users.update(admin.id, patch);
+    if (passOk) sessions.destroyAllFor(admin.id);
+    audit.add({ action: 'admin.reset', by: admin.id });
+    console.log('VERTEX: credenciales del super administrador restablecidas desde variables de entorno. Quita VERTEX_ADMIN_RESET.');
+    return;
+  }
+
+  if (admin.username && admin.passwordHash) return;
+  const password = passOk || `${crypto.randomBytes(9).toString('base64url')}7a`;
+  const username = admin.username || (userOk && !taken ? userOk : 'admin');
+  users.update(admin.id, { username, passwordHash: passwords.hash(password) });
+  if (!passOk) {
     const file = path.join(DATA_DIR, 'CREDENCIAL_ADMIN.txt');
-    fs.writeFileSync(
-      file,
-      `Usuario: ${admin.username || 'admin'}\nContraseña inicial: ${password}\n\nCámbiala desde "Mi perfil" y borra este archivo.\n`
-    );
+    fs.writeFileSync(file, `Usuario: ${username}\nContraseña inicial: ${password}\n\nCámbiala desde "Mi perfil" y borra este archivo.\n`);
     console.log(`Credencial inicial del super administrador escrita en ${file}`);
   }
 }

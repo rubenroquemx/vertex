@@ -1381,8 +1381,25 @@ updateNet();
 // PWA: service worker + instalación
 // ---------------------------------------------------------------------------
 if ('serviceWorker' in navigator) {
+  // Si ya había una versión controlando la página y llega una nueva, se recarga una sola vez
+  // para que el celular y la PWA instalada muestren los últimos cambios.
+  const teniaControlador = Boolean(navigator.serviceWorker.controller);
+  let recargando = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!teniaControlador || recargando) return;
+    recargando = true;
+    location.reload();
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => console.error('SW error:', err));
+    navigator.serviceWorker
+      .register('/sw.js', { updateViaCache: 'none' })
+      .then((reg) => {
+        // Al volver a la app (p. ej. PWA en segundo plano) se busca una versión nueva
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+      })
+      .catch((err) => console.error('SW error:', err));
   });
 }
 

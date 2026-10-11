@@ -1357,3 +1357,12 @@ select.input { padding-right: 32px; }
 .app-footer a { color: var(--color-foreground); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 .app-footer a:hover { text-decoration-thickness: 2px; }
 .content:has(> .split) + .app-footer { padding-top: var(--space-md); }
+
+/* ---------- Sin zoom automático en celulares ----------
+   iOS amplía la página al enfocar un campo con texto menor a 16 px y la ampliación se queda.
+   En pantallas táctiles todos los campos usan 16 px. (El zoom manual con dos dedos se conserva
+   por accesibilidad.) */
+@media (pointer: coarse), (max-width: 1023px) {
+  input, select, textarea, .input, .dev-switch select, .login__dev-row select { font-size: 16px !important; }
+}
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }

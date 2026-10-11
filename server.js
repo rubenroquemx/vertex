@@ -613,7 +613,15 @@ app.get(['/sw.js', '/manifest.webmanifest'], (req, res, next) => {
 // --- Archivos estáticos ----------------------------------------------------
 // Leaflet (mapas OpenStreetMap) servido desde node_modules
 app.use('/vendor/leaflet', express.static(path.join(__dirname, 'node_modules', 'leaflet', 'dist'), { maxAge: isProd ? '30d' : 0 }));
-app.use(express.static(PUBLIC_DIR, { maxAge: isProd ? '1h' : 0 }));
+const REVALIDAR = /\.(html|css|js|webmanifest)$/;
+app.use(
+  express.static(PUBLIC_DIR, {
+    maxAge: isProd ? '1h' : 0,
+    setHeaders(res, file) {
+      if (REVALIDAR.test(file)) res.setHeader('Cache-Control', 'no-cache');
+    },
+  })
+);
 
 // --- Fallback SPA ----------------------------------------------------------
 app.get('*', async (req, res) => {

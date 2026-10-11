@@ -1,6 +1,6 @@
 // Service worker de VERTEX
 // Incrementa la versión al cambiar archivos del "app shell".
-const VERSION = 'v22';
+const VERSION = 'v23';
 const CACHE = `vertex-${VERSION}`;
 const APP_SHELL = [
   '/',
@@ -51,13 +51,13 @@ self.addEventListener('fetch', (event) => {
 
   // Navegación: red primero, con respaldo al shell en caché (SPA offline)
   if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).catch(() => caches.match('/index.html')));
+    event.respondWith(fetch(request, { cache: 'no-cache' }).catch(() => caches.match('/index.html')));
     return;
   }
 
   // Estáticos: red primero (siempre la versión más reciente en línea), caché si no hay conexión
   event.respondWith(
-    fetch(request)
+    fetch(request, { cache: 'no-cache' })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

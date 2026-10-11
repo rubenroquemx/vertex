@@ -17,7 +17,7 @@ import {
   GEO_STYLE,
   homeControl,
 } from './lib.js';
-import { viewCoordinador, mountCoordinador } from './coordinador.js';
+import { viewCoordinador, mountCoordinador, I as CI } from './coordinador.js';
 import { openDeleteFlow } from './eliminar.js';
 import { viewZonas, mountZonas, viewZona, mountZona } from './zonas.js';
 import { viewEscritorioCPV, mountEscritorioCPV } from './escritorio-cpv.js';
@@ -150,10 +150,12 @@ function placeholder(desc) {
 // ---------- Estructura: cuentas de la rama + alta del nivel inferior ----------
 async function viewEstructura(route) {
   const { me } = state;
-  const list = await api('/api/users');
-  route.data = list;
-  const child = me.childRole;
   const isSA = me.role.key === 'superadmin';
+  const [list, partidos] = await Promise.all([api('/api/users'), isSA ? api('/api/catalogos/partidos') : Promise.resolve([])]);
+  route.data = list;
+  route.partidos = partidos;
+  currentPartidos = partidos;
+  const child = me.childRole;
 
   return `
     <div class="page-head page-head--actions">
@@ -209,7 +211,95 @@ async function viewEstructura(route) {
     </dialog>`;
 }
 
+// ---------- Tarjetas de Coordinadores de Promoción del Voto (Super admin) ----------
+let currentPartidos = [];
+const titleCase = (s) => String(s || '').toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
+
+// "Distrito 4 Local, Tabasco", "Municipio de Centro, Tabasco", "Estatal, Tabasco"
+function candidaturaTexto(t) {
+  if (!t) return 'Sin territorio asignado';
+  const ent = titleCase(t.entidad);
+  const n = (t.nombre.match(/\d+/) || [''])[0];
+  if (t.tipo === 'Estatal') return `Estatal, ${ent}`;
+  if (t.tipo === 'Municipio') return `Municipio de ${titleCase(t.nombre)}, ${ent}`;
+  if (t.tipo === 'Distrito local') return `Distrito ${n} Local, ${ent}`;
+  if (t.tipo === 'Distrito federal') return `Distrito ${n} Federal, ${ent}`;
+  return `${t.nombre}, ${ent}`;
+}
+
+const partidosDe = (u, catalogo) =>
+  (u.partidos || []).map((k) => {
+    const p = catalogo.find((x) => x.key === k);
+    return { name: k === 'OTRO' ? u.partidoOtro || 'Otro' : p?.name || k, color: p?.color || '#a3a3a3' };
+  });
+
+function fichaTexto(u, catalogo) {
+  return [
+    `Candidato: ${u.candidato || '—'}`,
+    `Candidatura: ${candidaturaTexto(u.territorioResumen)}`,
+    `Partido: ${partidosDe(u, catalogo).map((p) => p.name).join(' · ') || '—'}`,
+    `Titular: ${u.name}`,
+    u.phone ? `Teléfono: ${fmtPhone(u.phone)}` : null,
+    u.email ? `Correo: ${u.email}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function renderCpvCards(root, list, catalogo) {
+  const q = $('#fSearch', root).value.trim().toLowerCase();
+  const rows = list.filter((u) => !q || [u.name, u.candidato, candidaturaTexto(u.territorioResumen)].some((x) => String(x || '').toLowerCase().includes(q)));
+  $('#fCount', root).textContent = `${rows.length} de ${list.length} coordinadores`;
+  const canDelete = Boolean(state.me.canDelete);
+  const icon = (action, u, glyph, label, extra = '') =>
+    `<button class="icon-btn cpv-card__act" type="button" data-action="${action}" data-id="${u.id}" data-role="${u.role}" title="${label}" aria-label="${label}"${extra}>${glyph}</button>`;
+
+  $('#usersTable', root).innerHTML = rows.length
+    ? `<ul class="cpv-grid">${rows
+        .map((u) => {
+          const parts = partidosDe(u, catalogo);
+          const tel = u.phone ? `+52${u.phone}` : '';
+          return `<li class="cpv-card">
+            <div class="cpv-card__body">
+              <p class="cpv-card__label">Candidato</p>
+              <h3 class="cpv-card__cand">${esc(u.candidato || 'Sin candidato')}</h3>
+              <p class="cpv-card__cdt">
+                <span>${esc(candidaturaTexto(u.territorioResumen))}</span>
+                ${parts.length ? `<span class="cpv-card__sep" aria-hidden="true">·</span><span class="cpv-card__parties">${parts.map((p) => `<span class="cpv-party"><span class="cpv-party__dot" style="background:${p.color}" aria-hidden="true"></span>${esc(p.name)}</span>`).join('')}</span>` : ''}
+              </p>
+            </div>
+            <div class="cpv-card__holder">
+              <span class="avatar" aria-hidden="true">${avatarInner(u)}</span>
+              <div><span class="cpv-card__label">Titular</span><strong>${esc(u.name)}</strong></div>
+            </div>
+            <div class="cpv-card__actions">
+              <div class="cpv-card__group" aria-label="Contacto">
+                ${
+                  u.phone
+                    ? `<a class="icon-btn cpv-card__act" href="tel:${tel}" title="Llamar a ${esc(u.name)}" aria-label="Llamar a ${esc(u.name)}">${CI.phone}</a>
+                       <a class="icon-btn cpv-card__act" href="https://wa.me/52${u.phone}" target="_blank" rel="noopener" title="WhatsApp con ${esc(u.name)}" aria-label="WhatsApp con ${esc(u.name)}">${CI.whatsapp}</a>`
+                    : `<span class="icon-btn cpv-card__act is-off" title="Sin teléfono" aria-label="Sin teléfono">${CI.phone}</span><span class="icon-btn cpv-card__act is-off" title="Sin teléfono" aria-label="Sin teléfono">${CI.whatsapp}</span>`
+                }
+                ${icon('copy', u, CI.copy, 'Copiar ficha para compartir')}
+              </div>
+              <div class="cpv-card__group" aria-label="Administración">
+                ${icon('edit', u, ICONS.edit, `Editar ${esc(u.name)}`)}
+                ${icon('god', u, ICONS.eye, `Entrar a la cuenta de ${esc(u.name)} (modo dios)`)}
+                ${canDelete ? icon('delete', u, ICONS.trash, `Eliminar ${esc(u.name)} y su rama`, ' data-danger') : ''}
+              </div>
+            </div>
+          </li>`;
+        })
+        .join('')}</ul>`
+    : `<div class="empty">
+        <span aria-hidden="true">${ICONS.users}</span>
+        <strong>${list.length ? 'Sin resultados' : 'Aún no hay coordinadores'}</strong>
+        <span>${list.length ? 'Prueba con otro nombre, candidato o distrito.' : 'Da de alta el primer Coordinador de Promoción del Voto.'}</span>
+      </div>`;
+}
+
 function renderUsersTable(root, list) {
+  if (state.me.role.key === 'superadmin') return renderCpvCards(root, list, currentPartidos);
   const q = $('#fSearch', root).value.trim().toLowerCase();
   const rows = list.filter((u) => !q || u.name.toLowerCase().includes(q));
   $('#fCount', root).textContent = `${rows.length} de ${list.length} cuentas`;
@@ -260,6 +350,14 @@ function mountEstructura(root, route) {
     if (action === 'new' && state.me.childRole.key === 'coord_promocion') {
       history.pushState(null, '', '/usuarios/nuevo');
       render();
+      return;
+    }
+    if (action === 'copy') {
+      const u = route.data.find((x) => x.id === e.target.closest('[data-action]').dataset.id);
+      navigator.clipboard
+        .writeText(fichaTexto(u, currentPartidos))
+        .then(() => toast('Ficha copiada'))
+        .catch(() => toast('No se pudo copiar'));
       return;
     }
     if (action === 'delete') {

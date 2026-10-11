@@ -1398,3 +1398,40 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   .table tbody tr:hover { background: transparent; }
   .swatch:hover input:not(:disabled) + span { transform: none; }
 }
+
+/* ---------- Tarjetas de CPV (Super admin) ---------- */
+.cpv-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.cpv-card {
+  display: flex; flex-direction: column; gap: 16px;
+  padding: 20px; border-radius: var(--radius-lg);
+  background: var(--color-card); border: 1px solid var(--color-border); box-shadow: var(--shadow-card);
+}
+.cpv-card__label { display: block; margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted-foreground); }
+.cpv-card__cand { margin: 2px 0 6px; font-size: 20px; line-height: 1.25; letter-spacing: -0.02em; }
+.cpv-card__cdt { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; font-size: 14px; color: var(--color-muted-foreground); }
+.cpv-card__sep { color: var(--color-border); }
+.cpv-card__parties { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; }
+.cpv-party { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: var(--color-foreground); }
+.cpv-party__dot { width: 8px; height: 8px; border-radius: 50%; }
+.cpv-card__holder { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 18px; background: var(--color-surface-alt); box-shadow: inset 0 0 0 1px var(--color-border); }
+.cpv-card__holder strong { display: block; font-size: 14px; }
+.cpv-card__holder .avatar { width: 36px; height: 36px; }
+.cpv-card__actions { display: flex; justify-content: space-between; gap: 8px; margin-top: auto; }
+.cpv-card__group { display: flex; gap: 6px; }
+.cpv-card__act {
+  width: 40px; height: 40px; margin: 0; display: inline-grid; place-items: center;
+  border-radius: 50%; background: var(--color-muted); color: var(--color-foreground);
+  text-decoration: none; transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.cpv-card__act svg { width: 18px; height: 18px; }
+.cpv-card__act.is-off { opacity: .35; cursor: not-allowed; }
+@media (hover: hover) {
+  .cpv-card__act:not(.is-off):hover { background: #171717; color: #fafafa; }
+  .cpv-card__act[data-danger]:hover { background: var(--color-destructive); color: #fff; }
+}
+@media (max-width: 767px) {
+  .cpv-grid { grid-template-columns: minmax(0, 1fr); }
+  .cpv-card__act { width: 44px; height: 44px; }
+}
+/* Las tarjetas van directo sobre el lienzo (sin el recuadro de la tabla) */
+.table-wrap:has(> .cpv-grid) { background: transparent; border: 0; box-shadow: none; overflow: visible; border-radius: 0; }

@@ -71,6 +71,15 @@ const publicUser = (u, all) => {
     username: u.username || null,
     avatarUrl: u.avatarAt ? `/api/users/${u.id}/avatar?v=${encodeURIComponent(u.avatarAt)}` : null,
     createdAt: u.createdAt,
+    // Candidatura del Coordinador de Promoción del Voto (para las tarjetas del Super admin)
+    ...(u.role === 'coord_promocion'
+      ? {
+          candidato: u.candidato || '',
+          partidos: u.partidos || [],
+          partidoOtro: u.partidoOtro || '',
+          territorioResumen: u.territorio ? territory.resolve(u.territorio).resumen || null : null,
+        }
+      : {}),
   };
 };
 

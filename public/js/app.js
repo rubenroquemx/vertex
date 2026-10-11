@@ -17,7 +17,7 @@ import {
   GEO_STYLE,
   homeControl,
 } from './lib.js';
-import { viewCoordinador, mountCoordinador, I as CI } from './coordinador.js';
+import { viewCoordinador, mountCoordinador, I as CI, showAccessDialog } from './coordinador.js';
 import { openDeleteFlow } from './eliminar.js';
 import { viewZonas, mountZonas, viewZona, mountZona } from './zonas.js';
 import { viewEscritorioCPV, mountEscritorioCPV } from './escritorio-cpv.js';
@@ -233,17 +233,128 @@ const partidosDe = (u, catalogo) =>
     return { name: k === 'OTRO' ? u.partidoOtro || 'Otro' : p?.name || k, color: p?.color || '#a3a3a3' };
   });
 
-function fichaTexto(u, catalogo) {
-  return [
-    `Candidato: ${u.candidato || '—'}`,
-    `Candidatura: ${candidaturaTexto(u.territorioResumen)}`,
-    `Partido: ${partidosDe(u, catalogo).map((p) => p.name).join(' · ') || '—'}`,
-    `Titular: ${u.name}`,
-    u.phone ? `Teléfono: ${fmtPhone(u.phone)}` : null,
-    u.email ? `Correo: ${u.email}` : null,
-  ]
-    .filter(Boolean)
-    .join('\n');
+
+function dialogo(id) {
+  let dlg = $(`#${id}`);
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = id;
+    dlg.className = 'dialog dialog--wide';
+    document.body.append(dlg);
+  }
+  return dlg;
+}
+
+// Ficha de solo lectura del Coordinador de Promoción del Voto
+function abrirFichaCpv(u, catalogo, onAction) {
+  const dlg = dialogo('cpvFicha');
+  const t = u.territorioResumen;
+  const parts = partidosDe(u, catalogo);
+  const dato = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+  dlg.setAttribute('aria-labelledby', 'fichaTitle');
+  dlg.innerHTML = `
+    <div class="dialog__body ficha">
+      <div class="dialog__head">
+        <div>
+          <p class="cpv-card__label">Candidato</p>
+          <h3 id="fichaTitle" class="ficha__title">${esc(u.candidato || 'Sin candidato')}</h3>
+        </div>
+        <button class="icon-btn icon-btn--always" type="button" data-f="close" aria-label="Cerrar">${ICONS.close}</button>
+      </div>
+      <p class="ficha__sub">${esc(candidaturaTexto(t))}</p>
+      ${parts.length ? `<div class="ficha__parties">${parts.map((p) => `<span class="cpv-party"><span class="cpv-party__dot" style="background:${p.color}" aria-hidden="true"></span>${esc(p.name)}</span>`).join('')}${parts.length > 1 ? '<span class="badge">Coalición</span>' : ''}</div>` : ''}
+
+      <section class="ficha__sec" aria-label="Territorio">
+        <h4>Territorio</h4>
+        <dl class="ficha__grid">
+          ${dato('Entidad', esc(t ? titleCase(t.entidad) : '—'))}
+          ${dato('Asignación', esc(t ? (t.tipo === 'Estatal' ? 'Toda la entidad' : t.tipo === 'Municipio' ? `Municipio de ${titleCase(t.nombre)}` : titleCase(t.nombre)) : '—'))}
+          ${dato('Secciones', t ? fmtNum(t.secciones) : '—')}
+          ${dato('Electores', t && t.electores !== null ? fmtNum(t.electores) : '—')}
+          ${dato('Zonas creadas', fmtNum(u.zonas || 0))}
+        </dl>
+      </section>
+
+      <section class="ficha__sec" aria-label="Titular">
+        <h4>Titular</h4>
+        <div class="ficha__holder">
+          <span class="avatar ficha__avatar" aria-hidden="true">${avatarInner(u)}</span>
+          <div><strong>${esc(u.name)}</strong><span class="muted-block">Coordinador de Promoción del Voto</span></div>
+        </div>
+        <dl class="ficha__grid">
+          ${dato('Teléfono', u.phone ? `<a href="tel:+52${esc(u.phone)}">${esc(fmtPhone(u.phone))}</a>` : '—')}
+          ${dato('Correo', u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—')}
+          ${dato('Usuario', u.username ? `<span class="mono">@${esc(u.username)}</span>` : 'Sin acceso')}
+          ${dato('Alta', fmtDate(u.createdAt))}
+        </dl>
+      </section>
+
+      <div class="ficha__actions">
+        <div class="cpv-card__group">
+          ${u.phone ? `<a class="icon-btn cpv-card__act" href="tel:+52${esc(u.phone)}" title="Llamar" aria-label="Llamar a ${esc(u.name)}">${CI.phone}</a>
+          <a class="icon-btn cpv-card__act" href="https://wa.me/52${esc(u.phone)}" target="_blank" rel="noopener" title="WhatsApp" aria-label="WhatsApp con ${esc(u.name)}">${CI.whatsapp}</a>` : ''}
+          <button class="icon-btn cpv-card__act" type="button" data-f="acceso" title="Compartir acceso (genera contraseña nueva)" aria-label="Compartir acceso">${CI.copy}</button>
+        </div>
+        <div class="cpv-card__group">
+          <button class="btn btn--secondary btn--sm" type="button" data-f="edit">${ICONS.edit}<span>Editar</span></button>
+          <button class="btn btn--sm" type="button" data-f="god">${ICONS.eye}<span>Entrar a la cuenta</span></button>
+        </div>
+      </div>
+    </div>`;
+  dlg.onclick = (e) => {
+    const a = e.target.closest('[data-f]')?.dataset.f;
+    if (!a) return;
+    if (a === 'close') return dlg.close();
+    dlg.close();
+    onAction(a, u);
+  };
+  dlg.showModal();
+}
+
+// Compartir acceso: confirma, genera contraseña nueva y muestra el mensaje para el cliente
+function compartirAccesoCpv(u) {
+  const dlg = dialogo('cpvAcceso');
+  dlg.setAttribute('aria-labelledby', 'accTitle');
+  dlg.onclose = null;
+  dlg.innerHTML = `
+    <div class="dialog__body">
+      <div class="dialog__head"><h3 id="accTitle">Compartir acceso</h3>
+        <button class="icon-btn icon-btn--always" type="button" data-a="close" aria-label="Cerrar">${ICONS.close}</button></div>
+      <p>Para compartir el acceso de <strong>${esc(u.name)}</strong> se generará una <strong>contraseña nueva</strong>.</p>
+      <div class="notice">${ICONS.alert}<div>La contraseña actual dejará de funcionar y se cerrarán sus sesiones abiertas. Por seguridad, las contraseñas se guardan cifradas y no se pueden recuperar.</div></div>
+      <p class="form-error" id="accErr" role="alert"></p>
+      <div class="dialog__actions">
+        <button class="btn btn--secondary" type="button" data-a="close">Cancelar</button>
+        <button class="btn" type="button" data-a="go">Generar y compartir</button>
+      </div>
+    </div>`;
+  dlg.onclick = async (e) => {
+    const a = e.target.closest('[data-a]')?.dataset.a;
+    if (a === 'close') return dlg.close();
+    if (a !== 'go') return;
+    const btn = e.target.closest('[data-a]');
+    btn.disabled = true;
+    btn.textContent = 'Generando…';
+    try {
+      const r = await api(`/api/coordinadores/${u.id}/acceso`, { method: 'POST' });
+      dlg.onclick = null;
+      dlg.close();
+      showAccessDialog(dlg, {
+        user: r.user,
+        password: r.password,
+        wasEditing: true,
+        roleLabel: 'Coordinador de Promoción del Voto',
+        subtitle: candidaturaTexto(r.user.territorioResumen),
+        backLabel: 'Cerrar',
+        backPath: '/usuarios',
+      });
+    } catch (err) {
+      $('#accErr', dlg).textContent = err.message;
+      btn.disabled = false;
+      btn.textContent = 'Generar y compartir';
+    }
+  };
+  if (!dlg.open) dlg.showModal();
 }
 
 function renderCpvCards(root, list, catalogo) {
@@ -259,10 +370,10 @@ function renderCpvCards(root, list, catalogo) {
         .map((u) => {
           const parts = partidosDe(u, catalogo);
           const tel = u.phone ? `+52${u.phone}` : '';
-          return `<li class="cpv-card">
+          return `<li class="cpv-card" data-card="${u.id}">
             <div class="cpv-card__body">
               <p class="cpv-card__label">Candidato</p>
-              <h3 class="cpv-card__cand">${esc(u.candidato || 'Sin candidato')}</h3>
+              <h3 class="cpv-card__cand"><button type="button" class="cpv-card__open" data-action="view" data-id="${u.id}">${esc(u.candidato || 'Sin candidato')}</button></h3>
               <p class="cpv-card__cdt">
                 <span>${esc(candidaturaTexto(u.territorioResumen))}</span>
                 ${parts.length ? `<span class="cpv-card__sep" aria-hidden="true">·</span><span class="cpv-card__parties">${parts.map((p) => `<span class="cpv-party"><span class="cpv-party__dot" style="background:${p.color}" aria-hidden="true"></span>${esc(p.name)}</span>`).join('')}</span>` : ''}
@@ -280,7 +391,7 @@ function renderCpvCards(root, list, catalogo) {
                        <a class="icon-btn cpv-card__act" href="https://wa.me/52${u.phone}" target="_blank" rel="noopener" title="WhatsApp con ${esc(u.name)}" aria-label="WhatsApp con ${esc(u.name)}">${CI.whatsapp}</a>`
                     : `<span class="icon-btn cpv-card__act is-off" title="Sin teléfono" aria-label="Sin teléfono">${CI.phone}</span><span class="icon-btn cpv-card__act is-off" title="Sin teléfono" aria-label="Sin teléfono">${CI.whatsapp}</span>`
                 }
-                ${icon('copy', u, CI.copy, 'Copiar ficha para compartir')}
+                ${icon('acceso', u, CI.copy, 'Compartir acceso (genera contraseña nueva)')}
               </div>
               <div class="cpv-card__group" aria-label="Administración">
                 ${icon('edit', u, ICONS.edit, `Editar ${esc(u.name)}`)}
@@ -346,18 +457,29 @@ function mountEstructura(root, route) {
 
   // render() limpia view.onclick en cada navegación
   root.onclick = (e) => {
+    // Clic en cualquier parte de una tarjeta (fuera de sus botones) abre la ficha
+    const card = e.target.closest('[data-card]');
+    if (card && !e.target.closest('button, a')) {
+      card.querySelector('[data-action="view"]').click();
+      return;
+    }
     const action = e.target.closest('[data-action]')?.dataset.action;
     if (action === 'new' && state.me.childRole.key === 'coord_promocion') {
       history.pushState(null, '', '/usuarios/nuevo');
       render();
       return;
     }
-    if (action === 'copy') {
+    if (action === 'acceso') {
+      compartirAccesoCpv(route.data.find((x) => x.id === e.target.closest('[data-action]').dataset.id));
+      return;
+    }
+    if (action === 'view') {
       const u = route.data.find((x) => x.id === e.target.closest('[data-action]').dataset.id);
-      navigator.clipboard
-        .writeText(fichaTexto(u, currentPartidos))
-        .then(() => toast('Ficha copiada'))
-        .catch(() => toast('No se pudo copiar'));
+      abrirFichaCpv(u, currentPartidos, (a, cpv) => {
+        if (a === 'edit') navigate(`/usuarios/${cpv.id}/editar`);
+        if (a === 'god') enterGodMode(cpv.id, landingFor(cpv.role)).catch((err) => toast(err.message));
+        if (a === 'acceso') compartirAccesoCpv(cpv);
+      });
       return;
     }
     if (action === 'delete') {

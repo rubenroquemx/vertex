@@ -78,6 +78,7 @@ const publicUser = (u, all) => {
           partidos: u.partidos || [],
           partidoOtro: u.partidoOtro || '',
           territorioResumen: u.territorio ? territory.resolve(u.territorio).resumen || null : null,
+          zonas: all.filter((x) => x.parentId === u.id && x.role === 'coord_zona').length,
         }
       : {}),
   };
@@ -252,6 +253,31 @@ app.post('/api/coordinadores', requireUser, requireRole('superadmin'), async (re
   await users.update(created.id, { passwordHash: passwords.hash(v.password) });
   await audit.add({ action: 'user.create', by: req.realUser.id, user: created.id });
   res.status(201).json(coordinadorDetail(users.get(created.id)));
+});
+
+// Compartir acceso: como las contraseñas se guardan cifradas (irreversibles), se genera una
+// nueva, se cierran las sesiones abiertas de la cuenta y se devuelve una sola vez.
+const crypto = require('crypto');
+function generarPassword(length = 12) {
+  const letras = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ';
+  const digitos = '23456789';
+  const todos = letras + digitos;
+  let pw = '';
+  while (!(/[A-Za-z]/.test(pw) && /\d/.test(pw))) {
+    pw = Array.from({ length }, () => todos[crypto.randomInt(todos.length)]).join('');
+  }
+  return pw;
+}
+
+app.post('/api/coordinadores/:id/acceso', requireUser, requireRole('superadmin'), async (req, res) => {
+  const u = users.get(req.params.id);
+  if (!u || u.role !== 'coord_promocion') return res.status(404).json({ error: 'Coordinador no encontrado' });
+  if (!u.username) return res.status(422).json({ error: 'Esta cuenta no tiene usuario de acceso. Edítala para asignarle uno.' });
+  const password = generarPassword();
+  await users.update(u.id, { passwordHash: passwords.hash(password) });
+  await sessions.destroyAllFor(u.id);
+  await audit.add({ action: 'user.password_reset', by: req.realUser.id, user: u.id });
+  res.json({ user: coordinadorDetail(users.get(u.id)), password });
 });
 
 app.put('/api/coordinadores/:id', requireUser, requireRole('superadmin'), async (req, res) => {

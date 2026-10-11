@@ -29,32 +29,51 @@
   </div>
   <div class="login" id="login" hidden></div>
   <div class="layout" hidden>
+    <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
+      <div class="sidebar__brand">
+        <a href="/" data-link aria-label="VERTEX, ir al panel">
+          <img src="/brand/logo-oscuro.svg" alt="VERTEX" class="sidebar__logo" width="216" height="49">
+          <img src="/brand/icono.svg" alt="" class="sidebar__mark" width="40" height="40">
+        </a>
+        <div class="countdown" id="countdown" role="timer" aria-live="off"></div>
+      </div>
+
+      <nav class="sidebar__nav" id="nav"></nav>
+
+      <div class="sidebar__footer">
+        <label class="dev-switch" id="devSwitch" hidden>
+          <span>Ver como (desarrollo)</span>
+          <select id="devUser"></select>
+        </label>
+        <button class="btn btn--ghost" id="installBtn" hidden>Instalar aplicación</button>
+        <a class="user" href="/perfil" data-link title="Mi perfil">
+          <span class="user__avatar" id="userAvatar" aria-hidden="true"></span>
+          <span class="user__info">
+            <span class="user__name" id="userName"></span>
+            <span class="user__role" id="userRole"></span>
+          </span>
+          <span class="sr-only">Mi perfil</span>
+        </a>
+        <button class="btn btn--ghost logout" type="button" id="logoutBtn" title="Cerrar sesión" aria-label="Cerrar sesión"></button>
+      </div>
+    </aside>
+
+    <div class="backdrop" id="backdrop" hidden></div>
+
     <div class="main">
       <div class="god-banner" id="godBanner" role="status" hidden></div>
       <header class="topbar">
-        <a class="topbar__brand" href="/" data-link aria-label="VERTEX, ir al panel">
-          <img src="/brand/icono.svg" alt="" class="topbar__mark" width="32" height="32">
-        </a>
+        <button class="icon-btn" id="menuBtn" aria-label="Contraer menú" aria-controls="sidebar" aria-expanded="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+        </button>
+        <img src="/brand/icono.svg" alt="" class="topbar__mark" width="28" height="28">
         <h1 class="topbar__title" id="pageTitle">Panel</h1>
-        <div class="countdown" id="countdown" role="timer" aria-live="off"></div>
         <span class="status" id="netStatus" data-online="true" role="status">En línea</span>
-        <label class="dev-switch" id="devSwitch" hidden>
-          <span class="sr-only">Ver como (desarrollo)</span>
-          <select id="devUser" title="Ver como (desarrollo)"></select>
-        </label>
-        <button class="icon-btn" id="installBtn" type="button" title="Instalar aplicación" aria-label="Instalar aplicación" hidden></button>
-        <a class="user" href="/perfil" data-link id="userLink" title="Mi perfil">
-          <span class="user__avatar" id="userAvatar" aria-hidden="true"></span>
-          <span class="sr-only">Mi perfil</span>
-        </a>
-        <button class="icon-btn logout" type="button" id="logoutBtn" title="Cerrar sesión" aria-label="Cerrar sesión"></button>
       </header>
 
       <main class="content" id="view" tabindex="-1"></main>
       <footer class="app-footer">Creado por <a href="https://www.instagram.com/rubenroqueguzman/" target="_blank" rel="noopener noreferrer">Rubén Roque</a></footer>
     </div>
-
-    <nav class="dock" id="nav" aria-label="Navegación principal"></nav>
   </div>
 
   <script src="/vendor/leaflet/leaflet.js"></script>

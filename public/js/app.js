@@ -1282,12 +1282,19 @@ async function boot() {
     state.me = await api('/api/me');
   } catch (err) {
     if (err.status === 401) {
-      showLogin();
+      await showLogin();
+      $('#boot').hidden = true;
     } else {
-      view.innerHTML = `<div class="empty"><strong>No se pudo conectar</strong><span>${esc(navigator.onLine ? err.message : 'Sin conexión.')}</span></div>`;
+      // Sin sesión confirmada no se muestra el panel: el error se queda en la pantalla de carga
+      $('#boot').classList.add('is-error');
+      $('#bootMsg').innerHTML = `<strong>No se pudo conectar</strong><br>${esc(navigator.onLine ? err.message : 'Sin conexión. Revisa tu internet.')}
+        <br><button class="btn btn--sm" type="button" onclick="location.reload()">Reintentar</button>`;
     }
     return;
   }
+  // Sesión válida: ahora sí se muestra el panel
+  $('#boot').hidden = true;
+  $('.layout').hidden = false;
 
   const menu = buildMenu(state.me);
   state.routes = new Map(menu.flatMap((g) => g.items).map((r) => [r.path, r]));

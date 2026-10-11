@@ -22,8 +22,13 @@
 </head>
 <body>
   <a class="skip-link" href="#view">Saltar al contenido</a>
+  <div class="boot" id="boot" role="status" aria-live="polite">
+    <img src="/brand/logo-claro.svg" alt="VERTEX" class="boot__logo" width="180" height="41">
+    <span class="spinner" aria-hidden="true"></span>
+    <p class="boot__msg" id="bootMsg">Cargando…</p>
+  </div>
   <div class="login" id="login" hidden></div>
-  <div class="layout">
+  <div class="layout" hidden>
     <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
       <div class="sidebar__brand">
         <a href="/" data-link aria-label="VERTEX, ir al panel">

@@ -1,0 +1,1395 @@
+import {
+  icon,
+  ICONS,
+  $,
+  esc,
+  initials,
+  fmtDate,
+  fmtPhone,
+  fmtNum,
+  fmtDateTime,
+  avatarInner,
+  api,
+  fieldErrorSetter,
+  submitWith,
+  toast,
+  uploadFile,
+  GEO_STYLE,
+  homeControl,
+} from './lib.js';
+import { viewCoordinador, mountCoordinador } from './coordinador.js';
+import { openDeleteFlow } from './eliminar.js';
+import { viewZonas, mountZonas, viewZona, mountZona } from './zonas.js';
+import { viewEscritorioCPV, mountEscritorioCPV } from './escritorio-cpv.js';
+import { viewResponsables, mountResponsables, viewResponsable, mountResponsable } from './responsables.js';
+import { viewConfiguracionCPV, mountConfiguracionCPV } from './configuracion-cpv.js';
+
+const state = { me: null, routes: new Map() };
+
+// ---------------------------------------------------------------------------
+// Dashboards: uno por nivel, independientes entre sí.
+// Su contenido está pendiente de definir; no compartir elementos entre ellos.
+// ---------------------------------------------------------------------------
+const pendingDashboard = (me) => `
+  <div class="page-head">
+    <h2>Panel</h2>
+    <p>${esc(me.role.name)}</p>
+  </div>
+  <div class="empty">
+    <span aria-hidden="true">${ICONS.dashboard}</span>
+    <strong>Dashboard en definición</strong>
+    <span>El contenido de este panel se definirá próximamente.</span>
+  </div>`;
+
+const DASHBOARDS = {
+  superadmin: (me) => pendingDashboard(me),
+  coord_promocion: (me) => pendingDashboard(me),
+  coord_zona: (me) => pendingDashboard(me),
+  resp_seccion: (me) => pendingDashboard(me),
+  promotor: (me) => pendingDashboard(me),
+};
+
+// ---------------------------------------------------------------------------
+// Menú por nivel
+// ---------------------------------------------------------------------------
+function buildMenu(me) {
+  const key = me.role.key;
+  // El CPV tiene su propio escritorio; los demás niveles conservan su panel (en definición)
+  const inicio =
+    key === 'coord_promocion'
+      ? { path: '/', title: 'Escritorio', icon: 'dashboard', view: viewEscritorioCPV, mount: mountEscritorioCPV }
+      : { path: '/', title: 'Panel', icon: 'dashboard', view: () => DASHBOARDS[key](me) };
+  const groups = [{ label: 'General', items: [inicio] }];
+
+  if (key === 'superadmin') {
+    groups[0].items.push({ path: '/usuarios', title: 'Usuarios', icon: 'users', view: viewEstructura, mount: mountEstructura });
+  } else if (key === 'coord_promocion') {
+    groups.push({
+      label: 'Estructura',
+      items: [
+        {
+          path: '/zonas',
+          title: 'Zonas',
+          icon: 'map',
+          view: (r, p) => viewZonas(r, p, state),
+          mount: (root, r, p) => mountZonas(root, r, p, state, { enterGodMode, openDeleteFlow }),
+        },
+      ],
+    });
+    groups.push({
+      label: 'Sistema',
+      items: [{ path: '/configuracion', title: 'Configuración', icon: 'settings', view: viewConfiguracionCPV, mount: mountConfiguracionCPV }],
+    });
+  } else if (key === 'coord_zona') {
+    groups.push({
+      label: 'Estructura',
+      items: [
+        {
+          path: '/responsables',
+          title: 'Responsables',
+          icon: 'users',
+          view: (r, p) => viewResponsables(r, p, state),
+          mount: (root, r, p) => mountResponsables(root, r, p, state, { enterGodMode, openDeleteFlow }),
+        },
+      ],
+    });
+  } else if (me.childRole) {
+    groups.push({
+      label: 'Estructura',
+      items: [
+        {
+          path: '/estructura',
+          title: 'Mi estructura',
+          icon: 'tree',
+          view: viewEstructura,
+          mount: mountEstructura,
+        },
+      ],
+    });
+  }
+
+  if (key === 'promotor') {
+    groups.push({
+      label: 'Captura',
+      items: [{ path: '/promovidos', title: 'Promovidos', icon: 'users', view: placeholder('Captura y seguimiento de tus promovidos.') }],
+    });
+  }
+
+  if (key === 'superadmin') {
+    groups.push(
+      {
+        label: 'Datos',
+        items: [{ path: '/bases-de-datos', title: 'Bases de datos', icon: 'database', view: viewBasesDatos, mount: mountBasesDatos }],
+      },
+      {
+        label: 'Sistema',
+        items: [{ path: '/configuracion', title: 'Configuración', icon: 'settings', view: placeholder('Usuarios, roles, permisos y catálogos.') }],
+      }
+    );
+  }
+
+  return groups;
+}
+
+// ---------------------------------------------------------------------------
+// Vistas
+// ---------------------------------------------------------------------------
+function placeholder(desc) {
+  return (route) => `
+    <div class="page-head">
+      <h2>${route.title}</h2>
+      <p>${desc}</p>
+    </div>
+    <div class="empty">
+      <span aria-hidden="true">${ICONS[route.icon]}</span>
+      <strong>Módulo en construcción</strong>
+      <span>Esta sección estará disponible próximamente.</span>
+    </div>`;
+}
+
+// ---------- Estructura: cuentas de la rama + alta del nivel inferior ----------
+async function viewEstructura(route) {
+  const { me } = state;
+  const list = await api('/api/users');
+  route.data = list;
+  const child = me.childRole;
+  const isSA = me.role.key === 'superadmin';
+
+  return `
+    <div class="page-head page-head--actions">
+      <div>
+        <h2>${route.title}</h2>
+        <p>${esc(child.plural)} ${isSA ? 'registrados en el sistema' : 'que dependen de ti'}.${
+          me.godMode || isSA ? ' Para ver los niveles inferiores, entra a la cuenta de cada uno.' : ''
+        }</p>
+      </div>
+      <button class="btn" type="button" data-action="new">${ICONS.plus}<span>Nuevo ${esc(child.name)}</span></button>
+    </div>
+
+    <div class="toolbar">
+      <label class="field--inline">
+        <span class="sr-only">Buscar por nombre</span>
+        <span class="field__icon" aria-hidden="true">${ICONS.search}</span>
+        <input class="input input--icon" type="search" id="fSearch" placeholder="Buscar por nombre" autocomplete="off">
+      </label>
+      <span class="toolbar__count" id="fCount" aria-live="polite"></span>
+    </div>
+
+    <div class="table-wrap" id="usersTable"></div>
+
+    <dialog class="dialog" id="newUserDialog" aria-labelledby="newUserTitle">
+      <form class="dialog__body" id="newUserForm" novalidate>
+        <div class="dialog__head">
+          <h3 id="newUserTitle">Nuevo ${esc(child.name)}</h3>
+          <button class="icon-btn icon-btn--always" type="button" data-action="close" aria-label="Cerrar">${ICONS.close}</button>
+        </div>
+        <p class="dialog__meta">Dependerá de: <strong>${esc(me.user.name)}</strong></p>
+        <div class="field">
+          <label for="nuName">Nombre completo <span class="req" aria-hidden="true">*</span></label>
+          <input class="input" id="nuName" name="name" required autocomplete="off" maxlength="120">
+          <p class="field__error" id="nuName-err"></p>
+        </div>
+        <div class="field">
+          <label for="nuPhone">Teléfono</label>
+          <input class="input" id="nuPhone" name="phone" type="tel" inputmode="numeric" autocomplete="off" maxlength="14" aria-describedby="nuPhone-help">
+          <p class="field__help" id="nuPhone-help">10 dígitos.</p>
+          <p class="field__error" id="nuPhone-err"></p>
+        </div>
+        <div class="field">
+          <label for="nuEmail">Correo electrónico</label>
+          <input class="input" id="nuEmail" name="email" type="email" autocomplete="off">
+          <p class="field__error" id="nuEmail-err"></p>
+        </div>
+        <p class="form-error" id="nuFormErr" role="alert"></p>
+        <div class="dialog__actions">
+          <button class="btn btn--secondary" type="button" data-action="close">Cancelar</button>
+          <button class="btn" type="submit">Crear cuenta</button>
+        </div>
+      </form>
+    </dialog>`;
+}
+
+function renderUsersTable(root, list) {
+  const q = $('#fSearch', root).value.trim().toLowerCase();
+  const rows = list.filter((u) => !q || u.name.toLowerCase().includes(q));
+  $('#fCount', root).textContent = `${rows.length} de ${list.length} cuentas`;
+  // Modo dios: el super administrador entra a las cuentas, y desde ellas sigue bajando de nivel
+  const canGod = state.me.role.key === 'superadmin' || Boolean(state.me.godMode);
+  const canEdit = state.me.role.key === 'superadmin';
+  const canDelete = Boolean(state.me.canDelete);
+
+  $('#usersTable', root).innerHTML = rows.length
+    ? `<table class="table">
+        <thead><tr><th scope="col">Nombre</th><th scope="col">Usuario</th><th scope="col">Teléfono</th><th scope="col">Alta</th>${canGod || canDelete ? '<th scope="col"><span class="sr-only">Acciones</span></th>' : ''}</tr></thead>
+        <tbody>
+          ${rows
+            .map(
+              (u) => `<tr>
+                <td><div class="cell-user"><span class="avatar" aria-hidden="true">${avatarInner(u)}</span><span>${esc(u.name)}${u.email ? `<small>${esc(u.email)}</small>` : ''}</span></div></td>
+                <td class="mono">${u.username ? esc(u.username) : '<span class="muted">Sin acceso</span>'}</td>
+                <td class="num">${esc(fmtPhone(u.phone))}</td>
+                <td class="num">${fmtDate(u.createdAt)}</td>
+                ${canGod || canDelete ? `<td class="cell-action">${canEdit && u.role === 'coord_promocion' ? `<button class="icon-btn icon-btn--table" type="button" data-action="edit" data-id="${u.id}" title="Editar ${esc(u.name)}" aria-label="Editar ${esc(u.name)}">${ICONS.edit}</button>` : ''}${canGod ? `<button class="icon-btn icon-btn--table" type="button" data-action="god" data-id="${u.id}" data-role="${u.role}" title="Entrar a la cuenta de ${esc(u.name)}" aria-label="Entrar a la cuenta de ${esc(u.name)} (modo dios)">${ICONS.eye}</button>` : ''}${canDelete ? `<button class="icon-btn icon-btn--table icon-btn--danger" type="button" data-action="delete" data-id="${u.id}" title="Eliminar ${esc(u.name)}" aria-label="Eliminar ${esc(u.name)} y su rama">${ICONS.trash}</button>` : ''}</td>` : ''}
+              </tr>`
+            )
+            .join('')}
+        </tbody>
+      </table>`
+    : `<div class="empty">
+        <span aria-hidden="true">${ICONS.users}</span>
+        <strong>${list.length ? 'Sin resultados' : 'Aún no hay cuentas en tu estructura'}</strong>
+        <span>${list.length ? 'Prueba con otro nombre.' : `Da de alta tu primer ${esc(state.me.childRole.name)}.`}</span>
+      </div>`;
+}
+
+function mountEstructura(root, route) {
+  const dialog = $('#newUserDialog', root);
+  const form = $('#newUserForm', root);
+  const formErr = $('#nuFormErr', root);
+  const refresh = () => renderUsersTable(root, route.data);
+  refresh();
+
+  $('#fSearch', root).addEventListener('input', refresh);
+
+  const fields = { name: 'nuName', phone: 'nuPhone', email: 'nuEmail' };
+  const setErrors = fieldErrorSetter(root, fields);
+
+  // render() limpia view.onclick en cada navegación
+  root.onclick = (e) => {
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action === 'new' && state.me.childRole.key === 'coord_promocion') {
+      history.pushState(null, '', '/usuarios/nuevo');
+      render();
+      return;
+    }
+    if (action === 'delete') {
+      const id = e.target.closest('[data-action]').dataset.id;
+      const target = route.data.find((u) => u.id === id);
+      if (target) {
+        openDeleteFlow(target, state.me, () => {
+          route.data = route.data.filter((u) => u.id !== id);
+          refresh();
+        });
+      }
+      return;
+    }
+    if (action === 'edit') {
+      history.pushState(null, '', `/usuarios/${e.target.closest('[data-action]').dataset.id}/editar`);
+      render();
+      return;
+    }
+    if (action === 'new') {
+      form.reset();
+      setErrors();
+      formErr.textContent = '';
+      dialog.showModal();
+      $('#nuName', root).focus();
+    }
+    if (action === 'close') dialog.close();
+    if (action === 'god') {
+      const btn = e.target.closest('[data-action]');
+      btn.disabled = true;
+      enterGodMode(btn.dataset.id, landingFor(btn.dataset.role)).catch((err) => {
+        btn.disabled = false;
+        toast(err.message);
+      });
+    }
+  };
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(form));
+    const created = await submitWith(form, 'Crear cuenta', 'Creando…', setErrors, formErr, () =>
+      api('/api/users', { method: 'POST', body })
+    );
+    if (created) {
+      route.data.unshift(created);
+      dialog.close();
+      refresh();
+      toast(`Cuenta creada: ${created.name}`);
+    }
+  });
+}
+
+// ---------- Bases de datos cartográficas (Super administrador) ----------
+const MAX_ZIP_MB = 500;
+
+// Tarjeta de carga de archivo con arrastrar y soltar + barra de progreso
+const uploaderHtml = (id, { title, icon: ic, accept, text, help, note }) => `
+  <section class="card upload" aria-labelledby="${id}Title">
+    <h3 class="card__title" id="${id}Title">${title}</h3>
+    <label class="dropzone" id="${id}Zone">
+      <input type="file" accept="${accept}" class="sr-only" id="${id}Input">
+      <span class="dropzone__icon" aria-hidden="true">${ic}</span>
+      <span class="dropzone__text">${text}</span>
+      <span class="field__help">${help}</span>
+    </label>
+    <div class="upload__status" id="${id}Status" hidden>
+      <div class="upload__row">
+        <span class="upload__file" id="${id}File"></span>
+        <span class="upload__phase" id="${id}Phase" aria-live="polite"></span>
+      </div>
+      <div class="progress" role="progressbar" aria-labelledby="${id}Phase" aria-valuemin="0" aria-valuemax="100" id="${id}Bar"><span></span></div>
+    </div>
+    <p class="form-error" id="${id}Err" role="alert"></p>
+    <p class="field__help upload__note">${note}</p>
+  </section>`;
+
+function mountUploader(root, id, { url, contentType, ext, extLabel, processing, onDone }) {
+  const input = $(`#${id}Input`, root);
+  const zone = $(`#${id}Zone`, root);
+  const status = $(`#${id}Status`, root);
+  const bar = $(`#${id}Bar`, root);
+  const phase = $(`#${id}Phase`, root);
+  const err = $(`#${id}Err`, root);
+  let busy = false;
+
+  const setProgress = (pct, text) => {
+    bar.firstElementChild.style.width = `${pct}%`;
+    bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+    phase.textContent = text;
+  };
+
+  async function handle(file) {
+    if (!file || busy) return;
+    err.textContent = '';
+    if (!ext.test(file.name)) return (err.textContent = `Selecciona un archivo ${extLabel}.`);
+    if (file.size > MAX_ZIP_MB * 1024 * 1024) return (err.textContent = `El archivo supera ${MAX_ZIP_MB} MB.`);
+
+    busy = true;
+    zone.classList.add('is-disabled');
+    status.hidden = false;
+    bar.classList.remove('is-indeterminate');
+    $(`#${id}File`, root).textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB`;
+    setProgress(0, 'Subiendo… 0%');
+    try {
+      const res = await uploadFile(url, file, contentType, (p) => {
+        if (p < 1) setProgress(p * 100, `Subiendo… ${Math.round(p * 100)}%`);
+        else {
+          setProgress(100, processing);
+          bar.classList.add('is-indeterminate');
+        }
+      });
+      status.hidden = true;
+      await onDone(res);
+    } catch (e) {
+      status.hidden = true;
+      err.textContent = e.message;
+    } finally {
+      busy = false;
+      zone.classList.remove('is-disabled');
+      input.value = '';
+    }
+  }
+
+  input.addEventListener('change', () => handle(input.files[0]));
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    zone.classList.add('is-over');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('is-over'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('is-over');
+    handle(e.dataTransfer.files[0]);
+  });
+}
+
+const fmtCorte = (iso) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+
+async function viewBasesDatos(route) {
+  const [states, pad] = await Promise.all([api('/api/geo/states'), api('/api/padron')]);
+  route.data = { states, pad };
+  return `
+    <div class="page-head">
+      <h2>Bases de datos</h2>
+      <p>Cartografía electoral y padrón del INE. Se cruzan por la clave de sección.</p>
+    </div>
+
+    <div class="uploads">
+      ${uploaderHtml('geo', {
+        title: 'Cartografía electoral',
+        icon: ICONS.fileZip,
+        accept: '.zip,application/zip',
+        text: '<strong>Arrastra aquí el .zip</strong> o haz clic para seleccionarlo',
+        help: `Shapefile con las capas ENTIDAD, DISTRITO_FEDERAL, DISTRITO_LOCAL, MUNICIPIO y SECCION. Máximo ${MAX_ZIP_MB} MB.`,
+        note: 'Si la entidad ya estaba cargada, sus mapas y catálogo se reemplazan.',
+      })}
+      ${uploaderHtml('pad', {
+        title: 'Padrón electoral / lista nominal',
+        icon: ICONS.users,
+        accept: '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        text: '<strong>Arrastra aquí el Excel (.xlsx)</strong> o haz clic para seleccionarlo',
+        help: 'Archivo de datos abiertos del INE por sección. Se omiten los residentes en el extranjero.',
+        note: 'Las entidades incluidas en el archivo reemplazan su padrón anterior.',
+      })}
+    </div>
+
+    <section aria-labelledby="stTitle">
+      <h3 class="section-title" id="stTitle">Cartografía por entidad</h3>
+      <div class="table-wrap" id="statesTable"></div>
+    </section>
+
+    <section aria-labelledby="padTitle">
+      <h3 class="section-title" id="padTitle">Padrón por entidad <span class="section-title__meta" id="padMeta"></span></h3>
+      <div class="table-wrap" id="padTable"></div>
+    </section>`;
+}
+
+function renderStatesTable(root, list) {
+  $('#statesTable', root).innerHTML = list.length
+    ? `<table class="table table--wrap-head">
+        <thead><tr>
+          <th scope="col">Clave</th><th scope="col">Entidad</th>
+          <th scope="col" class="num">Dist. federales</th><th scope="col" class="num">Dist. locales</th>
+          <th scope="col" class="num">Municipios</th><th scope="col" class="num">Secciones</th>
+          <th scope="col" class="num">Lista nominal</th>
+          <th scope="col">Cargado</th><th scope="col"><span class="sr-only">Acciones</span></th>
+        </tr></thead>
+        <tbody>
+          ${list
+            .map(
+              (s) => `<tr>
+                <td class="num">${String(s.clave).padStart(2, '0')}</td>
+                <td><strong>${esc(s.nombre)}</strong>${s.warnings.length ? ` <span class="badge badge--warn" title="${esc(s.warnings.join(' '))}">${s.warnings.length} aviso${s.warnings.length > 1 ? 's' : ''}</span>` : ''}</td>
+                <td class="num num--r">${fmtNum(s.counts.distritosFederales)}</td>
+                <td class="num num--r">${fmtNum(s.counts.distritosLocales)}</td>
+                <td class="num num--r">${fmtNum(s.counts.municipios)}</td>
+                <td class="num num--r">${fmtNum(s.counts.secciones)}</td>
+                <td class="num num--r">${s.padron ? fmtNum(s.padron.ln) : '<span class="muted">Sin padrón</span>'}</td>
+                <td>${fmtDateTime(s.importedAt)}<small class="muted-block">${esc(s.importedBy)}</small></td>
+                <td><a class="btn btn--secondary btn--sm" href="/bases-de-datos/${s.clave}" data-link>Ver mapa</a></td>
+              </tr>`
+            )
+            .join('')}
+        </tbody>
+      </table>`
+    : `<div class="empty">
+        <span aria-hidden="true">${ICONS.database}</span>
+        <strong>Aún no hay entidades cargadas</strong>
+        <span>Carga el .zip de la cartografía de un estado para comenzar.</span>
+      </div>`;
+}
+
+function cruceBadge(s) {
+  if (!s.cartografia) return '<span class="muted">Sin cartografía</span>';
+  const c = s.cruce;
+  if (!c.onlyPadron.length && !c.onlyMap.length) return `<span class="badge badge--ok">${fmtNum(c.matched)} coinciden</span>`;
+  const parts = [];
+  if (c.onlyPadron.length) parts.push(`${c.onlyPadron.length} sin mapa`);
+  if (c.onlyMap.length) parts.push(`${c.onlyMap.length} sin padrón`);
+  const detail = [
+    c.onlyPadron.length ? `Secciones del padrón que no están en el mapa: ${c.onlyPadron.slice(0, 30).join(', ')}${c.onlyPadron.length > 30 ? '…' : ''}.` : '',
+    c.onlyMap.length ? `Secciones del mapa sin padrón: ${c.onlyMap.slice(0, 30).join(', ')}${c.onlyMap.length > 30 ? '…' : ''}.` : '',
+  ].join(' ');
+  return `<span class="badge badge--warn" title="${esc(detail)}">${parts.join(' · ')}</span>`;
+}
+
+function renderPadronTable(root, pad) {
+  const last = pad.lastImport;
+  $('#padMeta', root).textContent = last ? `· Corte ${fmtCorte(last.corte)} · ${last.fileName}` : '';
+  // Primero las entidades con cartografía (las que se usan para asignar territorio)
+  const list = [...pad.states].sort((a, b) => Number(b.cartografia) - Number(a.cartografia) || a.clave - b.clave);
+  $('#padTable', root).innerHTML = list.length
+    ? `<table class="table table--wrap-head">
+        <thead><tr>
+          <th scope="col">Clave</th><th scope="col">Entidad</th>
+          <th scope="col" class="num">Secciones</th><th scope="col" class="num">Lista nominal</th><th scope="col" class="num">Padrón</th>
+          <th scope="col">Cruce con el mapa</th><th scope="col">Corte</th>
+        </tr></thead>
+        <tbody>
+          ${list
+            .map(
+              (s) => `<tr>
+                <td class="num">${String(s.clave).padStart(2, '0')}</td>
+                <td><strong>${esc(s.nombre)}</strong></td>
+                <td class="num num--r">${fmtNum(s.secciones)}</td>
+                <td class="num num--r">${fmtNum(s.ln)}</td>
+                <td class="num num--r">${s.padron !== null ? fmtNum(s.padron) : '—'}</td>
+                <td>${cruceBadge(s)}</td>
+                <td>${fmtCorte(s.corte)}</td>
+              </tr>`
+            )
+            .join('')}
+        </tbody>
+      </table>`
+    : `<div class="empty">
+        <span aria-hidden="true">${ICONS.users}</span>
+        <strong>Aún no hay padrón cargado</strong>
+        <span>Carga el Excel del INE para ver los electores por sección.</span>
+      </div>`;
+}
+
+function mountBasesDatos(root, route) {
+  renderStatesTable(root, route.data.states);
+  renderPadronTable(root, route.data.pad);
+  const refresh = async () => {
+    const [states, pad] = await Promise.all([api('/api/geo/states'), api('/api/padron')]);
+    route.data = { states, pad };
+    renderStatesTable(root, states);
+    renderPadronTable(root, pad);
+  };
+  mountUploader(root, 'geo', {
+    url: '/api/geo/imports',
+    contentType: 'application/zip',
+    ext: /\.zip$/i,
+    extLabel: '.zip',
+    processing: 'Procesando cartografía…',
+    onDone: async (res) => {
+      await refresh();
+      toast(`Cartografía cargada: ${res.states.map((s) => s.nombre).join(', ')}`);
+    },
+  });
+  mountUploader(root, 'pad', {
+    url: '/api/padron/imports',
+    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ext: /\.xlsx$/i,
+    extLabel: 'Excel (.xlsx)',
+    processing: 'Leyendo padrón… puede tardar unos segundos',
+    onDone: async (res) => {
+      await refresh();
+      toast(`Padrón cargado: ${res.states} entidades · ${fmtNum(res.totals.ln)} electores`);
+    },
+  });
+}
+
+// ---------- Detalle de entidad: mapa + catálogo ----------
+const MAP_LAYERS = [
+  { key: 'seccion', name: 'Secciones', label: (p, c) => `Sección ${p.seccion} · ${c.munName(p.municipio)} · DF ${p.distrito_federal} · DL ${p.distrito_local}` },
+  { key: 'municipio', name: 'Municipios', label: (p) => `Municipio ${p.municipio} · ${p.nombre || ''}` },
+  { key: 'distrito_local', name: 'Distritos locales', label: (p) => `Distrito local ${p.distrito_local}` },
+  { key: 'distrito_federal', name: 'Distritos federales', label: (p) => `Distrito federal ${p.distrito_federal}` },
+];
+
+async function viewEntidadGeo(route, [clave]) {
+  const { meta, catalog } = await api(`/api/geo/states/${clave}`);
+  route.data = { meta, catalog };
+  const layers = MAP_LAYERS.filter((l) => meta.layers[l.key]);
+
+  const secPorMun = new Map();
+  for (const s of catalog.secciones) {
+    const m = secPorMun.get(s.municipio) || { n: 0, df: new Set(), dl: new Set() };
+    m.n += 1;
+    m.df.add(s.distritoFederal);
+    m.dl.add(s.distritoLocal);
+    secPorMun.set(s.municipio, m);
+  }
+  const list = (set) => [...set].filter((v) => v !== null).sort((a, b) => a - b).join(', ');
+
+  return `
+    <a class="back-link" href="/bases-de-datos" data-link>${ICONS.back}<span>Bases de datos</span></a>
+    <div class="page-head page-head--actions">
+      <div>
+        <h2>${esc(meta.nombre)} <span class="badge">Entidad ${String(meta.clave).padStart(2, '0')}</span></h2>
+        <p>Cargado el ${fmtDateTime(meta.importedAt)} por ${esc(meta.importedBy)} · ${esc(meta.fileName)} · Proyección de origen: ${esc(meta.crs)}</p>
+      </div>
+      <button class="btn btn--secondary btn--danger" type="button" data-action="delete">${ICONS.trash}<span>Eliminar entidad</span></button>
+    </div>
+
+    ${
+      meta.warnings.length
+        ? `<div class="notice" role="status">${ICONS.alert}<div><strong>Avisos de la importación</strong><ul>${meta.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div></div>`
+        : ''
+    }
+
+    <div class="kpis">
+      ${[
+        ['Distritos federales', meta.counts.distritosFederales],
+        ['Distritos locales', meta.counts.distritosLocales],
+        ['Municipios', meta.counts.municipios],
+        ['Secciones', meta.counts.secciones],
+      ]
+        .map(([l, v]) => `<div class="kpi"><span class="kpi__value">${fmtNum(v)}</span><span class="kpi__label">${l}</span></div>`)
+        .join('')}
+    </div>
+
+    <section class="card map-card" aria-labelledby="mapTitle">
+      <div class="map-card__head">
+        <h3 class="card__title" id="mapTitle">Mapa</h3>
+        <div class="segmented" role="radiogroup" aria-label="Capa del mapa">
+          ${layers
+            .map(
+              (l, i) =>
+                `<button type="button" role="radio" aria-checked="${i === 0}" data-layer="${l.key}">${l.name}</button>`
+            )
+            .join('')}
+        </div>
+      </div>
+      <div class="map" id="map" aria-label="Mapa de ${esc(meta.nombre)} sobre OpenStreetMap"></div>
+      <p class="map-card__info" id="mapInfo" aria-live="polite">Cargando mapa…</p>
+    </section>
+
+    <section aria-labelledby="catTitle">
+      <h3 class="section-title" id="catTitle">Catálogo por municipio</h3>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th scope="col">Clave</th><th scope="col">Municipio</th><th scope="col" class="num">Secciones</th><th scope="col">Distritos federales</th><th scope="col">Distritos locales</th></tr></thead>
+          <tbody>
+            ${catalog.municipios
+              .map((m) => {
+                const d = secPorMun.get(m.clave) || { n: 0, df: new Set(), dl: new Set() };
+                return `<tr><td class="num">${m.clave}</td><td>${esc(m.nombre || '—')}</td><td class="num num--r">${fmtNum(d.n)}</td><td>${list(d.df) || '—'}</td><td>${list(d.dl) || '—'}</td></tr>`;
+              })
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <dialog class="dialog" id="delDialog" aria-labelledby="delTitle">
+      <div class="dialog__body">
+        <div class="dialog__head"><h3 id="delTitle">¿Eliminar ${esc(meta.nombre)}?</h3></div>
+        <p>Se borrarán los mapas y el catálogo territorial de esta entidad. Podrás volver a cargarla después.</p>
+        <p class="form-error" id="delErr" role="alert"></p>
+        <div class="dialog__actions">
+          <button class="btn btn--secondary" type="button" data-action="cancel">Cancelar</button>
+          <button class="btn btn--destructive" type="button" data-action="confirm-delete">Eliminar</button>
+        </div>
+      </div>
+    </dialog>`;
+}
+
+function mountEntidadGeo(root, route) {
+  const { meta, catalog } = route.data;
+  const mapEl = $('#map', root);
+  const info = $('#mapInfo', root);
+  const cache = new Map();
+  const munNames = new Map(catalog.municipios.map((m) => [m.clave, m.nombre]));
+  const ctx = { munName: (c) => munNames.get(c) || `Municipio ${c}` };
+
+  // bbox = [oeste, sur, este, norte]; Leaflet usa [lat, lon]
+  const bounds = L.latLngBounds([meta.bbox[1], meta.bbox[0]], [meta.bbox[3], meta.bbox[2]]);
+  mapEl.innerHTML = '';
+  const map = L.map(mapEl, {
+    preferCanvas: true, // miles de polígonos: canvas es mucho más fluido que SVG
+    zoomControl: false,
+    scrollWheelZoom: false,
+    zoomSnap: 0.5,
+    minZoom: 5,
+    maxZoom: 18,
+    maxBounds: bounds.pad(1.5),
+  });
+  L.control.zoom({ position: 'topleft', zoomInTitle: 'Acercar', zoomOutTitle: 'Alejar' }).addTo(map);
+  const fitAll = () => map.fitBounds(bounds, { padding: [16, 16] });
+  homeControl(fitAll).addTo(map);
+  L.control.scale({ position: 'bottomleft', imperial: false }).addTo(map);
+  map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+  }).addTo(map);
+  fitAll();
+
+  // La rueda del mouse solo hace zoom después de hacer clic en el mapa, para no atrapar el scroll de la página
+  map.on('click', () => map.scrollWheelZoom.enable());
+  map.on('mouseout', () => map.scrollWheelZoom.disable());
+
+  let current = null;
+  let outline = null;
+
+  async function getLayer(key) {
+    if (!cache.has(key)) cache.set(key, await api(`/api/geo/states/${meta.clave}/layers/${key}`));
+    return cache.get(key);
+  }
+
+  async function show(key) {
+    const def = MAP_LAYERS.find((l) => l.key === key);
+    root.querySelectorAll('[data-layer]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.layer === key)));
+    mapEl.classList.add('is-busy');
+    try {
+      const fc = await getLayer(key);
+      if (!outline && meta.layers.entidad) {
+        outline = L.geoJSON(await getLayer('entidad'), { style: GEO_STYLE.outline }).addTo(map);
+      }
+      if (current) map.removeLayer(current);
+      const summary = `${fmtNum(fc.features.length)} ${def.name.toLowerCase()}. Haz clic en una para acercarte.`;
+      current = L.geoJSON(fc, {
+        style: GEO_STYLE.base,
+        onEachFeature(feature, layer) {
+          const label = def.label(feature.properties, ctx);
+          layer.bindTooltip(esc(label), { sticky: true, direction: 'top', className: 'map-tip' });
+          layer.on({
+            mouseover: () => {
+              layer.setStyle(GEO_STYLE.hover);
+              info.textContent = label;
+            },
+            mouseout: () => {
+              current.resetStyle(layer);
+              info.textContent = summary;
+            },
+            click: () => map.fitBounds(layer.getBounds(), { padding: [24, 24], maxZoom: 16 }),
+          });
+        },
+      }).addTo(map);
+      if (outline) outline.bringToFront();
+      info.textContent = summary;
+    } catch (e) {
+      info.textContent = `No se pudo cargar la capa: ${e.message}`;
+    } finally {
+      mapEl.classList.remove('is-busy');
+    }
+  }
+
+  const delDialog = $('#delDialog', root);
+  root.onclick = async (e) => {
+    const btn = e.target.closest('[data-layer], [data-action]');
+    if (!btn) return;
+    if (btn.dataset.layer) return show(btn.dataset.layer);
+    const action = btn.dataset.action;
+    if (action === 'delete') delDialog.showModal();
+    if (action === 'cancel') delDialog.close();
+    if (action === 'confirm-delete') {
+      btn.disabled = true;
+      try {
+        await api(`/api/geo/states/${meta.clave}`, { method: 'DELETE' });
+        delDialog.close();
+        toast(`${meta.nombre} eliminada`);
+        history.pushState(null, '', '/bases-de-datos');
+        render();
+      } catch (err) {
+        $('#delErr', root).textContent = err.message;
+        btn.disabled = false;
+      }
+    }
+  };
+
+  // Teclado en el selector de capas (patrón radiogroup)
+  $('.segmented', root).addEventListener('keydown', (e) => {
+    if (!['ArrowRight', 'ArrowLeft'].includes(e.key)) return;
+    const btns = [...root.querySelectorAll('[data-layer]')];
+    const i = btns.indexOf(document.activeElement);
+    const next = btns[(i + (e.key === 'ArrowRight' ? 1 : btns.length - 1)) % btns.length];
+    next.focus();
+    show(next.dataset.layer);
+  });
+
+  show(MAP_LAYERS.find((l) => meta.layers[l.key]).key);
+
+  // Al salir de la vista se libera el mapa (listeners de ventana, tiles)
+  return () => map.remove();
+}
+
+// ---------- Mi perfil (todos los niveles) ----------
+function viewPerfil() {
+  const u = state.me.user;
+  const hasPw = u.hasPassword;
+  return `
+    <div class="page-head">
+      <h2>Mi perfil</h2>
+      <p>Administra tu información personal y tu contraseña.</p>
+    </div>
+
+    <div class="profile">
+      <section class="card profile__photo" aria-labelledby="phTitle">
+        <h3 class="card__title" id="phTitle">Foto de perfil</h3>
+        <div class="profile__avatar" id="pfAvatar">${avatarInner(u)}</div>
+        <p class="field__help profile__hint">Usa una selfie reciente, de frente y con buena luz.</p>
+        <div class="profile__photo-actions">
+          <label class="btn">
+            ${ICONS.camera}<span>Tomar selfie</span>
+            <input type="file" accept="image/*" capture="user" class="sr-only" id="pfSelfie">
+          </label>
+          <label class="btn btn--secondary">
+            ${ICONS.upload}<span>Subir foto</span>
+            <input type="file" accept="image/*" class="sr-only" id="pfUpload">
+          </label>
+          <button class="btn btn--secondary btn--danger" type="button" id="pfRemove" ${u.avatarUrl ? '' : 'hidden'}>${ICONS.trash}<span>Quitar foto</span></button>
+        </div>
+        <p class="form-error" id="pfPhotoErr" role="alert"></p>
+      </section>
+
+      <section class="card" aria-labelledby="pdTitle">
+        <h3 class="card__title" id="pdTitle">Datos personales</h3>
+        <form id="pfForm" novalidate>
+          <div class="field">
+            <label for="pfName">Nombre <span class="req" aria-hidden="true">*</span></label>
+            <input class="input" id="pfName" name="name" required maxlength="120" autocomplete="name" value="${esc(u.name)}">
+            <p class="field__error" id="pfName-err"></p>
+          </div>
+          <div class="field">
+            <label for="pfAbout">Acerca de mí</label>
+            <textarea class="input textarea" id="pfAbout" name="about" rows="4" maxlength="500" aria-describedby="pfAbout-help">${esc(u.about)}</textarea>
+            <p class="field__help" id="pfAbout-help"><span id="pfAboutCount">${u.about.length}</span>/500 caracteres.</p>
+            <p class="field__error" id="pfAbout-err"></p>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="pfPhone">Teléfono</label>
+              <input class="input" id="pfPhone" name="phone" type="tel" inputmode="numeric" maxlength="14" autocomplete="tel" value="${esc(u.phone)}" aria-describedby="pfPhone-help">
+              <p class="field__help" id="pfPhone-help">10 dígitos.</p>
+              <p class="field__error" id="pfPhone-err"></p>
+            </div>
+            <div class="field">
+              <label for="pfEmail">Correo electrónico</label>
+              <input class="input" id="pfEmail" name="email" type="email" autocomplete="email" value="${esc(u.email)}">
+              <p class="field__error" id="pfEmail-err"></p>
+            </div>
+          </div>
+          <p class="form-error" id="pfFormErr" role="alert"></p>
+          <div class="form-actions"><button class="btn" type="submit">Guardar cambios</button></div>
+        </form>
+      </section>
+
+      ${
+        state.me.godMode
+          ? `<section class="card" aria-labelledby="pwTitle">
+              <h3 class="card__title" id="pwTitle">Contraseña</h3>
+              <p class="field__help">En modo dios no es posible cambiar la contraseña de otro usuario.</p>
+            </section>`
+          : `      <section class="card" aria-labelledby="pwTitle">
+        <h3 class="card__title" id="pwTitle">${hasPw ? 'Cambiar contraseña' : 'Crear contraseña'}</h3>
+        <form id="pwForm" novalidate>
+          <input type="text" name="username" autocomplete="username" value="${esc(u.email || u.name)}" hidden>
+          ${
+            hasPw
+              ? `<div class="field">
+                  <label for="pwCurrent">Contraseña actual</label>
+                  <input class="input" id="pwCurrent" name="current" type="password" autocomplete="current-password">
+                  <p class="field__error" id="pwCurrent-err"></p>
+                </div>`
+              : ''
+          }
+          <div class="field-row">
+            <div class="field">
+              <label for="pwNext">Nueva contraseña</label>
+              <input class="input" id="pwNext" name="next" type="password" autocomplete="new-password" aria-describedby="pwNext-help">
+              <p class="field__help" id="pwNext-help">Mínimo 8 caracteres, con letras y números.</p>
+              <p class="field__error" id="pwNext-err"></p>
+            </div>
+            <div class="field">
+              <label for="pwConfirm">Confirmar nueva contraseña</label>
+              <input class="input" id="pwConfirm" name="confirm" type="password" autocomplete="new-password">
+              <p class="field__error" id="pwConfirm-err"></p>
+            </div>
+          </div>
+          <p class="form-error" id="pwFormErr" role="alert"></p>
+          <div class="form-actions"><button class="btn" type="submit">${hasPw ? 'Cambiar contraseña' : 'Crear contraseña'}</button></div>
+        </form>
+      </section>`
+      }
+    </div>`;
+}
+
+// Recorta al centro en cuadrado, reduce a 512 px y comprime a JPEG
+async function prepareAvatar(file) {
+  if (!file.type.startsWith('image/')) throw new Error('El archivo debe ser una imagen.');
+  const bmp = await createImageBitmap(file);
+  const side = Math.min(bmp.width, bmp.height);
+  const size = Math.min(512, side);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  canvas
+    .getContext('2d')
+    .drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
+  bmp.close();
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+function mountPerfil(root) {
+  const setMe = (user) => {
+    state.me.user = { ...state.me.user, ...user };
+    renderUser(state.me);
+  };
+
+  // --- Foto ---
+  const photoErr = $('#pfPhotoErr', root);
+  const avatarBox = $('#pfAvatar', root);
+  const removeBtn = $('#pfRemove', root);
+  const showAvatar = () => {
+    avatarBox.innerHTML = avatarInner(state.me.user);
+    removeBtn.hidden = !state.me.user.avatarUrl;
+  };
+
+  const onPhoto = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    photoErr.textContent = '';
+    avatarBox.classList.add('is-busy');
+    try {
+      const image = await prepareAvatar(file);
+      setMe(await api('/api/me/avatar', { method: 'PUT', body: { image } }));
+      showAvatar();
+      toast('Foto actualizada');
+    } catch (err) {
+      photoErr.textContent = navigator.onLine ? err.message : 'Sin conexión. Intenta de nuevo cuando estés en línea.';
+    } finally {
+      avatarBox.classList.remove('is-busy');
+    }
+  };
+  $('#pfSelfie', root).addEventListener('change', onPhoto);
+  $('#pfUpload', root).addEventListener('change', onPhoto);
+
+  removeBtn.addEventListener('click', async () => {
+    photoErr.textContent = '';
+    try {
+      setMe(await api('/api/me/avatar', { method: 'DELETE' }));
+      showAvatar();
+      toast('Foto eliminada');
+    } catch (err) {
+      photoErr.textContent = err.message;
+    }
+  });
+
+  // --- Datos personales ---
+  const pfForm = $('#pfForm', root);
+  const about = $('#pfAbout', root);
+  about.addEventListener('input', () => ($('#pfAboutCount', root).textContent = about.value.length));
+  const pfErrors = fieldErrorSetter(root, { name: 'pfName', about: 'pfAbout', phone: 'pfPhone', email: 'pfEmail' });
+  pfForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(pfForm));
+    const user = await submitWith(pfForm, 'Guardar cambios', 'Guardando…', pfErrors, $('#pfFormErr', root), () =>
+      api('/api/me', { method: 'PATCH', body })
+    );
+    if (user) {
+      setMe(user);
+      showAvatar();
+      toast('Perfil actualizado');
+    }
+  });
+
+  // --- Contraseña (no disponible en modo dios) ---
+  const pwForm = $('#pwForm', root);
+  if (!pwForm) return;
+  const pwFields = { next: 'pwNext', confirm: 'pwConfirm' };
+  if (state.me.user.hasPassword) pwFields.current = 'pwCurrent';
+  const pwErrors = fieldErrorSetter(root, pwFields);
+  const pwLabel = state.me.user.hasPassword ? 'Cambiar contraseña' : 'Crear contraseña';
+  pwForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(pwForm));
+    const ok = await submitWith(pwForm, pwLabel, 'Guardando…', pwErrors, $('#pwFormErr', root), () =>
+      api('/api/me/password', { method: 'PUT', body })
+    );
+    if (ok) {
+      const firstTime = !state.me.user.hasPassword;
+      state.me.user.hasPassword = true;
+      toast(firstTime ? 'Contraseña creada' : 'Contraseña actualizada');
+      if (firstTime) render();
+      else pwForm.reset();
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Sidebar + router (History API)
+// ---------------------------------------------------------------------------
+const nav = $('#nav');
+const view = $('#view');
+const sidebar = $('#sidebar');
+const backdrop = $('#backdrop');
+const menuBtn = $('#menuBtn');
+let renderSeq = 0;
+
+function renderNav(menu) {
+  nav.innerHTML = menu
+    .map(
+      (g) => `
+    <div class="nav__group">
+      <div class="nav__label">${g.label}</div>
+      ${g.items.map((r) => `<a class="nav__link" href="${r.path}" data-link title="${r.title}">${ICONS[r.icon]}<span>${r.title}</span></a>`).join('')}
+    </div>`
+    )
+    .join('');
+}
+
+const NOT_AVAILABLE = {
+  title: 'No disponible',
+  view: () => `<div class="empty"><strong>Página no disponible</strong><span>La página no existe o no está disponible para tu nivel.</span></div>`,
+};
+
+async function render() {
+  const seq = ++renderSeq;
+  let route = state.routes.get(location.pathname);
+  let params = [];
+  if (!route) {
+    for (const r of state.patternRoutes || []) {
+      const m = r.pattern.exec(location.pathname);
+      if (m) {
+        route = r;
+        params = m.slice(1);
+        break;
+      }
+    }
+  }
+  route = route || NOT_AVAILABLE;
+  $('#pageTitle').textContent = route.title;
+  document.title = `${route.title} · VERTEX`;
+  sidebar.querySelectorAll('.nav__link, .user').forEach((a) => {
+    const href = a.getAttribute('href');
+    const active = href === location.pathname || (href !== '/' && location.pathname.startsWith(`${href}/`));
+    if (active) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  });
+
+  let out = route.view(route, params);
+  let ok = true;
+  if (out instanceof Promise) {
+    view.innerHTML = `<div class="loading" role="status"><span class="spinner" aria-hidden="true"></span>Cargando…</div>`;
+    try {
+      out = await out;
+    } catch (err) {
+      ok = false;
+      out = `<div class="empty"><strong>No se pudo cargar la información</strong><span>${esc(navigator.onLine ? err.message : 'Sin conexión.')}</span></div>`;
+    }
+  }
+  if (seq !== renderSeq) return;
+  if (state.cleanup) {
+    state.cleanup();
+    state.cleanup = null;
+  }
+  view.onclick = null;
+  view.innerHTML = out;
+  if (ok && route.mount) state.cleanup = route.mount(view, route, params) || null;
+  view.focus({ preventScroll: true });
+}
+
+// Escritorio: el sidebar se contrae a solo íconos (preferencia recordada).
+// Móvil/tableta: el sidebar es un panel deslizable.
+const mobileMq = window.matchMedia('(max-width: 1023px)');
+const COLLAPSE_KEY = 'vx.sidebarCollapsed';
+const layout = $('.layout');
+
+function readCollapsed() {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function syncMenuBtn() {
+  const expanded = mobileMq.matches ? sidebar.classList.contains('is-open') : !layout.classList.contains('is-collapsed');
+  menuBtn.setAttribute('aria-expanded', String(expanded));
+  menuBtn.setAttribute('aria-label', mobileMq.matches ? (expanded ? 'Cerrar menú' : 'Abrir menú') : expanded ? 'Contraer menú' : 'Expandir menú');
+}
+
+function setCollapsed(collapsed) {
+  layout.classList.toggle('is-collapsed', collapsed);
+  try {
+    localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
+  } catch {}
+  syncMenuBtn();
+}
+
+function setSidebar(open) {
+  sidebar.classList.toggle('is-open', open);
+  backdrop.hidden = !open;
+  syncMenuBtn();
+}
+
+layout.classList.toggle('is-collapsed', readCollapsed());
+mobileMq.addEventListener('change', () => {
+  setSidebar(false);
+  syncMenuBtn();
+});
+syncMenuBtn();
+
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-link]');
+  if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  e.preventDefault();
+  if (a.getAttribute('href') !== location.pathname) history.pushState(null, '', a.href);
+  render();
+  setSidebar(false);
+});
+
+window.addEventListener('popstate', render);
+window.addEventListener('vx:navigate', (e) => {
+  if (e.detail !== location.pathname) history.pushState(null, '', e.detail);
+  render();
+});
+menuBtn.addEventListener('click', () => {
+  if (mobileMq.matches) setSidebar(!sidebar.classList.contains('is-open'));
+  else setCollapsed(!layout.classList.contains('is-collapsed'));
+});
+backdrop.addEventListener('click', () => setSidebar(false));
+document.addEventListener('keydown', (e) => e.key === 'Escape' && setSidebar(false));
+
+// ---------------------------------------------------------------------------
+// Usuario en sesión + selector de usuario (solo desarrollo)
+// ---------------------------------------------------------------------------
+function renderUser(me) {
+  $('#userAvatar').innerHTML = avatarInner(me.user);
+  $('#userName').textContent = me.user.name;
+  $('#userRole').textContent = me.role.name;
+}
+
+// ---------------------------------------------------------------------------
+// Modo dios (super administrador)
+// ---------------------------------------------------------------------------
+// Página inicial al entrar a una cuenta: su lista de subordinados (o el panel si no tiene)
+const landingFor = (role) => ({ coord_promocion: '/zonas', coord_zona: '/responsables', promotor: '/' })[role] || '/estructura';
+
+async function enterGodMode(userId, landing = '/') {
+  await api('/api/god-mode', { method: 'POST', body: { userId } });
+  location.href = landing;
+}
+
+async function exitGodMode() {
+  await api('/api/god-mode', { method: 'DELETE' });
+  location.href = '/usuarios';
+}
+
+function renderGodBanner(me) {
+  const banner = $('#godBanner');
+  if (!me.godMode) {
+    banner.hidden = true;
+    return;
+  }
+  // Ruta: Super admin › CPV › Coordinador de zona › … (cada nivel superior permite regresar a él)
+  const chain = me.godMode.chain || [];
+  banner.innerHTML = `
+    <span class="god-banner__icon" aria-hidden="true">${ICONS.eye}</span>
+    <nav class="god-banner__text" aria-label="Ruta de navegación en modo dios">
+      <strong>Modo dios:</strong>
+      <ol class="god-path">
+        ${chain
+          .map((u, i) =>
+            i === chain.length - 1
+              ? `<li aria-current="page" title="${esc(u.roleName)}"><strong>${esc(u.name)}</strong> <span class="god-path__role">· ${esc(u.roleName)}</span></li>`
+              : `<li><button type="button" class="god-path__link" data-god="${u.role === 'superadmin' ? 'exit' : u.id}" data-role="${u.role}" title="Regresar a ${esc(u.name)} · ${esc(u.roleName)}">${esc(u.name)}</button></li>`
+          )
+          .join('')}
+      </ol>
+    </nav>
+    <button class="btn btn--sm god-banner__exit" type="button" data-god="exit">Salir del modo dios</button>`;
+  banner.hidden = false;
+  banner.onclick = (e) => {
+    const target = e.target.closest('[data-god]');
+    if (!target) return;
+    banner.querySelectorAll('button').forEach((b) => (b.disabled = true));
+    const go = target.dataset.god === 'exit' ? exitGodMode() : enterGodMode(target.dataset.god, landingFor(target.dataset.role));
+    go.catch((err) => {
+      banner.querySelectorAll('button').forEach((b) => (b.disabled = false));
+      toast(err.message);
+    });
+  };
+}
+
+async function setupDevSwitcher(me) {
+  if (!me.dev) return;
+  const all = await api('/api/dev/users');
+  const byRole = new Map();
+  for (const u of all) {
+    if (!byRole.has(u.roleName)) byRole.set(u.roleName, []);
+    byRole.get(u.roleName).push(u);
+  }
+  const select = $('#devUser');
+  select.innerHTML = [...byRole]
+    .map(
+      ([role, list]) =>
+        `<optgroup label="${esc(role)}">${list
+          .map((u) => `<option value="${u.id}"${u.id === me.user.id ? ' selected' : ''}>${esc(u.name)}</option>`)
+          .join('')}</optgroup>`
+    )
+    .join('');
+  $('#devSwitch').hidden = false;
+  select.addEventListener('change', async () => {
+    await api('/api/dev/session', { method: 'POST', body: { userId: select.value } });
+    location.href = '/';
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Inicio y cierre de sesión
+// ---------------------------------------------------------------------------
+async function showLogin() {
+  const devUsers = await api('/api/dev/users').catch(() => null);
+  $('.layout').hidden = true;
+  const box = $('#login');
+  box.hidden = false;
+  box.innerHTML = `
+    <main class="login__card">
+      <img src="/brand/logo-claro.svg" alt="VERTEX" class="login__logo" width="220" height="50">
+      <h1 class="login__title">Inicia sesión</h1>
+      <p class="login__sub">Sistema de estructura territorial electoral</p>
+      <form id="loginForm" novalidate>
+        <div class="field">
+          <label for="lgUser">Usuario</label>
+          <input class="input" id="lgUser" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        </div>
+        <div class="field">
+          <label for="lgPass">Contraseña</label>
+          <div class="input-icon input-icon--action input-icon--none">
+            <input class="input" id="lgPass" name="password" type="password" autocomplete="current-password" required>
+            <button type="button" class="input-action" id="lgShow" aria-label="Mostrar contraseña" aria-pressed="false">${ICONS.eye}</button>
+          </div>
+        </div>
+        <p class="form-error" id="lgErr" role="alert"></p>
+        <button class="btn login__submit" type="submit">Entrar</button>
+      </form>
+      ${
+        devUsers?.length
+          ? `<div class="login__dev">
+              <label for="lgDev">Modo desarrollo: entrar como</label>
+              <div class="login__dev-row">
+                <select class="input" id="lgDev">${devUsers.map((u) => `<option value="${u.id}">${esc(u.name)} · ${esc(u.roleName)}</option>`).join('')}</select>
+                <button class="btn btn--secondary" type="button" id="lgDevGo">Entrar</button>
+              </div>
+            </div>`
+          : ''
+      }
+    </main>`;
+  const form = $('#loginForm');
+  const err = $('#lgErr');
+  $('#lgUser').focus();
+  $('#lgShow').addEventListener('click', (e) => {
+    const p = $('#lgPass');
+    const show = p.type === 'password';
+    p.type = show ? 'text' : 'password';
+    e.currentTarget.setAttribute('aria-pressed', String(show));
+    e.currentTarget.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector('[type="submit"]');
+    const body = Object.fromEntries(new FormData(form));
+    err.textContent = '';
+    if (!body.username || !body.password) {
+      err.textContent = 'Escribe tu usuario y contraseña.';
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Entrando…';
+    try {
+      await api('/api/auth/login', { method: 'POST', body });
+      location.reload();
+    } catch (ex) {
+      err.textContent = navigator.onLine ? ex.message : 'Sin conexión. Intenta de nuevo cuando estés en línea.';
+      btn.disabled = false;
+      btn.textContent = 'Entrar';
+      $('#lgPass').select();
+    }
+  });
+  $('#lgDevGo')?.addEventListener('click', async () => {
+    await api('/api/dev/session', { method: 'POST', body: { userId: $('#lgDev').value } });
+    location.reload();
+  });
+}
+
+const logoutBtn = $('#logoutBtn');
+logoutBtn.innerHTML = `${ICONS.logout}<span>Cerrar sesión</span>`;
+logoutBtn.addEventListener('click', async () => {
+  logoutBtn.disabled = true;
+  await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  location.href = '/';
+});
+
+async function boot() {
+  try {
+    state.me = await api('/api/me');
+  } catch (err) {
+    if (err.status === 401) {
+      showLogin();
+    } else {
+      view.innerHTML = `<div class="empty"><strong>No se pudo conectar</strong><span>${esc(navigator.onLine ? err.message : 'Sin conexión.')}</span></div>`;
+    }
+    return;
+  }
+
+  const menu = buildMenu(state.me);
+  state.routes = new Map(menu.flatMap((g) => g.items).map((r) => [r.path, r]));
+  // Perfil personal: disponible para todos los niveles desde la sección de usuario
+  state.routes.set('/perfil', { path: '/perfil', title: 'Mi perfil', view: viewPerfil, mount: mountPerfil });
+  // Rutas con parámetros
+  state.patternRoutes = [];
+  if (state.me.role.key === 'coord_zona') {
+    state.routes.set('/responsables/nuevo', { path: '/responsables/nuevo', title: 'Nuevo responsable', view: viewResponsable, mount: mountResponsable });
+    state.patternRoutes.push({ pattern: /^\/responsables\/([0-9a-f-]{36})\/editar$/, title: 'Editar responsable', view: viewResponsable, mount: mountResponsable });
+  }
+  if (state.me.role.key === 'coord_promocion') {
+    state.routes.set('/zonas/nueva', { path: '/zonas/nueva', title: 'Nueva zona', view: viewZona, mount: mountZona });
+    state.patternRoutes.push({ pattern: /^\/zonas\/([0-9a-f-]{36})\/editar$/, title: 'Editar zona', view: viewZona, mount: mountZona });
+  }
+  if (state.me.role.key === 'superadmin') {
+    state.routes.set('/usuarios/nuevo', { path: '/usuarios/nuevo', title: 'Nuevo coordinador', view: viewCoordinador, mount: mountCoordinador });
+    state.patternRoutes.push({
+      pattern: /^\/usuarios\/([0-9a-f-]{36})\/editar$/,
+      title: 'Editar coordinador',
+      view: viewCoordinador,
+      mount: mountCoordinador,
+    });
+    state.patternRoutes.push({
+      pattern: /^\/bases-de-datos\/(\d{1,2})$/,
+      title: 'Bases de datos',
+      view: viewEntidadGeo,
+      mount: mountEntidadGeo,
+    });
+  }
+  renderNav(menu);
+  renderUser(state.me);
+  renderGodBanner(state.me);
+  render();
+  setupDevSwitcher(state.me).catch(() => {});
+}
+
+boot();
+
+// ---------------------------------------------------------------------------
+// Cuenta regresiva a la jornada electoral (apertura de casillas, hora del centro)
+// ---------------------------------------------------------------------------
+const ELECCION = { fecha: new Date('2027-06-06T08:00:00-06:00'), texto: '6 de junio de 2027' };
+
+function renderCountdown() {
+  const el = $('#countdown');
+  const ms = ELECCION.fecha - Date.now();
+  if (ms <= 0) {
+    const fin = new Date(ELECCION.fecha.getTime() + 10 * 3600 * 1000); // cierre de casillas 18:00
+    el.innerHTML = Date.now() < fin
+      ? `<span class="countdown__days">¡Hoy!</span><span class="countdown__label">Jornada electoral</span>`
+      : `<span class="countdown__label">Jornada electoral concluida</span><span class="countdown__date">${ELECCION.texto}</span>`;
+    el.title = `Jornada electoral: ${ELECCION.texto}`;
+    return;
+  }
+  const dias = Math.floor(ms / 86400000);
+  const horas = Math.floor((ms % 86400000) / 3600000);
+  const min = Math.floor((ms % 3600000) / 60000);
+  el.innerHTML = `
+    <span class="countdown__label">Faltan para la elección</span>
+    <span class="countdown__main"><span class="countdown__days">${fmtNum(dias)}</span><span class="countdown__unit">${dias === 1 ? 'día' : 'días'}</span></span>
+    <span class="countdown__time">${String(horas).padStart(2, '0')} h ${String(min).padStart(2, '0')} min</span>
+    <span class="countdown__date">${ELECCION.texto}</span>`;
+  el.title = `Faltan ${fmtNum(dias)} días para la elección del ${ELECCION.texto}`;
+  el.setAttribute('aria-label', el.title);
+}
+renderCountdown();
+setInterval(renderCountdown, 30000);
+
+// ---------------------------------------------------------------------------
+// Estado de conexión
+// ---------------------------------------------------------------------------
+const netStatus = $('#netStatus');
+function updateNet() {
+  netStatus.dataset.online = String(navigator.onLine);
+  netStatus.textContent = navigator.onLine ? 'En línea' : 'Sin conexión';
+}
+window.addEventListener('online', updateNet);
+window.addEventListener('offline', updateNet);
+updateNet();
+
+// ---------------------------------------------------------------------------
+// PWA: service worker + instalación
+// ---------------------------------------------------------------------------
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => console.error('SW error:', err));
+  });
+}
+
+let deferredPrompt = null;
+const installBtn = $('#installBtn');
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBtn.hidden = false;
+});
+installBtn.addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  installBtn.hidden = true;
+});
+window.addEventListener('appinstalled', () => (installBtn.hidden = true));

@@ -1,0 +1,12 @@
+node_modules
+data
+dist
+.claude
+.git
+*.log
+.env
+.env.*
+scripts
+design-system
+Dockerfile
+.dockerignore

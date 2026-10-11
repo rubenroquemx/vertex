@@ -23,6 +23,7 @@ import { viewZonas, mountZonas, viewZona, mountZona } from './zonas.js';
 import { viewEscritorioCPV, mountEscritorioCPV } from './escritorio-cpv.js';
 import { viewResponsables, mountResponsables, viewResponsable, mountResponsable } from './responsables.js';
 import { viewConfiguracionCPV, mountConfiguracionCPV } from './configuracion-cpv.js';
+import { viewConfiguracionSA, mountConfiguracionSA } from './configuracion-sa.js';
 
 const state = { me: null, routes: new Map() };
 
@@ -123,7 +124,7 @@ function buildMenu(me) {
       },
       {
         label: 'Sistema',
-        items: [{ path: '/configuracion', title: 'Configuración', icon: 'settings', view: placeholder('Usuarios, roles, permisos y catálogos.') }],
+        items: [{ path: '/configuracion', title: 'Configuración', icon: 'settings', view: viewConfiguracionSA, mount: mountConfiguracionSA }],
       }
     );
   }
@@ -1415,8 +1416,138 @@ async function setupDevSwitcher(me) {
 // ---------------------------------------------------------------------------
 // Inicio y cierre de sesión
 // ---------------------------------------------------------------------------
+// ---------- Restablecer contraseña con código por WhatsApp ----------
+function mostrarRecuperacion(usuarioInicial = '') {
+  const form = $('#loginForm');
+  const dev = $('.login__dev');
+  const box = $('#recBox');
+  const titulo = $('.login__title');
+  const sub = $('.login__sub');
+  const volver = (msg) => {
+    box.hidden = true;
+    box.innerHTML = '';
+    form.hidden = false;
+    if (dev) dev.hidden = false;
+    titulo.textContent = 'Inicia sesión';
+    sub.textContent = 'Sistema de estructura territorial electoral';
+    if (msg) {
+      $('#lgErr').textContent = '';
+      toast(msg);
+    }
+    $('#lgUser').focus();
+  };
+  form.hidden = true;
+  if (dev) dev.hidden = true;
+  box.hidden = false;
+  titulo.textContent = 'Restablecer contraseña';
+
+  // Paso 1: usuario → se envía el código por WhatsApp
+  const paso1 = () => {
+    sub.textContent = 'Te enviaremos un código por WhatsApp al teléfono registrado en tu cuenta.';
+    box.innerHTML = `
+      <form id="recForm1" novalidate>
+        <div class="field">
+          <label for="recUser">Usuario</label>
+          <input class="input" id="recUser" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(usuarioInicial)}" required>
+          <p class="field__error" id="recUser-err"></p>
+        </div>
+        <p class="form-error" id="recErr" role="alert"></p>
+        <button class="btn login__submit" type="submit">Enviar código</button>
+        <button type="button" class="link-btn login__forgot" data-volver>Volver a iniciar sesión</button>
+      </form>`;
+    $('#recUser').focus();
+    $('#recForm1').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('[type="submit"]');
+      const username = $('#recUser').value.trim().toLowerCase();
+      $('#recErr').textContent = '';
+      $('#recUser-err').textContent = '';
+      if (!username) {
+        $('#recUser-err').textContent = 'Escribe tu usuario.';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Enviando…';
+      try {
+        const r = await api('/api/auth/recuperar', { method: 'POST', body: { username } });
+        usuarioInicial = username;
+        paso2(r.mensaje);
+      } catch (err) {
+        $('#recErr').textContent = navigator.onLine ? err.message : 'Sin conexión. Intenta de nuevo cuando estés en línea.';
+        btn.disabled = false;
+        btn.textContent = 'Enviar código';
+      }
+    });
+  };
+
+  // Paso 2: código + contraseña nueva
+  const paso2 = (mensaje) => {
+    sub.textContent = mensaje;
+    box.innerHTML = `
+      <form id="recForm2" novalidate>
+        <div class="field">
+          <label for="recCode">Código de 6 dígitos</label>
+          <input class="input rec-code" id="recCode" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" required>
+          <p class="field__error" id="recCode-err"></p>
+        </div>
+        <div class="field">
+          <label for="recPass">Contraseña nueva</label>
+          <input class="input" id="recPass" name="password" type="password" autocomplete="new-password" aria-describedby="recPass-help" required>
+          <p class="field__help" id="recPass-help">Mínimo 8 caracteres, con letras y números.</p>
+          <p class="field__error" id="recPass-err"></p>
+        </div>
+        <div class="field">
+          <label for="recConfirm">Confirmar contraseña nueva</label>
+          <input class="input" id="recConfirm" name="confirm" type="password" autocomplete="new-password" required>
+          <p class="field__error" id="recConfirm-err"></p>
+        </div>
+        <p class="form-error" id="recErr" role="alert"></p>
+        <button class="btn login__submit" type="submit">Cambiar contraseña</button>
+        <div class="login__links">
+          <button type="button" class="link-btn" data-reenviar>Enviar otro código</button>
+          <button type="button" class="link-btn" data-volver>Volver</button>
+        </div>
+      </form>`;
+    const code = $('#recCode');
+    code.focus();
+    code.addEventListener('input', () => (code.value = code.value.replace(/\D/g, '').slice(0, 6)));
+    const setErrors = fieldErrorSetter(box, { code: 'recCode', password: 'recPass', confirm: 'recConfirm' });
+    $('#recForm2').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('[type="submit"]');
+      setErrors();
+      $('#recErr').textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Guardando…';
+      try {
+        await api('/api/auth/restablecer', {
+          method: 'POST',
+          body: { username: usuarioInicial, code: code.value, password: $('#recPass').value, confirm: $('#recConfirm').value },
+        });
+        $('#lgUser').value = usuarioInicial;
+        $('#lgPass').value = '';
+        volver('Contraseña actualizada. Ya puedes iniciar sesión.');
+      } catch (err) {
+        if (err.data?.fields) setErrors(err.data.fields);
+        else $('#recErr').textContent = navigator.onLine ? err.message : 'Sin conexión.';
+        btn.disabled = false;
+        btn.textContent = 'Cambiar contraseña';
+      }
+    });
+  };
+
+  box.onclick = (e) => {
+    if (e.target.closest('[data-volver]')) volver();
+    if (e.target.closest('[data-reenviar]')) paso1();
+  };
+  paso1();
+}
+
 async function showLogin() {
-  const devUsers = await api('/api/dev/users').catch(() => null);
+  const [devUsers, recup] = await Promise.all([
+    api('/api/dev/users').catch(() => null),
+    api('/api/auth/recuperar/disponible').catch(() => ({ disponible: false })),
+  ]);
   $('.layout').hidden = true;
   const box = $('#login');
   box.hidden = false;
@@ -1439,7 +1570,9 @@ async function showLogin() {
         </div>
         <p class="form-error" id="lgErr" role="alert"></p>
         <button class="btn login__submit" type="submit">Entrar</button>
+        ${recup.disponible ? '<button type="button" class="link-btn login__forgot" id="lgForgot">¿Olvidaste tu contraseña?</button>' : ''}
       </form>
+      <div id="recBox" hidden></div>
       ${
         devUsers?.length
           ? `<div class="login__dev">
@@ -1484,6 +1617,7 @@ async function showLogin() {
       $('#lgPass').select();
     }
   });
+  $('#lgForgot')?.addEventListener('click', () => mostrarRecuperacion($('#lgUser').value));
   $('#lgDevGo')?.addEventListener('click', async () => {
     await api('/api/dev/session', { method: 'POST', body: { userId: $('#lgDev').value } });
     location.reload();

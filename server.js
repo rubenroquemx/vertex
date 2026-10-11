@@ -6,6 +6,9 @@ const db = require('./src/db');
 const store = require('./src/store');
 const { users, avatars, passwords, audit, sessions } = store;
 const { importarSiHaceFalta } = require('./src/importar-json');
+const settings = require('./src/settings');
+const whatsapp = require('./src/whatsapp');
+const recuperar = require('./src/recuperar');
 const { visibleUsers, canView, creatableRole, chainOf } = require('./src/access');
 const auth = require('./src/auth');
 const { requireUser, inGodMode } = auth;
@@ -99,6 +102,27 @@ app.get('/api/roles', (req, res) => res.json(ROLES));
 // --- Sesión -----------------------------------------------------------------
 app.post('/api/auth/login', auth.login);
 app.post('/api/auth/logout', auth.logout);
+
+// --- Restablecer contraseña con código por WhatsApp (pantalla de acceso) -----
+app.get('/api/auth/recuperar/disponible', (req, res) => res.json({ disponible: whatsapp.listo() }));
+
+app.post('/api/auth/recuperar', async (req, res) => {
+  try {
+    res.json(await recuperar.solicitar(req.body?.username, req.ip));
+  } catch (err) {
+    if (!(err instanceof recuperar.RecuperarError)) throw err;
+    res.status(err.status).json(err.fields ? { error: err.message, fields: err.fields } : { error: err.message });
+  }
+});
+
+app.post('/api/auth/restablecer', async (req, res) => {
+  try {
+    res.json(await recuperar.restablecer(req.body || {}));
+  } catch (err) {
+    if (!(err instanceof recuperar.RecuperarError)) throw err;
+    res.status(err.status).json(err.fields ? { error: err.message, fields: err.fields } : { error: err.message });
+  }
+});
 
 app.get('/api/me', requireUser, async (req, res) => {
   res.json({
@@ -462,6 +486,57 @@ app.put('/api/responsables/:id', requireUser, requireCZ, async (req, res) => {
   res.json(rsDetail(users.get(current.id)));
 });
 
+// --- Configuración › WhatsApp (Evolution API) — Super administrador ---------
+const waPublico = () => {
+  const p = whatsapp.publico();
+  return { ...p, actualizado: p.actualizado ? { at: p.actualizado.updatedAt, by: users.get(p.actualizado.updatedBy)?.name || null } : null };
+};
+
+app.get('/api/configuracion/whatsapp', requireUser, requireRole('superadmin'), (req, res) => {
+  res.json({ ...waPublico(), confirm: { name: req.realUser.name, hasPassword: Boolean(req.realUser.passwordHash) } });
+});
+
+app.put('/api/configuracion/whatsapp', requireUser, requireRole('superadmin'), async (req, res) => {
+  const v = whatsapp.validar(req.body || {});
+  if (Object.keys(v.errors).length) return invalid(res, v.errors);
+  const check = auth.confirmPassword(req.realUser, req.body?.password);
+  if (!check.ok) {
+    return res.status(check.status).json(check.field ? { error: check.error, fields: { password: check.error } } : { error: check.error });
+  }
+  await settings.set(whatsapp.KEY, v.config, req.realUser.id);
+  // En bitácora no se guarda la API key
+  const { apiKey, ...sinClave } = v.config;
+  await audit.add({ action: 'settings.whatsapp', by: req.realUser.id, after: { ...sinClave, apiKeyCambiada: Boolean(String(req.body?.apiKey || '').trim()) } });
+  res.json(waPublico());
+});
+
+// Prueba con los datos del formulario (sin guardar); la API key vacía usa la guardada
+app.post('/api/configuracion/whatsapp/probar', requireUser, requireRole('superadmin'), async (req, res) => {
+  const v = whatsapp.validar({ ...req.body, enabled: false });
+  if (Object.keys(v.errors).length) return invalid(res, v.errors);
+  try {
+    res.json(await whatsapp.estado(v.config));
+  } catch (err) {
+    if (!(err instanceof whatsapp.WhatsAppError)) throw err;
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post('/api/configuracion/whatsapp/mensaje-prueba', requireUser, requireRole('superadmin'), async (req, res) => {
+  const v = whatsapp.validar({ ...req.body, enabled: false });
+  if (Object.keys(v.errors).length) return invalid(res, v.errors);
+  const phone = String(req.body?.phone || '').replace(/\D/g, '');
+  if (phone.length !== 10) return invalid(res, { phone: 'Escribe un teléfono de 10 dígitos.' });
+  try {
+    await whatsapp.enviarTexto(phone, 'Mensaje de prueba de VERTEX: la conexión con WhatsApp funciona correctamente. ✅', v.config);
+    await audit.add({ action: 'settings.whatsapp_test', by: req.realUser.id });
+    res.json({ ok: true });
+  } catch (err) {
+    if (!(err instanceof whatsapp.WhatsAppError)) throw err;
+    res.status(502).json({ error: err.message });
+  }
+});
+
 // --- Perfil personal (todos los niveles) -----------------------------------
 app.patch('/api/me', requireUser, async (req, res) => {
   const { data, errors } = cleanContact(req.body);
@@ -667,6 +742,7 @@ async function start() {
   await db.migrate();
   await importarSiHaceFalta();
   await store.init();
+  await settings.init();
   await geo.init();
   await padron.init();
   await auth.ensureAdminCredentials();

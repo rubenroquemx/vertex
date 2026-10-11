@@ -113,6 +113,29 @@ const MIGRATIONS = [
       CREATE INDEX promovidos_promotor_idx ON promovidos(promotor_id);
     `,
   },
+  {
+    id: 2,
+    name: 'configuración del sistema y restablecimiento de contraseña',
+    sql: `
+      CREATE TABLE settings (
+        key         text PRIMARY KEY,
+        value       jsonb NOT NULL,
+        updated_at  timestamptz NOT NULL DEFAULT now(),
+        updated_by  uuid REFERENCES users(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE password_resets (
+        id          uuid PRIMARY KEY,
+        user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        code_hash   text NOT NULL,
+        attempts    integer NOT NULL DEFAULT 0,
+        expires_at  timestamptz NOT NULL,
+        used_at     timestamptz,
+        created_at  timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX password_resets_user_idx ON password_resets(user_id, created_at DESC);
+    `,
+  },
 ];
 
 async function migrate() {

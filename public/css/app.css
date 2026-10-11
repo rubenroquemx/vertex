@@ -1304,8 +1304,8 @@ select.input { padding-right: 32px; }
    Técnica: una copia difuminada del recuadro, más grande y detrás de él, con un degradado
    lineal cuyo fondo se desplaza (background-position) en un ciclo de 10 s. */
 .login {
-  --glow-a: #0fffc1;   /* colores del resplandor */
-  --glow-b: #7e0fff;
+  --glow-a: #9d2449;   /* resplandor: guinda */
+  --glow-b: #bc955c;   /* y dorado */
   position: relative; overflow: hidden; isolation: isolate;
   background: #050505;
   grid-template-rows: 1fr auto;
@@ -1318,7 +1318,7 @@ select.input { padding-right: 32px; }
   background-size: 200% 200%;
   filter: blur(40px);
   transform: scale(1.15);
-  opacity: .75;
+  opacity: .85;
   animation: vx-glow 10s ease infinite;
 }
 @keyframes vx-glow {

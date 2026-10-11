@@ -33,8 +33,12 @@ export async function viewPanelSeccion() {
   const faltan = Math.max(d.promotores - d.registrados, 0);
   const avance = d.promotores ? Math.min(Math.round((d.registrados / d.promotores) * 100), 100) : 0;
   const varias = d.secciones.length > 1;
+  const promovidos = d.promovidos || 0;
+  const faltanProm = Math.max(d.meta - promovidos, 0);
+  const avanceProm = d.meta ? Math.min(Math.round((promovidos / d.meta) * 100), 100) : 0;
 
   return `${head}
+    <div class="ps-heroes">
     <section class="ps-hero" aria-labelledby="psTitle">
       <p class="ps-hero__label">Promotores Territoriales que debes tener</p>
       <p class="ps-hero__num" id="psTitle"><strong>${fmtNum(d.promotores)}</strong><span>${d.promotores === 1 ? 'promotor' : 'promotores'}</span></p>
@@ -44,6 +48,17 @@ export async function viewPanelSeccion() {
         <p>${fmtNum(d.registrados)} de ${fmtNum(d.promotores)} registrados · ${faltan ? `te ${faltan === 1 ? 'falta' : 'faltan'} <strong>${fmtNum(faltan)}</strong>` : '<strong>meta cubierta</strong>'}</p>
       </div>
     </section>
+
+    <section class="ps-hero" aria-labelledby="psMeta">
+      <p class="ps-hero__label">Meta global de promovidos</p>
+      <p class="ps-hero__num" id="psMeta"><strong>${fmtNum(d.meta)}</strong><span>${d.meta === 1 ? 'promovido' : 'promovidos'}</span></p>
+      <p class="ps-hero__sub">en la ${esc(etiqueta)} · ${esc(d.secciones[0].municipio)}</p>
+      <div class="ps-hero__progress">
+        <div class="ps-bar" role="progressbar" aria-label="Promovidos registrados" aria-valuemin="0" aria-valuemax="${d.meta}" aria-valuenow="${promovidos}"><span style="width:${avanceProm}%"></span></div>
+        <p>${fmtNum(promovidos)} de ${fmtNum(d.meta)} registrados · ${faltanProm ? `${faltanProm === 1 ? 'falta' : 'faltan'} <strong>${fmtNum(faltanProm)}</strong>` : '<strong>meta cubierta</strong>'}</p>
+      </div>
+    </section>
+    </div>
 
     <section class="card ps-calc" aria-labelledby="psCalc">
       <h3 class="card__title" id="psCalc">¿Cómo se calculó?</h3>

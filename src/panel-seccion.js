@@ -30,6 +30,7 @@ function resumen(resp) {
     meta: sum('meta'),
     promotores: sum('promotores'),
     registrados,
+    promovidos: 0, // se contará cuando exista la captura de promovidos
   };
 }
 

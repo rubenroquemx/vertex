@@ -1,6 +1,6 @@
 // Responsables de Sección del Coordinador de Zona: resumen + alta/edición con mapa.
 // Se asigna una sola sección de la zona; cada sección admite un solo responsable.
-import { ICONS, $, esc, fmtNum, api, fieldErrorSetter, submitWith, toast, homeControl, navigate } from './lib.js';
+import { ICONS, $, esc, fmtNum, fmtSeccion, api, fieldErrorSetter, submitWith, toast, homeControl, navigate } from './lib.js';
 import { I, generatePassword, debounce, showAccessDialog } from './coordinador.js';
 import { baseMap, seccionesGeo } from './zonas.js';
 
@@ -65,7 +65,7 @@ export async function viewResponsables(route, _params, state) {
                     .map(
                       (r) => `<tr data-rs="${r.id}" tabindex="0">
                         <td>${esc(r.name)}<small class="muted-block mono">${r.username ? `@${esc(r.username)}` : ''}</small></td>
-                        <td><div class="secchips secchips--static">${r.secciones.map((s) => `<span class="secchip">${s}</span>`).join('')}</div></td>
+                        <td><div class="secchips secchips--static">${r.secciones.map((s) => `<span class="secchip">${fmtSeccion(s)}</span>`).join('')}</div></td>
                         <td class="num num--r">${num(r.electores)}</td>
                         <td class="cell-action">
                           <button class="icon-btn icon-btn--table" type="button" data-action="edit" data-id="${r.id}" title="Editar ${esc(r.name)}" aria-label="Editar ${esc(r.name)}">${ICONS.edit}</button>${
@@ -112,7 +112,7 @@ export function mountResponsables(root, route, _params, state, { enterGodMode, o
         style: (f) => style(bySec.get(f.properties.seccion)),
         onEachFeature(f, l) {
           const s = bySec.get(f.properties.seccion);
-          const label = `Sección ${s.clave} · ${s.responsable ? s.responsable.name : 'Sin responsable'}${s.electores !== null ? ` · ${fmtNum(s.electores)} electores` : ''}`;
+          const label = `Sección ${fmtSeccion(s.clave)} · ${s.responsable ? s.responsable.name : 'Sin responsable'}${s.electores !== null ? ` · ${fmtNum(s.electores)} electores` : ''}`;
           l.bindTooltip(esc(label), { sticky: true, direction: 'top', className: 'map-tip' });
           l.on({ mouseover: () => (info.textContent = label), mouseout: () => (info.textContent = resumenTxt) });
           if (s.responsable) {
@@ -348,14 +348,14 @@ export function mountResponsable(root, route) {
         ? { color: '#0a0a0a', weight: 1.8, opacity: 1, fillColor: C_SELECCION, fillOpacity: 0.55 }
         : styleVacante;
   const secLabel = (s) =>
-    `Sección ${s.clave} · ${munName(s.municipio)}${s.electores !== null ? ` · ${fmtNum(s.electores)} electores` : ''}${s.responsable ? ` · Responsable: ${s.responsable.name}` : ''}`;
+    `Sección ${fmtSeccion(s.clave)} · ${munName(s.municipio)}${s.electores !== null ? ` · ${fmtNum(s.electores)} electores` : ''}${s.responsable ? ` · Responsable: ${s.responsable.name}` : ''}`;
   const totalsText = () => (sel.size ? `Sección ${[...sel][0]} seleccionada` : 'Haz clic en el mapa o en la lista para elegir la sección.');
 
   function toggle(clave) {
     const s = bySec.get(clave);
     if (!s) return;
     if (s.responsable) {
-      info.textContent = `La sección ${clave} ya tiene responsable: ${s.responsable.name}.`;
+      info.textContent = `La sección ${fmtSeccion(clave)} ya tiene responsable: ${s.responsable.name}.`;
       return;
     }
     // Una sola sección: elegir otra reemplaza la anterior
@@ -405,13 +405,13 @@ export function mountResponsable(root, route) {
   const onlyFree = $('#rOnlyFree', root);
   function renderList() {
     const q = search.value.trim();
-    const rows = op.secciones.filter((s) => (!q || String(s.clave).includes(q)) && (!onlyFree.checked || !s.responsable || sel.has(s.clave)));
+    const rows = op.secciones.filter((s) => (!q || fmtSeccion(s.clave).includes(q) || String(s.clave).includes(q)) && (!onlyFree.checked || !s.responsable || sel.has(s.clave)));
     list.innerHTML = rows.length
       ? rows
           .map(
             (s) => `<label class="unit unit--sec ${sel.has(s.clave) ? 'is-selected' : ''} ${s.responsable ? 'is-disabled' : ''}">
               <input type="radio" name="rSeccion" value="${s.clave}" ${sel.has(s.clave) ? 'checked' : ''} ${s.responsable ? 'disabled' : ''}>
-              <span class="unit__name">Sección ${s.clave}<small>${esc(munName(s.municipio))}${s.responsable ? ` · ${esc(s.responsable.name)}` : ''}</small></span>
+              <span class="unit__name">Sección ${fmtSeccion(s.clave)}<small>${esc(munName(s.municipio))}${s.responsable ? ` · ${esc(s.responsable.name)}` : ''}</small></span>
               <span class="unit__stats">${s.electores !== null ? `${fmtNum(s.electores)} electores` : ''}</span>
             </label>`
           )
@@ -420,7 +420,7 @@ export function mountResponsable(root, route) {
   }
   function renderTotals() {
     const electores = op.hasPadron ? [...sel].reduce((t, c) => t + (bySec.get(c)?.electores || 0), 0) : null;
-    $('#rTotSecc', root).textContent = sel.size ? `Sección ${[...sel].sort((a, b) => a - b).join(', ')}` : 'Ninguna sección elegida';
+    $('#rTotSecc', root).textContent = sel.size ? `Sección ${[...sel].sort((a, b) => a - b).map(fmtSeccion).join(', ')}` : 'Ninguna sección elegida';
     $('#rTotElect', root).textContent = electores !== null ? `${fmtNum(electores)} electores` : 'Sin padrón cargado';
     info.textContent = totalsText();
   }
@@ -454,7 +454,7 @@ export function mountResponsable(root, route) {
         password: body.password,
         wasEditing: editing,
         roleLabel: 'Responsable de Sección',
-        subtitle: `${n === 1 ? 'Sección' : 'Secciones'} ${saved.territorio.secciones.join(', ')}`,
+        subtitle: `${n === 1 ? 'Sección' : 'Secciones'} ${saved.territorio.secciones.map(fmtSeccion).join(', ')}`,
         backLabel: 'Ir a Responsables',
         backPath: '/responsables',
       });

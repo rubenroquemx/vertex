@@ -57,6 +57,8 @@ async function api(path, { method = 'GET', body } = {}) {
 }
 
 const fmtNum = (n) => Number(n).toLocaleString('es-MX');
+// Sección electoral siempre con 4 dígitos, como en la credencial del INE (420 → 0420)
+const fmtSeccion = (s) => (s === null || s === undefined || s === '' ? '' : String(Number(s)).padStart(4, '0'));
 const fmtDateTime = (iso) =>
   new Date(iso).toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -223,6 +225,7 @@ export {
   fmtDate,
   fmtPhone,
   fmtNum,
+  fmtSeccion,
   fmtDateTime,
   avatarInner,
   api,

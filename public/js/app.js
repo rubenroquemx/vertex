@@ -7,6 +7,7 @@ import {
   fmtDate,
   fmtPhone,
   fmtNum,
+  fmtSeccion,
   fmtDateTime,
   avatarInner,
   api,
@@ -384,7 +385,7 @@ function mountFichaCpv(root, route) {
           },
           onEachFeature(f, layer) {
             const z = zonaDe.get(f.properties.seccion);
-            layer.bindTooltip(esc(`Sección ${f.properties.seccion}${z ? ` · ${z.nombre}` : ''}`), { sticky: true, direction: 'top', className: 'map-tip' });
+            layer.bindTooltip(esc(`Sección ${fmtSeccion(f.properties.seccion)}${z ? ` · ${z.nombre}` : ''}`), { sticky: true, direction: 'top', className: 'map-tip' });
           },
         }).addTo(map);
         const bounds = capa.getBounds();
@@ -938,7 +939,7 @@ function mountBasesDatos(root, route) {
 
 // ---------- Detalle de entidad: mapa + catálogo ----------
 const MAP_LAYERS = [
-  { key: 'seccion', name: 'Secciones', label: (p, c) => `Sección ${p.seccion} · ${c.munName(p.municipio)} · DF ${p.distrito_federal} · DL ${p.distrito_local}` },
+  { key: 'seccion', name: 'Secciones', label: (p, c) => `Sección ${fmtSeccion(p.seccion)} · ${c.munName(p.municipio)} · DF ${p.distrito_federal} · DL ${p.distrito_local}` },
   { key: 'municipio', name: 'Municipios', label: (p) => `Municipio ${p.municipio} · ${p.nombre || ''}` },
   { key: 'distrito_local', name: 'Distritos locales', label: (p) => `Distrito local ${p.distrito_local}` },
   { key: 'distrito_federal', name: 'Distritos federales', label: (p) => `Distrito federal ${p.distrito_federal}` },

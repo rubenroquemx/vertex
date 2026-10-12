@@ -1,5 +1,5 @@
 // Zonas del Coordinador de Promoción del Voto (CPV): resumen + alta/edición con mapa.
-import { ICONS, $, esc, fmtNum, api, fieldErrorSetter, submitWith, toast, GEO_STYLE, homeControl, navigate } from './lib.js';
+import { ICONS, $, esc, fmtNum, fmtSeccion, api, fieldErrorSetter, submitWith, toast, GEO_STYLE, homeControl, navigate } from './lib.js';
 import { I, generatePassword, debounce, showAccessDialog } from './coordinador.js';
 
 const METODOS = [
@@ -139,7 +139,7 @@ export function mountZonas(root, route, _params, state, { enterGodMode, openDele
         style: (f) => style(bySec.get(f.properties.seccion)),
         onEachFeature(f, l) {
           const s = bySec.get(f.properties.seccion);
-          const label = `Sección ${s.clave} · ${s.zona ? `${s.zona.codigo} ${s.zona.nombre}` : 'Vacante'}${s.electores !== null ? ` · ${fmtNum(s.electores)} electores` : ''}`;
+          const label = `Sección ${fmtSeccion(s.clave)} · ${s.zona ? `${s.zona.codigo} ${s.zona.nombre}` : 'Vacante'}${s.electores !== null ? ` · ${fmtNum(s.electores)} electores` : ''}`;
           l.bindTooltip(esc(label), { sticky: true, direction: 'top', className: 'map-tip' });
           l.on({ mouseover: () => (info.textContent = label), mouseout: () => (info.textContent = resumenTxt) });
           if (s.zona) {
@@ -452,7 +452,7 @@ export function mountZona(root, route) {
 
   const munName = (c) => op.municipios[c] || `Municipio ${c}`;
   const secLabel = (s) =>
-    `Sección ${s.clave} · ${munName(s.municipio)} · DL ${s.distritoLocal} · DF ${s.distritoFederal}${s.electores !== null ? ` · ${fmtNum(s.electores)} electores` : ''}${
+    `Sección ${fmtSeccion(s.clave)} · ${munName(s.municipio)} · DL ${s.distritoLocal} · DF ${s.distritoFederal}${s.electores !== null ? ` · ${fmtNum(s.electores)} electores` : ''}${
       s.zona ? ` · Asignada a ${s.zona.codigo}` : ''
     }`;
 
@@ -463,7 +463,7 @@ export function mountZona(root, route) {
       return;
     }
     if (s.zona) {
-      info.textContent = `La sección ${s.clave} ya pertenece a ${s.zona.codigo} · ${s.zona.nombre}.`;
+      info.textContent = `La sección ${fmtSeccion(s.clave)} ya pertenece a ${s.zona.codigo} · ${s.zona.nombre}.`;
       return;
     }
     if (m.field) {
@@ -558,7 +558,7 @@ export function mountZona(root, route) {
       const chosen = [...selected()].sort((a, b) => a - b);
       list.innerHTML = chosen.length
         ? `<div class="secchips">${chosen
-            .map((c) => `<button type="button" class="secchip" data-sec="${c}" aria-label="Quitar sección ${c}">${c}<span aria-hidden="true">${ICONS.close}</span></button>`)
+            .map((c) => `<button type="button" class="secchip" data-sec="${c}" aria-label="Quitar sección ${fmtSeccion(c)}">${fmtSeccion(c)}<span aria-hidden="true">${ICONS.close}</span></button>`)
             .join('')}</div>
            <button type="button" class="link-btn" data-clear>Quitar todas</button>`
         : '<p class="units__empty">Aún no has elegido secciones.</p>';

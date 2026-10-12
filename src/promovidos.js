@@ -14,6 +14,7 @@ const { query, tx } = require('./db');
 const { users, promovidos: cachePromovidos } = require('./store');
 const geo = require('./geo');
 const { chainOf } = require('./access');
+const { fmtSeccion } = require('./formato');
 
 // Jornada electoral: la INE debe estar vigente ese año para poder votar
 const ELECCION = { anio: 2027, texto: '6 de junio de 2027' };
@@ -96,7 +97,7 @@ async function validar(promotor, body, { excluirId = null } = {}) {
 
   const seccion = Number(String(body.seccion || '').trim());
   if (!Number.isInteger(seccion) || seccion <= 0) errors.seccion = 'Escribe la sección que aparece en la INE.';
-  else if (seccion !== ctx.seccion) errors.seccion = `Solo puedes capturar promovidos de la sección ${ctx.seccion}. Esta INE es de la sección ${seccion}.`;
+  else if (seccion !== ctx.seccion) errors.seccion = `Solo puedes capturar promovidos de la sección ${fmtSeccion(ctx.seccion)}. Esta INE es de la sección ${fmtSeccion(seccion)}.`;
 
   const paterno = upper(body.paterno);
   const materno = upper(body.materno);
@@ -288,7 +289,7 @@ function plano(data, clave, curp, seccion) {
   const d = data.domicilio || {};
   return [
     ['Vigencia', data.vigencia],
-    ['Sección', seccion],
+    ['Sección', fmtSeccion(seccion)],
     ['Apellido paterno', data.paterno],
     ['Apellido materno', data.materno],
     ['Nombre(s)', data.nombres],

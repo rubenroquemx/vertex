@@ -1,6 +1,7 @@
 // Ficha del promovido en PDF: datos, fotos de la INE y domicilio.
 // No incluye el historial de cambios ni las observaciones.
 const PDFDocument = require('pdfkit');
+const { fmtSeccion } = require('./formato');
 
 const ESTATUS = { en_revision: 'En revisión', validado: 'Validado', rechazado: 'Rechazado' };
 const ZONA = 'America/Mexico_City';
@@ -46,7 +47,7 @@ function generar(p, fotos, generadoPor) {
       .fontSize(10)
       .fillColor(GRIS)
       .text(
-        [`Estatus: ${ESTATUS[p.estatus] || 'En revisión'}`, `Sección ${p.seccion}`, `Registrado el ${fecha(p.createdAt)}${p.promotor ? ` por ${p.promotor}` : ''}`].join('   ·   '),
+        [`Estatus: ${ESTATUS[p.estatus] || 'En revisión'}`, `Sección ${fmtSeccion(p.seccion)}`, `Registrado el ${fecha(p.createdAt)}${p.promotor ? ` por ${p.promotor}` : ''}`].join('   ·   '),
         { width: ancho }
       );
 
@@ -101,7 +102,7 @@ function generar(p, fotos, generadoPor) {
       ['Clave de elector', p.claveElector],
       ['CURP', p.curp],
       ['Vigencia', String(p.vigencia || '')],
-      ['Sección', String(p.seccion)],
+      ['Sección', fmtSeccion(p.seccion)],
       ['Teléfono (WhatsApp)', telefono(p.telefono)],
     ]);
 

@@ -1,7 +1,7 @@
 // Escritorio del Coordinador de Promoción del Voto (CPV).
 // Banda de cifras clave · mapa del territorio · zonas con mejor desempeño ·
 // promovidos de los últimos 7 días por zona · avance de la estructura por zona.
-import { ICONS, $, esc, fmtNum, api, homeControl, navigate } from './lib.js';
+import { ICONS, $, esc, fmtNum, fmtSeccion, api, homeControl, navigate } from './lib.js';
 import { baseMap, seccionesGeo } from './zonas.js';
 
 const DIA = new Intl.DateTimeFormat('es-MX', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -269,7 +269,7 @@ export function mountEscritorioCPV(root, route) {
         onEachFeature(f, l) {
           const s = bySec.get(f.properties.seccion);
           const z = zonaById.get(s?.z);
-          const label = `Sección ${f.properties.seccion} · ${z ? `${z.codigo} ${z.nombre}` : 'Sin asignar'}${s?.e !== null && s?.e !== undefined ? ` · ${fmtNum(s.e)} electores` : ''}`;
+          const label = `Sección ${fmtSeccion(f.properties.seccion)} · ${z ? `${z.codigo} ${z.nombre}` : 'Sin asignar'}${s?.e !== null && s?.e !== undefined ? ` · ${fmtNum(s.e)} electores` : ''}`;
           l.bindTooltip(esc(label), { sticky: true, direction: 'top', className: 'map-tip' });
           l.on({
             mouseover: () => {

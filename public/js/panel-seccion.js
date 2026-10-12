@@ -1,6 +1,6 @@
 // Panel del Responsable de Sección: cuántos Promotores Territoriales debe tener en su sección,
 // según el cálculo (factor de conversión) que definió su Coordinador de Promoción del Voto.
-import { ICONS, esc, fmtNum, api } from './lib.js';
+import { ICONS, esc, fmtNum, fmtSeccion, api } from './lib.js';
 
 export async function viewPanelSeccion() {
   const d = await api('/api/panel/seccion');
@@ -15,7 +15,7 @@ export async function viewPanelSeccion() {
         <span>Tu Coordinador de Zona debe asignarte una sección.</span>
       </div>`;
   }
-  const nombres = d.secciones.map((s) => s.clave).join(', ');
+  const nombres = d.secciones.map((s) => fmtSeccion(s.clave)).join(', ');
   const etiqueta = `${d.secciones.length === 1 ? 'sección' : 'secciones'} ${nombres}`;
 
   if (d.promotores === null) {

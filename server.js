@@ -21,6 +21,7 @@ const metas = require('./src/metas');
 const panelSeccion = require('./src/panel-seccion');
 const promovidos = require('./src/promovidos');
 const promovidoPdf = require('./src/promovido-pdf');
+const { fmtSeccion } = require('./src/formato');
 const padron = require('./src/padron');
 const territory = require('./src/territory');
 const { PARTIDOS } = require('./src/partidos');
@@ -465,7 +466,7 @@ app.get('/api/promovidos/:id/pdf', requireUser, async (req, res) => {
   const pdf = await promovidoPdf.generar(p, { frente, reverso }, req.user.name);
   await audit.add({ action: 'promovido.pdf', by: req.realUser.id, as: req.user.id, promovido: p.id });
   // Nombre del archivo: clave de elector y sección a 4 dígitos (p. ej. GNCRIN85072827M600-0420.pdf)
-  const archivo = `${String(p.claveElector).replace(/[^A-Z0-9]/gi, '')}-${String(p.seccion).padStart(4, '0')}.pdf`;
+  const archivo = `${String(p.claveElector).replace(/[^A-Z0-9]/gi, '')}-${fmtSeccion(p.seccion)}.pdf`;
   res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${archivo}"`, 'Cache-Control': 'private, no-store' });
   res.send(pdf);
 });

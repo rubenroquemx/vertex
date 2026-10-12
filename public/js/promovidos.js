@@ -1,6 +1,6 @@
 // Promovidos del Promotor Territorial: captura (INE + datos + domicilio) y lista.
 // La sección y la vigencia se validan aquí para avisar al momento, y de nuevo en el servidor.
-import { ICONS, $, esc, fmtNum, fmtDate, fmtDateTime, fmtPhone, api, fieldErrorSetter, toast, navigate } from './lib.js';
+import { ICONS, $, esc, fmtNum, fmtSeccion, fmtDate, fmtDateTime, fmtPhone, api, fieldErrorSetter, toast, navigate } from './lib.js';
 import { I, debounce } from './coordinador.js';
 import { camaraDisponible, abrirCamara, ajustarEnGuia } from './ine-camara.js';
 
@@ -107,7 +107,7 @@ export async function viewNuevoPromovido(route, params = []) {
         <section class="card wiz-step" data-paso="2" aria-label="Paso 2: ${PASOS[1]}" hidden>
           <div class="field-row field-row--fotos">
             ${campo('pVigencia', 'vigencia', 'Vigencia', { req: true, help: `Año final de la INE: ${ctx.vigenciaMin} o posterior.`, attrs: 'inputmode="numeric" maxlength="4"' })}
-            ${campo('pSeccion', 'seccion', 'Sección', { req: true, help: `Debe ser la ${fmtNum(ctx.seccion)}.`, attrs: 'inputmode="numeric" maxlength="4"' })}
+            ${campo('pSeccion', 'seccion', 'Sección', { req: true, help: `Debe ser la ${fmtSeccion(ctx.seccion)}.`, attrs: 'inputmode="numeric" maxlength="4"' })}
           </div>
           <div class="field-row">
             ${campo('pPaterno', 'paterno', 'Apellido paterno', { req: true, cls: 'input--upper', attrs: 'maxlength="60" autocapitalize="characters"' })}
@@ -288,7 +288,7 @@ export function mountNuevoPromovido(root, route) {
 
   // ---------- Avisos inmediatos: vigencia y sección ----------
   const msgVigencia = (v) => `Esta INE vence en ${v}: no sirve para votar el ${ctx.eleccion}. Se requiere vigencia ${ctx.vigenciaMin} o posterior.`;
-  const msgSeccion = () => `Solo puedes capturar promovidos de la sección ${ctx.seccion}.`;
+  const msgSeccion = () => `Solo puedes capturar promovidos de la sección ${fmtSeccion(ctx.seccion)}.`;
   $('#pVigencia', root).addEventListener('blur', (e) => {
     const v = Number(e.target.value);
     err('pVigencia', e.target.value.length === 4 && v < ctx.vigenciaMin ? msgVigencia(v) : '');
@@ -398,7 +398,7 @@ export function mountNuevoPromovido(root, route) {
     </section>`;
   function resumen() {
     $('#wizResumen', root).innerHTML = [
-      bloque('Credencial', 2, [fila('Vigencia', val('pVigencia')), fila('Sección', val('pSeccion'))]),
+      bloque('Credencial', 2, [fila('Vigencia', val('pVigencia')), fila('Sección', fmtSeccion(val('pSeccion')))]),
       bloque('Datos personales', 2, [
         fila('Apellido paterno', val('pPaterno')),
         fila('Apellido materno', val('pMaterno')),
@@ -456,7 +456,7 @@ export function mountNuevoPromovido(root, route) {
       el.value = v ?? '';
     };
     poner('pVigencia', actual.vigencia);
-    poner('pSeccion', actual.seccion);
+    poner('pSeccion', fmtSeccion(actual.seccion));
     poner('pPaterno', actual.paterno);
     poner('pMaterno', actual.materno);
     poner('pNombres', actual.nombres);
@@ -631,7 +631,7 @@ export async function viewPromovido(route, params, state) {
       <div class="page-head page-head--actions">
         <div>
           <h2>${esc(p.nombre)}</h2>
-          <p>${chipEstatus(p.estatus)} Sección ${fmtNum(p.seccion)} · registrado el ${fmtDate(p.createdAt)}${p.promotor ? ` por ${esc(p.promotor)}` : ''}${p.revisadoPor ? ` · revisado por ${esc(p.revisadoPor)}` : ''}</p>
+          <p>${chipEstatus(p.estatus)} Sección ${fmtSeccion(p.seccion)} · registrado el ${fmtDate(p.createdAt)}${p.promotor ? ` por ${esc(p.promotor)}` : ''}${p.revisadoPor ? ` · revisado por ${esc(p.revisadoPor)}` : ''}</p>
         </div>
         <div class="promo-ficha__acciones">
           <a class="btn btn--secondary" href="/api/promovidos/${p.id}/pdf" download title="Descargar la ficha en PDF (sin historial ni observaciones)">${ICONO_PDF}<span>PDF</span></a>
@@ -648,7 +648,7 @@ export async function viewPromovido(route, params, state) {
               ${dato('Clave de elector', esc(p.claveElector), 'mono')}
               ${dato('CURP', esc(p.curp), 'mono')}
               ${dato('Vigencia', esc(p.vigencia))}
-              ${dato('Sección', fmtNum(p.seccion))}
+              ${dato('Sección', fmtSeccion(p.seccion))}
               ${dato('Teléfono (WhatsApp)', p.telefono ? `<a href="https://wa.me/52${esc(p.telefono)}" target="_blank" rel="noopener">${esc(fmtPhone(p.telefono))}</a>` : '')}
             </dl>
           </section>

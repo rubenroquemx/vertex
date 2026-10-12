@@ -5,6 +5,7 @@
 const geo = require('./geo');
 const padron = require('./padron');
 const { users } = require('./store');
+const { fmtSeccion } = require('./formato');
 
 const responsablesDe = (zonaId) => users.all().filter((u) => u.parentId === zonaId && u.role === 'resp_seccion');
 
@@ -70,7 +71,7 @@ function validar(zona, body, excludeId = null) {
   else if (pedidas.some((s) => !propias.has(s))) errors.territorio = 'Hay secciones fuera de tu zona.';
   else {
     const ocupada = pedidas.find((s) => taken.has(s));
-    if (ocupada) errors.territorio = `La sección ${ocupada} ya tiene responsable (${taken.get(ocupada).name}).`;
+    if (ocupada) errors.territorio = `La sección ${fmtSeccion(ocupada)} ya tiene responsable (${taken.get(ocupada).name}).`;
   }
   return { errors, territorio: { entidad: ctx.entidad.clave, tipo: 'secciones', metodo: 'manual', secciones: pedidas } };
 }

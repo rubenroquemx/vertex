@@ -19,6 +19,7 @@ const escritorio = require('./src/escritorio');
 const responsables = require('./src/responsables');
 const metas = require('./src/metas');
 const panelSeccion = require('./src/panel-seccion');
+const panelSA = require('./src/panel-sa');
 const promovidos = require('./src/promovidos');
 const promovidoPdf = require('./src/promovido-pdf');
 const notificaciones = require('./src/notificaciones');
@@ -581,6 +582,12 @@ app.post('/api/promovidos', requireUser, requirePromotor, express.json({ limit: 
 });
 
 // Panel del Responsable de Sección: promotores que debe tener según el cálculo de su CPV
+// Panel del Super administrador: cifras agregadas de todo el sistema
+app.get('/api/panel/sa', requireUser, requireRole('superadmin'), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await panelSA.resumen());
+});
+
 app.get('/api/panel/seccion/promotores', requireUser, (req, res) => {
   if (req.user.role !== 'resp_seccion') return res.status(403).json({ error: 'Solo para Responsables de Sección' });
   res.json(panelSeccion.avancePromotores(req.user));

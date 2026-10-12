@@ -13,8 +13,8 @@ const num = (n) => (n === null || n === undefined ? '—' : fmtNum(n));
 // Escala "bonita" para el eje Y (0, 5, 10, 20, 25, 50…)
 function niceMax(v) {
   if (v <= 4) return 4;
-  const pow = 10 ** Math.floor(Math.log10(v));
-  const step = [1, 2, 2.5, 5, 10].find((m) => (m * pow * 4) >= v) * pow;
+  const pow = 10 ** Math.floor(Math.log10(v / 4));
+  const step = [1, 1.5, 2, 2.5, 3, 4, 5, 10].find((m) => (m * pow * 4) >= v) * pow;
   return step * 4;
 }
 

@@ -204,7 +204,8 @@ async function listaDe(promotor) {
   // Observaciones del Responsable de Sección (las del propio promotor no cuentan)
   const { rows } = await query(
     `SELECT p.id, p.seccion, p.data, p.clave_elector, p.estatus, p.created_at,
-            EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id) AS con_obs
+            EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id) AS con_obs,
+            GREATEST(p.created_at, (SELECT max(h.at) FROM promovido_historial h WHERE h.promovido_id = p.id)) AS modificado
      FROM promovidos p WHERE p.promotor_id = $1 ORDER BY p.created_at DESC`,
     [promotor.id]
   );
@@ -217,6 +218,8 @@ async function listaDe(promotor) {
     vigencia: r.data.vigencia,
     estatus: r.estatus,
     conObservaciones: r.con_obs,
+    iniciales: `${(r.data.nombres || '?')[0]}${(r.data.paterno || '')[0] || ''}`,
+    modificado: r.modificado.toISOString(),
     createdAt: r.created_at.toISOString(),
   }));
 }

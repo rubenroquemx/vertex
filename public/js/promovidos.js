@@ -558,8 +558,14 @@ const chipEstatus = (p) => {
 };
 
 // ===========================================================================
-// Lista del promotor
+// Lista del promotor: agrupada por estatus (primero lo que requiere atención) y alfabética
 // ===========================================================================
+const GRUPOS = [
+  { clave: 'observaciones', titulo: 'Con observaciones', clase: 'is-observaciones' },
+  { clave: 'revision', titulo: 'En revisión', clase: 'is-revision' },
+  { clave: 'aprobado', titulo: 'Aprobados', clase: 'is-aprobado' },
+];
+const grupoDe = (p) => (p.estatus === 'validado' ? 'aprobado' : p.estatus === 'rechazado' || p.conObservaciones ? 'observaciones' : 'revision');
 export async function viewPromovidos() {
   const lista = await api('/api/promovidos');
   return `
@@ -568,14 +574,25 @@ export async function viewPromovidos() {
     </div>
     ${
       lista.length
-        ? `<ul class="promo-list">${lista
-            .map(
-              (p) => `<li><a class="promo-item" href="/promovidos/${p.id}" data-link>
-                <span class="promo-item__top"><strong>${esc(p.nombre)}</strong>${chipEstatus(p)}</span>
-                <span class="promo-item__meta"><span class="mono">${esc(p.claveElector)}</span><span>${esc(p.localidad)}</span><span>${fmtDate(p.createdAt)}</span></span>
-              </a></li>`
-            )
-            .join('')}</ul>`
+        ? GRUPOS.map((g) => {
+            const del = lista.filter((p) => grupoDe(p) === g.clave).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+            if (!del.length) return '';
+            return `<section class="promo-grupo" aria-labelledby="g-${g.clave}">
+              <h3 class="promo-grupo__titulo" id="g-${g.clave}"><span class="promo-dot ${g.clase}" aria-hidden="true"></span>${g.titulo}<span class="promo-grupo__n">${fmtNum(del.length)}</span></h3>
+              <ul class="promo-list">${del
+                .map(
+                  (p) => `<li><a class="promo-item" href="/promovidos/${p.id}" data-link>
+                    <span class="promo-ini ${g.clase}" aria-hidden="true">${esc(p.iniciales)}</span>
+                    <span class="promo-item__txt">
+                      <strong>${esc(p.nombre)}</strong>
+                      <span class="promo-item__mod">Última modificación: ${esc(fmtDateTime(p.modificado))}</span>
+                    </span>
+                    <span class="sr-only">${g.titulo}</span>
+                  </a></li>`
+                )
+                .join('')}</ul>
+            </section>`;
+          }).join('')
         : `<div class="empty">
             <span aria-hidden="true">${ICONS.users}</span>
             <strong>Sin promovidos todavía</strong>

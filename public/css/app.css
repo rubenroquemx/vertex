@@ -1840,3 +1840,22 @@ a.promo-item:hover { background: var(--color-surface-alt); }
   .promo-list { margin: calc(-1 * var(--space-xl)) calc(-1 * var(--space-xl)) 0; border-top: 0; }
   .promo-list .promo-item { padding: var(--space-lg); }
 }
+
+/* ---------- Lista de promovidos: grupos por estatus, iniciales y última modificación ---------- */
+.promo-grupo + .promo-grupo { margin-top: var(--space-xl); }
+.promo-grupo__titulo { display: flex; align-items: center; gap: 8px; margin: 0 0 var(--space-sm); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--color-muted-foreground); }
+.promo-grupo__n { margin-left: auto; font-variant-numeric: tabular-nums; }
+.promo-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.promo-list .promo-item { display: flex; align-items: center; gap: var(--space-lg); }
+.promo-ini { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; color: #fff; font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+.promo-item__txt { display: grid; gap: 2px; min-width: 0; }
+.promo-item__txt strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.promo-item__mod { font-size: 10px; color: var(--color-muted-foreground); }
+.is-revision { background: #f59e0b; }
+.is-observaciones { background: #dc2626; }
+.is-aprobado { background: #16a34a; }
+@media (max-width: 767px) {
+  .promo-grupo__titulo { padding: 0 var(--space-lg); }
+  .promo-grupo:first-of-type { margin-top: calc(-1 * var(--space-sm)); }
+  .promo-list { margin: 0 calc(-1 * var(--space-xl)); border-top: 1px solid var(--color-border); }
+}

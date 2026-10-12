@@ -104,7 +104,11 @@ function buildMenu(me) {
     });
   } else if (key === 'resp_seccion') {
     // Sin separador de sección: va junto al Panel
-    groups[0].items.push({ path: '/estructura', title: 'Mis promovidos', icon: 'tree', view: viewEstructura, mount: mountEstructura });
+    groups[0].items.push(
+      { path: '/estructura', title: 'Mis promovidos', icon: 'tree', view: viewEstructura, mount: mountEstructura },
+      // `fab`: en celulares va como botón + al centro de la barra inferior
+      { path: '/estructura/nuevo', title: 'Nuevo promotor', icon: 'plus', fab: true, view: viewEstructura, mount: mountEstructura }
+    );
   } else if (me.childRole) {
     groups.push({
       label: 'Estructura',
@@ -172,9 +176,14 @@ async function viewEstructura(route) {
   route.partidos = partidos;
   currentPartidos = partidos;
   const child = me.childRole;
+  // Responsable de Sección: lista de sus promotores con su avance (como la de promovidos)
+  const esRS = me.role.key === 'resp_seccion';
+  if (esRS) route.avance = await api('/api/panel/seccion/promotores');
 
   return `
-    <div class="page-head page-head--actions">
+    ${esRS ? `<div class="promo-lista__acciones">
+      <button class="btn" type="button" data-action="new">${ICONS.plus}<span>Nuevo ${esc(child.name)}</span></button>
+    </div>` : `<div class="page-head page-head--actions">
       <div>
         <h2>${route.title}</h2>
         <p>${esc(child.plural)} ${isSA ? 'registrados en el sistema' : 'que dependen de ti'}.${
@@ -182,7 +191,7 @@ async function viewEstructura(route) {
         }</p>
       </div>
       <button class="btn" type="button" data-action="new">${ICONS.plus}<span>Nuevo ${esc(child.name)}</span></button>
-    </div>
+    </div>`}
 
     <div class="toolbar">
       <label class="field--inline">
@@ -193,7 +202,7 @@ async function viewEstructura(route) {
       <span class="toolbar__count" id="fCount" aria-live="polite"></span>
     </div>
 
-    <div class="table-wrap" id="usersTable"></div>
+    <div class="${esRS ? 'prom-avance' : 'table-wrap'}" id="usersTable"></div>
 
     <dialog class="dialog" id="newUserDialog" aria-labelledby="newUserTitle">
       <form class="dialog__body" id="newUserForm" novalidate>
@@ -520,8 +529,63 @@ function renderCpvCards(root, list, catalogo) {
       </div>`;
 }
 
-function renderUsersTable(root, list) {
+// Color del avance hacia la meta: de rojo a verde conforme se acerca
+function colorAvance(pct) {
+  if (pct >= 1) return '#16a34a';
+  if (pct >= 0.75) return '#65a30d';
+  if (pct >= 0.5) return '#f59e0b';
+  if (pct >= 0.25) return '#ea580c';
+  return '#dc2626';
+}
+const inicialesDe = (name) => {
+  const p = String(name || '').trim().split(/\s+/);
+  return `${p[0]?.[0] || '?'}${p[1]?.[0] || ''}`.toUpperCase();
+};
+
+function renderPromotoresAvance(root, list, avance) {
+  const q = $('#fSearch', root).value.trim().toLowerCase();
+  const rows = list.filter((u) => !q || u.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  $('#fCount', root).textContent = `${rows.length} de ${list.length} ${list.length === 1 ? 'promotor' : 'promotores'}`;
+  const canGod = Boolean(state.me.godMode);
+  const meta = avance?.meta || 0;
+  $('#usersTable', root).innerHTML = rows.length
+    ? `<ul class="promo-list">${rows
+        .map((u) => {
+          const a = avance?.porPromotor?.[u.id] || { capturados: 0, aprobados: 0 };
+          const pct = meta ? a.capturados / meta : 0;
+          const tel = String(u.phone || '').replace(/\D/g, '').slice(-10);
+          return `<li class="promo-fila">
+            <div class="promo-item">
+              <span class="promo-ini" style="background:${colorAvance(pct)}" aria-hidden="true">${esc(inicialesDe(u.name))}</span>
+              <span class="promo-item__txt">
+                <strong>${esc(u.name)}</strong>
+                <span class="promo-item__mod">${fmtNum(a.capturados)} de ${fmtNum(meta)} promovidos · ${fmtNum(Math.min(999, Math.round(pct * 100)))}%${a.aprobados ? ` · ${fmtNum(a.aprobados)} ${a.aprobados === 1 ? 'aprobado' : 'aprobados'}` : ''}</span>
+              </span>
+            </div>
+            <span class="promo-contacto">${
+              tel
+                ? `<a class="icon-btn promo-contacto__btn" href="tel:+52${tel}" title="Llamar" aria-label="Llamar a ${esc(u.name)}">${CI.phone}</a>
+                   <a class="icon-btn promo-contacto__btn" href="https://wa.me/52${tel}" target="_blank" rel="noopener" title="WhatsApp" aria-label="WhatsApp con ${esc(u.name)}">${CI.whatsapp}</a>`
+                : `<span class="icon-btn promo-contacto__btn is-off" title="Sin teléfono" aria-label="Sin teléfono">${CI.phone}</span>
+                   <span class="icon-btn promo-contacto__btn is-off" title="Sin teléfono" aria-label="Sin teléfono">${CI.whatsapp}</span>`
+            }${
+              canGod
+                ? `<button class="icon-btn promo-contacto__btn" type="button" data-action="god" data-id="${u.id}" data-role="${u.role}" title="Entrar a la cuenta de ${esc(u.name)}" aria-label="Entrar a la cuenta de ${esc(u.name)} (modo dios)">${ICONS.eye}</button>`
+                : ''
+            }</span>
+          </li>`;
+        })
+        .join('')}</ul>`
+    : `<div class="empty">
+        <span aria-hidden="true">${ICONS.users}</span>
+        <strong>${list.length ? 'Sin resultados' : 'Aún no tienes Promotores Territoriales'}</strong>
+        <span>${list.length ? 'Prueba con otro nombre.' : 'Toca el botón + para dar de alta el primero.'}</span>
+      </div>`;
+}
+
+function renderUsersTable(root, list, avance) {
   if (state.me.role.key === 'superadmin') return renderCpvCards(root, list, currentPartidos);
+  if (state.me.role.key === 'resp_seccion') return renderPromotoresAvance(root, list, avance);
   const q = $('#fSearch', root).value.trim().toLowerCase();
   const rows = list.filter((u) => !q || u.name.toLowerCase().includes(q));
   $('#fCount', root).textContent = `${rows.length} de ${list.length} cuentas`;
@@ -558,7 +622,7 @@ function mountEstructura(root, route) {
   const dialog = $('#newUserDialog', root);
   const form = $('#newUserForm', root);
   const formErr = $('#nuFormErr', root);
-  const refresh = () => renderUsersTable(root, route.data);
+  const refresh = () => renderUsersTable(root, route.data, route.avance);
   refresh();
 
   $('#fSearch', root).addEventListener('input', refresh);
@@ -684,6 +748,7 @@ function mountEstructura(root, route) {
     );
     if (created) {
       route.data.unshift(created);
+      creado = true;
       dialog.close();
       refresh();
       // Acceso listo para enviar por WhatsApp (la contraseña se muestra solo esta vez)
@@ -693,10 +758,23 @@ function mountEstructura(root, route) {
         wasEditing: false,
         roleLabel: state.me.childRole.name,
         backLabel: 'Listo',
-        backPath: location.pathname,
+        backPath: desdeBoton ? '/estructura' : location.pathname,
       });
     }
   });
+
+  // Botón + de la barra inferior (Responsable de Sección): abre el alta directamente;
+  // al cancelar regresa a la lista
+  const desdeBoton = route.path === '/estructura/nuevo';
+  let creado = false;
+  if (desdeBoton) {
+    $('[data-action="new"]', root).click();
+    // render() enfoca el área de trabajo al terminar; el foco va al primer campo después
+    setTimeout(() => $('#nuName', root)?.focus(), 0);
+    dialog.addEventListener('close', () => {
+      if (!creado) navigate('/estructura');
+    }, { once: true });
+  }
 }
 
 // ---------- Bases de datos cartográficas (Super administrador) ----------

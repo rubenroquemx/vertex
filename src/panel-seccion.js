@@ -1,6 +1,6 @@
 // Panel del Responsable de Sección: cuántos Promotores Territoriales debe tener en su sección,
 // según el factor de conversión que configuró su Coordinador de Promoción del Voto (CPV).
-const { users } = require('./store');
+const { users, promovidos: cachePromovidos } = require('./store');
 const metas = require('./metas');
 const responsables = require('./responsables');
 const promovidos = require('./promovidos');
@@ -35,4 +35,19 @@ function resumen(resp) {
   };
 }
 
-module.exports = { resumen };
+// Avance de cada Promotor Territorial hacia su meta de promovidos (el factor de conversión del CPV)
+function avancePromotores(resp) {
+  const zona = users.get(resp.parentId);
+  const cpv = zona ? users.get(zona.parentId) : null;
+  const { factor } = cpv ? metas.configDe(cpv) : metas.DEFAULTS;
+  const porPromotor = {};
+  for (const p of cachePromovidos.all()) {
+    if (p.responsableId !== resp.id) continue;
+    const a = (porPromotor[p.promotorId] ||= { capturados: 0, aprobados: 0 });
+    a.capturados += 1;
+    if (p.estatus === 'validado') a.aprobados += 1;
+  }
+  return { meta: factor, porPromotor };
+}
+
+module.exports = { resumen, avancePromotores };

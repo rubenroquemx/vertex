@@ -1927,3 +1927,9 @@ a.promo-item:hover { background: var(--color-surface-alt); }
   .notif-lista { margin: 0 calc(-1 * var(--space-xl)); }
   .notif__btn { padding: var(--space-lg); }
 }
+
+/* ---------- Responsable de Sección: promotores con su avance hacia la meta ---------- */
+.prom-avance .promo-item { cursor: default; }
+@media (max-width: 767px) {
+  .prom-avance .promo-list { margin: 0 calc(-1 * var(--space-xl)); }
+}

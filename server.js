@@ -534,6 +534,11 @@ app.post('/api/promovidos', requireUser, requirePromotor, express.json({ limit: 
 });
 
 // Panel del Responsable de Sección: promotores que debe tener según el cálculo de su CPV
+app.get('/api/panel/seccion/promotores', requireUser, (req, res) => {
+  if (req.user.role !== 'resp_seccion') return res.status(403).json({ error: 'Solo para Responsables de Sección' });
+  res.json(panelSeccion.avancePromotores(req.user));
+});
+
 app.get('/api/panel/seccion', requireUser, (req, res) => {
   if (req.user.role !== 'resp_seccion') return res.status(403).json({ error: 'Solo para Responsables de Sección' });
   res.json(panelSeccion.resumen(req.user));

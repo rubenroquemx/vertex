@@ -263,7 +263,8 @@ async function detalle(viewer, id) {
     revisadoPor: r.revisado_por ? users.get(r.revisado_por)?.name || null : null,
     revisadoAt: r.revisado_at ? r.revisado_at.toISOString() : null,
     createdAt: r.created_at.toISOString(),
-    puedeEditar: esDeSuEquipo(viewer, r),
+    puedeEditar: puedeEditar(viewer, r),
+    bloqueadoPorAprobacion: esDeSuEquipo(viewer, r) && !puedeEditar(viewer, r),
     // Para editar: sección permitida (la del Responsable de Sección del promotor) y vigencia mínima
     seccionPermitida: (users.get(r.promotor_id) && contexto(users.get(r.promotor_id))?.seccion) ?? r.seccion,
     vigenciaMin: ELECCION.anio,
@@ -285,6 +286,8 @@ async function foto(viewer, id, lado) {
 
 // Promotor que lo capturó o su Responsable de Sección directo: editan y conversan
 const esDeSuEquipo = (viewer, row) => Boolean(viewer) && (viewer.id === row.promotor_id || viewer.id === row.responsable_id);
+// Ya aprobado, el promotor no puede modificarlo; su Responsable de Sección sí (vuelve a revisión)
+const puedeEditar = (viewer, row) => esDeSuEquipo(viewer, row) && (row.estatus !== 'validado' || viewer.id === row.responsable_id);
 
 async function filaEditable(viewer, id) {
   const { rows } = await query('SELECT * FROM promovidos WHERE id = $1', [id]);
@@ -320,6 +323,9 @@ function plano(data, clave, curp, seccion) {
 
 async function actualizar(viewer, id, body) {
   const actual = await filaEditable(viewer, id);
+  if (!puedeEditar(viewer, actual)) {
+    throw new PromovidoError('Este promovido ya fue aprobado: solo su Responsable de Sección puede modificarlo.', 403);
+  }
   const promotor = users.get(actual.promotor_id);
   if (!promotor) throw new PromovidoError('El promotor de este registro ya no existe.', 409);
   const v = await validar(promotor, body, { excluirId: id });

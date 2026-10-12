@@ -4,10 +4,10 @@ import { ICONS, $, esc, fmtNum, fmtSeccion, fmtDate, fmtDateTime, fmtPhone, api,
 import { I, debounce } from './coordinador.js';
 import { camaraDisponible, abrirCamara, ajustarEnGuia } from './ine-camara.js';
 
-const sinSeccion = (msg) => `
+const sinSeccion = (msg, titulo = 'Aún no puedes capturar promovidos') => `
   <div class="empty">
     <span aria-hidden="true">${ICONS.map}</span>
-    <strong>Aún no puedes capturar promovidos</strong>
+    <strong>${esc(titulo)}</strong>
     <span>${esc(msg)}</span>
   </div>`;
 
@@ -75,7 +75,14 @@ export async function viewNuevoPromovido(route, params = []) {
   route.actual = null;
   if (editando) {
     const p = await api(`/api/promovidos/${editando}`);
-    if (!p.puedeEditar) return sinSeccion('Solo el promotor que lo capturó y su Responsable de Sección pueden editar este registro.');
+    if (!p.puedeEditar) {
+      return sinSeccion(
+        p.bloqueadoPorAprobacion
+          ? 'Este promovido ya fue aprobado y no se puede modificar. Si hay que corregir algo, pídeselo a tu Responsable de Sección en las observaciones.'
+          : 'Solo el promotor que lo capturó y su Responsable de Sección pueden editar este registro.',
+        'No se puede modificar'
+      );
+    }
     route.actual = p;
     ctx = { seccion: p.seccionPermitida, vigenciaMin: p.vigenciaMin, eleccion: p.eleccion };
   } else {
@@ -661,6 +668,7 @@ export async function viewPromovido(route, params, state) {
       <div class="page-head page-head--actions">
         <div>
           <h2>${esc(p.nombre)}</h2>
+          ${p.bloqueadoPorAprobacion ? '<p class="promo-bloqueado">Aprobado: ya no se puede modificar. Si hay que corregir algo, pídeselo a tu Responsable de Sección.</p>' : ''}
           <p>${chipEstatus(p)} Sección ${fmtSeccion(p.seccion)} · registrado el ${fmtDate(p.createdAt)}${p.promotor ? ` por ${esc(p.promotor)}` : ''}${p.revisadoPor ? ` · revisado por ${esc(p.revisadoPor)}` : ''}</p>
         </div>
         <div class="promo-ficha__acciones">

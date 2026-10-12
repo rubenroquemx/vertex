@@ -1870,3 +1870,4 @@ a.promo-item:hover { background: var(--color-surface-alt); }
 .promo-contacto__btn.is-off { opacity: .35; pointer-events: none; }
 .promo-fila:hover { background: var(--color-surface-alt); }
 .promo-fila a.promo-item:hover { background: transparent; }
+.promo-bloqueado { margin: 0 0 4px; font-size: 13px; color: #15803d; font-weight: 700; }

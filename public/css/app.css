@@ -1760,5 +1760,19 @@ button.ine-shot { width: 100%; padding: 0; font: inherit; }
 .ine-ajuste:active { cursor: grabbing; }
 .ine-ajuste img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; will-change: transform; }
 .ine-cam__frame { pointer-events: none; }
-.ine-zoom { display: flex; align-items: center; gap: var(--space-md); margin-top: var(--space-md); font-size: 13px; color: var(--color-muted-foreground); }
-.ine-zoom input { flex: 1; accent-color: #0a0a0a; }
+
+/* Guía de ajuste: girar y acercar */
+.ine-ajuste .ine-ajuste__foto { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; will-change: transform; }
+.ine-ajuste__ctrl { display: flex; align-items: center; gap: var(--space-md); margin-top: var(--space-md); }
+.ine-ajuste__ctrl input { flex: 1; accent-color: #0a0a0a; }
+.ine-girar { width: 40px; height: 40px; border-radius: 50%; background: var(--color-muted); color: var(--color-foreground); flex-shrink: 0; }
+.ine-girar:hover { background: var(--color-muted-hover); }
+
+/* Estatus de revisión del promovido */
+.estatus { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; vertical-align: middle; }
+.estatus::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.estatus--revision { background: #f5f5f5; color: #525252; box-shadow: inset 0 0 0 1px #e5e5e5; }
+.estatus--validado { background: #171717; color: #fafafa; }
+.estatus--rechazado { background: var(--color-destructive-soft); color: var(--color-destructive); }
+.promo-item__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); }
+.page-head p .estatus { margin-right: 6px; }

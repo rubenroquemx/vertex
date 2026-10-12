@@ -209,8 +209,15 @@ async function init({ seedIfEmpty = true } = {}) {
     ses.rows.map((r) => [r.token_hash, { userId: r.user_id, godAs: r.god_as, createdAt: r.created_at.getTime(), expiresAt: r.expires_at.getTime() }])
   );
   // En memoria solo lo necesario para contar avance; los datos personales se quedan en la base
-  const prom = await query('SELECT id, promotor_id, responsable_id, seccion, created_at FROM promovidos');
-  cache.promovidos = prom.rows.map((r) => ({ id: r.id, promotorId: r.promotor_id, responsableId: r.responsable_id, seccion: r.seccion, createdAt: r.created_at.toISOString() }));
+  const prom = await query('SELECT id, promotor_id, responsable_id, seccion, estatus, created_at FROM promovidos');
+  cache.promovidos = prom.rows.map((r) => ({
+    id: r.id,
+    promotorId: r.promotor_id,
+    responsableId: r.responsable_id,
+    seccion: r.seccion,
+    estatus: r.estatus,
+    createdAt: r.created_at.toISOString(),
+  }));
 }
 
 async function seed() {

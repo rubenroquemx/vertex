@@ -1,6 +1,6 @@
 // Promovidos del Promotor Territorial: captura (INE + datos + domicilio) y lista.
 // La sección y la vigencia se validan aquí para avisar al momento, y de nuevo en el servidor.
-import { ICONS, $, esc, fmtNum, fmtDate, api, fieldErrorSetter, toast } from './lib.js';
+import { ICONS, $, esc, fmtNum, fmtDate, fmtPhone, api, fieldErrorSetter, toast } from './lib.js';
 import { I, debounce } from './coordinador.js';
 import { camaraDisponible, abrirCamara, ajustarEnGuia } from './ine-camara.js';
 
@@ -46,6 +46,7 @@ const PASO_DE = {
   nombres: 2,
   claveElector: 2,
   curp: 2,
+  telefono: 2,
   cp: 3,
   localidad: 3,
   calle: 3,
@@ -106,6 +107,7 @@ export async function viewNuevoPromovido(route) {
             ${campo('pClave', 'claveElector', 'Clave de elector', { req: true, help: '18 caracteres, como aparece en la INE.', cls: 'input--upper mono', attrs: 'maxlength="18" autocapitalize="characters" spellcheck="false"' })}
             ${campo('pCurp', 'curp', 'CURP', { req: true, help: '18 caracteres.', cls: 'input--upper mono', attrs: 'maxlength="18" autocapitalize="characters" spellcheck="false"' })}
           </div>
+          ${campo('pTelefono', 'telefono', 'Teléfono (WhatsApp)', { req: true, help: '10 dígitos.', attrs: 'type="tel" inputmode="numeric" maxlength="14" autocomplete="off"' })}
           ${acciones(2)}
         </section>
 
@@ -157,6 +159,7 @@ export function mountNuevoPromovido(root, route) {
     nombres: 'pNombres',
     claveElector: 'pClave',
     curp: 'pCurp',
+    telefono: 'pTelefono',
     cp: 'pCp',
     localidad: 'pLocalidad',
     calle: 'pCalle',
@@ -263,7 +266,7 @@ export function mountNuevoPromovido(root, route) {
       el.setSelectionRange?.(pos, pos);
     })
   );
-  for (const id of ['pVigencia', 'pSeccion', 'pCp']) {
+  for (const id of ['pVigencia', 'pSeccion', 'pCp', 'pTelefono']) {
     const el = $(`#${id}`, root);
     el.addEventListener('input', () => (el.value = el.value.replace(/\D/g, '')));
   }
@@ -356,6 +359,7 @@ export function mountNuevoPromovido(root, route) {
       if (val('pNombres').length < 2) e.nombres = 'Escribe el nombre o nombres.';
       if (!CLAVE_RE.test(val('pClave'))) e.claveElector = 'La clave de elector tiene 18 caracteres: 6 letras, 8 números, H/M y 3 números.';
       if (!CURP_RE.test(val('pCurp'))) e.curp = 'La CURP tiene 18 caracteres.';
+      if (val('pTelefono').length !== 10) e.telefono = 'Escribe el teléfono (WhatsApp) de 10 dígitos.';
     }
     if (n === 3) {
       if (!cpInfo) e.cp = 'Escribe un código postal válido de 5 dígitos.';
@@ -381,6 +385,7 @@ export function mountNuevoPromovido(root, route) {
         fila('Nombre(s)', val('pNombres')),
         fila('Clave de elector', val('pClave')),
         fila('CURP', val('pCurp')),
+        fila('Teléfono (WhatsApp)', fmtPhone(val('pTelefono'))),
       ]),
       bloque('Domicilio', 3, [
         fila('Calle', val('pCalle')),
@@ -451,7 +456,7 @@ export function mountNuevoPromovido(root, route) {
       btn.textContent = 'Guardar promovido';
     }
     if (!saved) return;
-    toast(`Promovido registrado: ${saved.nombre}`);
+    toast(`Promovido registrado (en revisión): ${saved.nombre}`);
     // Listo para la siguiente captura
     form.reset();
     fotos.ineFrente = fotos.ineReverso = null;
@@ -468,6 +473,17 @@ export function mountNuevoPromovido(root, route) {
   // Al salir de la pantalla se apaga la cámara
   return () => cerrarCamara?.();
 }
+
+// Estatus de revisión del promovido (lo valida su Responsable de Sección directo)
+const ESTATUS = {
+  en_revision: { texto: 'En revisión', clase: 'estatus--revision' },
+  validado: { texto: 'Validado', clase: 'estatus--validado' },
+  rechazado: { texto: 'Rechazado', clase: 'estatus--rechazado' },
+};
+const chipEstatus = (e) => {
+  const x = ESTATUS[e] || ESTATUS.en_revision;
+  return `<span class="estatus ${x.clase}">${x.texto}</span>`;
+};
 
 // ===========================================================================
 // Lista del promotor
@@ -487,7 +503,7 @@ export async function viewPromovidos() {
         ? `<ul class="promo-list">${lista
             .map(
               (p) => `<li><a class="promo-item" href="/promovidos/${p.id}" data-link>
-                <strong>${esc(p.nombre)}</strong>
+                <span class="promo-item__top"><strong>${esc(p.nombre)}</strong>${chipEstatus(p.estatus)}</span>
                 <span class="promo-item__meta"><span class="mono">${esc(p.claveElector)}</span><span>${esc(p.localidad)}</span><span>${fmtDate(p.createdAt)}</span></span>
               </a></li>`
             )
@@ -518,7 +534,7 @@ export async function viewPromovido(route, params) {
       <a class="back-link" href="/promovidos" data-link>${ICONS.back}<span>Promovidos</span></a>
       <div class="page-head">
         <h2>${esc(p.nombre)}</h2>
-        <p>Sección ${fmtNum(p.seccion)} · registrado el ${fmtDate(p.createdAt)}${p.promotor ? ` por ${esc(p.promotor)}` : ''}</p>
+        <p>${chipEstatus(p.estatus)} Sección ${fmtNum(p.seccion)} · registrado el ${fmtDate(p.createdAt)}${p.promotor ? ` por ${esc(p.promotor)}` : ''}${p.revisadoPor ? ` · revisado por ${esc(p.revisadoPor)}` : ''}</p>
       </div>
       <section class="card form-card" aria-labelledby="pv1">
         <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.camera}</span><h3 id="pv1">Credencial para votar (INE)</h3></header>
@@ -528,6 +544,7 @@ export async function viewPromovido(route, params) {
           ${dato('CURP', esc(p.curp), 'mono')}
           ${dato('Vigencia', esc(p.vigencia))}
           ${dato('Sección', fmtNum(p.seccion))}
+          ${dato('Teléfono (WhatsApp)', p.telefono ? `<a href="https://wa.me/52${esc(p.telefono)}" target="_blank" rel="noopener">${esc(fmtPhone(p.telefono))}</a>` : '')}
         </dl>
       </section>
       <section class="card form-card" aria-labelledby="pv2">

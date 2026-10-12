@@ -4,6 +4,7 @@
 //    (la sección impresa en la INE debe coincidir).
 //  - La INE debe servir para votar en la elección: vigencia igual o mayor al año de la jornada.
 //  - Las fotos de la INE solo las ve la rama del promotor hasta el CPV.
+//  - Todo promovido entra «En revisión»; lo valida su Responsable de Sección directo.
 //  - Una persona solo puede promoverse una vez (clave de elector y CURP únicas).
 //  - Estado y municipio se toman del catálogo de SEPOMEX a partir del CP (no del navegador).
 const crypto = require('crypto');
@@ -99,6 +100,9 @@ async function validar(promotor, body) {
   if (paterno.length < 2) errors.paterno = 'Escribe el apellido paterno.';
   if (nombres.length < 2) errors.nombres = 'Escribe el nombre o nombres.';
 
+  const telefono = String(body.telefono || '').replace(/\D/g, '');
+  if (telefono.length !== 10) errors.telefono = 'Escribe el teléfono (WhatsApp) de 10 dígitos.';
+
   const claveElector = upper(body.claveElector).replace(/\s/g, '');
   const curp = upper(body.curp).replace(/\s/g, '');
   if (!CLAVE_ELECTOR_RE.test(claveElector)) errors.claveElector = 'La clave de elector tiene 18 caracteres: 6 letras, 8 números, H/M y 3 números.';
@@ -133,6 +137,7 @@ async function validar(promotor, body) {
       paterno,
       materno,
       nombres,
+      telefono,
       domicilio: {
         cp: cpInfo.cp,
         calle,
@@ -174,8 +179,8 @@ async function crear(promotor, body) {
     if (err.code === '23505') throw new PromovidoError('Esta persona ya está registrada como promovido.', 409);
     throw err;
   }
-  cachePromovidos.remember({ id, promotorId: promotor.id, responsableId: v.ctx.responsable.id, seccion: v.seccion, createdAt });
-  return { id, nombre: nombreCompleto(v.data), seccion: v.seccion, createdAt };
+  cachePromovidos.remember({ id, promotorId: promotor.id, responsableId: v.ctx.responsable.id, seccion: v.seccion, estatus: 'en_revision', createdAt });
+  return { id, nombre: nombreCompleto(v.data), seccion: v.seccion, estatus: 'en_revision', createdAt };
 }
 
 const nombreCompleto = (d) => [d.nombres, d.paterno, d.materno].filter(Boolean).join(' ');
@@ -183,7 +188,7 @@ const nombreCompleto = (d) => [d.nombres, d.paterno, d.materno].filter(Boolean).
 // Lista del promotor (sin fotos ni datos sensibles completos)
 async function listaDe(promotor) {
   const { rows } = await query(
-    'SELECT id, seccion, data, clave_elector, created_at FROM promovidos WHERE promotor_id = $1 ORDER BY created_at DESC',
+    'SELECT id, seccion, data, clave_elector, estatus, created_at FROM promovidos WHERE promotor_id = $1 ORDER BY created_at DESC',
     [promotor.id]
   );
   return rows.map((r) => ({
@@ -193,6 +198,7 @@ async function listaDe(promotor) {
     claveElector: `${r.clave_elector.slice(0, 4)}••••••••••${r.clave_elector.slice(-4)}`,
     localidad: r.data.domicilio?.localidad || '',
     vigencia: r.data.vigencia,
+    estatus: r.estatus,
     createdAt: r.created_at.toISOString(),
   }));
 }
@@ -209,7 +215,10 @@ function puedeVer(viewer, promotorId) {
 }
 
 async function detalle(viewer, id) {
-  const { rows } = await query('SELECT id, promotor_id, seccion, data, clave_elector, curp, created_at FROM promovidos WHERE id = $1', [id]);
+  const { rows } = await query(
+    'SELECT id, promotor_id, seccion, data, clave_elector, curp, estatus, revisado_por, revisado_at, created_at FROM promovidos WHERE id = $1',
+    [id]
+  );
   const r = rows[0];
   if (!r || !puedeVer(viewer, r.promotor_id)) return null;
   return {
@@ -222,8 +231,12 @@ async function detalle(viewer, id) {
     curp: r.curp,
     vigencia: r.data.vigencia,
     seccion: r.seccion,
+    telefono: r.data.telefono || '',
     domicilio: r.data.domicilio,
     promotor: users.get(r.promotor_id)?.name || null,
+    estatus: r.estatus,
+    revisadoPor: r.revisado_por ? users.get(r.revisado_por)?.name || null : null,
+    revisadoAt: r.revisado_at ? r.revisado_at.toISOString() : null,
     createdAt: r.created_at.toISOString(),
   };
 }

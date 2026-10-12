@@ -156,6 +156,18 @@ const MIGRATIONS = [
       );
     `,
   },
+  {
+    id: 4,
+    name: 'estatus de revisión de promovidos',
+    sql: `
+      -- Todo promovido entra «en revisión»; lo valida su Responsable de Sección directo
+      ALTER TABLE promovidos ADD COLUMN estatus text NOT NULL DEFAULT 'en_revision'
+        CHECK (estatus IN ('en_revision', 'validado', 'rechazado'));
+      ALTER TABLE promovidos ADD COLUMN revisado_por uuid REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE promovidos ADD COLUMN revisado_at timestamptz;
+      CREATE INDEX promovidos_estatus_idx ON promovidos(responsable_id, estatus);
+    `,
+  },
 ];
 
 async function migrate() {

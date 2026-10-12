@@ -658,7 +658,7 @@ export async function viewPromovido(route, params, state) {
   const dato = (label, value, cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value || '—'}</dd></div>`;
   const direccion = [d.calle, d.numExt && `No. ${d.numExt}`, d.numInt && `Int. ${d.numInt}`].filter(Boolean).join(' ');
   const fotoIne = (lado, label) => `
-    <figure class="ine-view">
+    <figure class="ine-view" data-lupa>
       <img src="/api/promovidos/${p.id}/ine/${lado}" alt="${label} de la INE de ${esc(p.nombre)}">
       <figcaption>${label}</figcaption>
     </figure>`;
@@ -786,12 +786,113 @@ function montarRevision(root, p) {
     $('#revMotivo-err', root).textContent = '';
     enviar({ accion: 'rechazar', motivo: $('#revMotivo', root).value }, e.submitter || $('#revForm button[type="submit"]', root));
   });
+
+  // Al bajar (tarjeta fuera de vista), los botones quedan abajo en pequeño: palomita y tache
+  const mini = document.createElement('div');
+  mini.className = 'rev-mini';
+  mini.hidden = true;
+  mini.innerHTML = `
+    <button class="rev-mini__btn rev-mini__btn--ok" type="button" title="Aprobar" aria-label="Aprobar a ${esc(p.nombre)}">${ICONO_OK}</button>
+    ${$('#revRechazar', root) ? `<button class="rev-mini__btn rev-mini__btn--no" type="button" title="Rechazar" aria-label="Rechazar a ${esc(p.nombre)}">${ICONS.close}</button>` : ''}`;
+  root.appendChild(mini);
+  mini.querySelector('.rev-mini__btn--ok').addEventListener('click', (e) => enviar({ accion: 'aprobar' }, e.currentTarget));
+  // Rechazar necesita motivo: regresa a la tarjeta con el campo abierto
+  mini.querySelector('.rev-mini__btn--no')?.addEventListener('click', () => {
+    $('#revRechazar', root).click();
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => $('#revMotivo', root).focus({ preventScroll: true }), 350);
+  });
+  const io = new IntersectionObserver(([en]) => {
+    mini.hidden = en.isIntersecting || en.boundingClientRect.top > 0;
+  });
+  io.observe(card);
+  return () => io.disconnect();
+}
+
+// Lupa sobre las fotos de la INE: con el mouse sigue al puntero; en el celular se activa
+// dejando el dedo sobre la foto (un deslizamiento rápido sigue desplazando la página)
+const ZOOM = 2.6;
+function montarLupa(root) {
+  for (const fig of root.querySelectorAll('[data-lupa]')) {
+    const img = fig.querySelector('img');
+    const lente = document.createElement('div');
+    lente.className = 'lupa';
+    lente.hidden = true;
+    lente.setAttribute('aria-hidden', 'true');
+    fig.appendChild(lente);
+    fig.querySelector('figcaption')?.insertAdjacentHTML('beforeend', ' <span class="lupa-ayuda lupa-ayuda--mouse">· pasa el mouse para ampliar</span><span class="lupa-ayuda lupa-ayuda--dedo">· mantén el dedo sobre la foto para ampliar</span>');
+
+    const mover = (clientX, clientY, tactil) => {
+      const box = img.getBoundingClientRect();
+      const x = Math.min(Math.max(clientX - box.left, 0), box.width);
+      const y = Math.min(Math.max(clientY - box.top, 0), box.height);
+      const d = lente.offsetWidth;
+      lente.style.backgroundImage = `url("${img.currentSrc || img.src}")`;
+      lente.style.backgroundSize = `${box.width * ZOOM}px ${box.height * ZOOM}px`;
+      lente.style.backgroundPosition = `${-(x * ZOOM - d / 2)}px ${-(y * ZOOM - d / 2)}px`;
+      // Con el dedo, la lente va arriba para que no la tape
+      const offY = tactil ? -d * 0.75 : 0;
+      lente.style.left = `${img.offsetLeft + x - d / 2}px`;
+      lente.style.top = `${img.offsetTop + y - d / 2 + offY}px`;
+    };
+    const mostrar = () => img.complete && img.naturalWidth && (lente.hidden = false);
+    const ocultar = () => (lente.hidden = true);
+
+    // Mouse
+    img.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && mostrar());
+    img.addEventListener('pointermove', (e) => e.pointerType === 'mouse' && mover(e.clientX, e.clientY, false));
+    img.addEventListener('pointerleave', (e) => e.pointerType === 'mouse' && ocultar());
+
+    // Dedo: mantener ~0.2 s sin moverse activa la lupa; mientras está activa no se desplaza la página
+    let timer = null;
+    let activa = false;
+    let inicio = null;
+    img.addEventListener(
+      'touchstart',
+      (e) => {
+        const t = e.touches[0];
+        inicio = { x: t.clientX, y: t.clientY };
+        timer = setTimeout(() => {
+          activa = true;
+          mostrar();
+          mover(inicio.x, inicio.y, true);
+        }, 200);
+      },
+      { passive: true }
+    );
+    img.addEventListener(
+      'touchmove',
+      (e) => {
+        const t = e.touches[0];
+        if (activa) {
+          e.preventDefault();
+          mover(t.clientX, t.clientY, true);
+        } else if (inicio && Math.hypot(t.clientX - inicio.x, t.clientY - inicio.y) > 8) {
+          clearTimeout(timer);
+        }
+      },
+      { passive: false }
+    );
+    const fin = () => {
+      clearTimeout(timer);
+      activa = false;
+      ocultar();
+    };
+    img.addEventListener('touchend', fin);
+    img.addEventListener('touchcancel', fin);
+    // Evita el menú de «guardar imagen» al mantener el dedo
+    img.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
 }
 
 export function mountPromovido(root, route) {
   const p = route.promovido;
-  if (p) montarRevision(root, p);
-  if (!p?.puedeObservar) return undefined;
+  let quitarRevision = null;
+  if (p) {
+    quitarRevision = montarRevision(root, p) || null;
+    montarLupa(root);
+  }
+  if (!p?.puedeObservar) return quitarRevision || undefined;
   const lista = $('#obsLista', root);
   const form = $('#obsForm', root);
   const texto = $('#obsTexto', root);
@@ -846,5 +947,8 @@ export function mountPromovido(root, route) {
       texto.focus();
     }
   });
-  return () => clearInterval(timer);
+  return () => {
+    clearInterval(timer);
+    quitarRevision?.();
+  };
 }

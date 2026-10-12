@@ -2276,3 +2276,32 @@ a.ec-kpi:hover { box-shadow: var(--shadow-card), inset 0 0 0 1px var(--color-bor
   .es-prom { grid-template-columns: minmax(0, 1fr) auto; }
   .es-prom .ec-spark { display: none; }
 }
+
+/* ---------- Lupa sobre las fotos de la INE ---------- */
+.ine-view[data-lupa] { position: relative; }
+.ine-view[data-lupa] img { cursor: zoom-in; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.lupa {
+  position: absolute; z-index: 5; width: 180px; height: 180px; border-radius: 50%; pointer-events: none;
+  background-color: #fff; background-repeat: no-repeat;
+  box-shadow: 0 0 0 3px #fff, 0 0 0 4px rgba(0,0,0,.25), 0 10px 30px rgba(0,0,0,.3);
+}
+.lupa[hidden] { display: none; }
+.lupa-ayuda { color: var(--color-muted-foreground); }
+@media (hover: none) { .lupa { width: 150px; height: 150px; } }
+.lupa-ayuda--dedo { display: none; }
+@media (hover: none) { .lupa-ayuda--mouse { display: none; } .lupa-ayuda--dedo { display: inline; } }
+
+/* ---------- Revisión: botones minificados al bajar ---------- */
+.rev-mini { position: fixed; z-index: 25; right: 24px; bottom: 24px; display: flex; gap: 12px; }
+.rev-mini[hidden] { display: none; }
+.rev-mini__btn { display: grid; place-items: center; width: 56px; height: 56px; border: 0; border-radius: 50%; color: #fff; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+.rev-mini__btn svg { width: 26px; height: 26px; stroke-width: 3; }
+.rev-mini__btn--ok { background: #16a34a; }
+.rev-mini__btn--ok:hover { background: #15803d; }
+.rev-mini__btn--no { background: #dc2626; }
+.rev-mini__btn--no:hover { background: #b91c1c; }
+.rev-mini__btn:disabled { opacity: .6; cursor: progress; }
+@media (max-width: 767px) {
+  .rev-mini { right: 16px; bottom: calc(var(--dock-space) + 16px); }
+  .rev-mini__btn { width: 52px; height: 52px; }
+}

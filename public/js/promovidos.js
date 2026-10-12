@@ -1,6 +1,6 @@
 // Promovidos del Promotor Territorial: captura (INE + datos + domicilio) y lista.
 // La sección y la vigencia se validan aquí para avisar al momento, y de nuevo en el servidor.
-import { ICONS, $, esc, fmtNum, fmtDate, api, fieldErrorSetter, submitWith, toast } from './lib.js';
+import { ICONS, $, esc, fmtNum, fmtDate, api, fieldErrorSetter, toast } from './lib.js';
 import { I, debounce } from './coordinador.js';
 import { camaraDisponible, abrirCamara } from './ine-camara.js';
 import { prepararINE } from './ine-recorte.js';
@@ -12,16 +12,15 @@ const sinSeccion = (msg) => `
     <span>${esc(msg)}</span>
   </div>`;
 
-// Foto de la INE: tomarla con la cámara (con guía) o cargar una imagen ya guardada en el teléfono
+// Foto de la INE: tomarla con la cámara (con guía) o cargar una imagen ya guardada en el teléfono.
+// La vista previa solo aparece cuando ya hay imagen.
 const campoFoto = (id, label) => `
-  <div class="field">
+  <div class="field ine-field">
     <span class="field__label" id="${id}-label">${label} <span class="req" aria-hidden="true">*</span></span>
-    <button type="button" class="ine-shot" id="${id}Box" data-foto="camara" data-lado="${id}" aria-label="Tomar foto: ${label}">
-      <span class="ine-shot__empty">${ICONS.camera}<span>Sin foto</span></span>
-    </button>
+    <div class="ine-preview" id="${id}Box" hidden></div>
     <div class="ine-shot__btns">
-      <button type="button" class="btn btn--secondary btn--sm" data-foto="camara" data-lado="${id}">${ICONS.camera}<span>Tomar foto</span></button>
-      <label class="btn btn--secondary btn--sm">${ICONS.upload}<span>Cargar</span>
+      <button type="button" class="btn btn--secondary" data-foto="camara" data-lado="${id}">${ICONS.camera}<span>Tomar foto</span></button>
+      <label class="btn btn--secondary">${ICONS.upload}<span>Cargar imagen</span>
         <input type="file" accept="image/*" class="sr-only" id="${id}" aria-labelledby="${id}-label"></label>
     </div>
     <input type="file" accept="image/*" capture="environment" class="sr-only" id="${id}Cam" tabindex="-1" aria-hidden="true">
@@ -34,6 +33,34 @@ const campo = (id, name, label, { req = false, help = '', attrs = '', cls = '' }
     <input class="input ${cls}" id="${id}" name="${name}" autocomplete="off" ${attrs}>
     ${help ? `<p class="field__help">${help}</p>` : ''}
     <p class="field__error" id="${id}-err"></p>
+  </div>`;
+
+// Asistente de captura: un paso por pantalla
+const PASOS = ['Fotografía', 'Datos generales', 'Domicilio', 'Verificación'];
+const PASO_DE = {
+  ineFrente: 1,
+  ineReverso: 1,
+  vigencia: 2,
+  seccion: 2,
+  paterno: 2,
+  materno: 2,
+  nombres: 2,
+  claveElector: 2,
+  curp: 2,
+  cp: 3,
+  localidad: 3,
+  calle: 3,
+  numExt: 3,
+  numInt: 3,
+  fracc: 3,
+};
+const CLAVE_RE = /^[A-Z]{6}\d{8}[HMX]\d{3}$/;
+const CURP_RE = /^[A-Z]{4}\d{6}[HMX][A-Z]{5}[A-Z\d]\d$/;
+
+const acciones = (paso) => `
+  <div class="wiz-actions">
+    ${paso === 1 ? '<a class="btn btn--secondary" href="/promovidos" data-link>Cancelar</a>' : '<button type="button" class="btn btn--secondary" data-wiz="atras">Atrás</button>'}
+    ${paso === 4 ? '<button class="btn" type="submit">Guardar promovido</button>' : '<button type="button" class="btn" data-wiz="sig">Siguiente</button>'}
   </div>`;
 
 // ===========================================================================
@@ -49,32 +76,28 @@ export async function viewNuevoPromovido(route) {
   }
   route.ctx = ctx;
   return `
-    <div class="promo-page">
-      <a class="back-link" href="/promovidos" data-link>${ICONS.back}<span>Promovidos</span></a>
+    <div class="wiz">
+      <div class="wiz-bar" role="progressbar" aria-label="Avance de la captura" aria-valuemin="1" aria-valuemax="${PASOS.length}" aria-valuenow="1">
+        <div class="wiz-bar__track" aria-hidden="true">${PASOS.map(() => '<span></span>').join('')}</div>
+        <p class="wiz-bar__label" id="wizLabel">Paso 1 de ${PASOS.length} · ${PASOS[0]}</p>
+      </div>
 
       <form id="promoForm" novalidate>
-        <section class="card form-card" aria-labelledby="ps1">
-          <header class="form-card__head">
-            <span class="form-card__icon" aria-hidden="true">${ICONS.camera}</span>
-            <h3 id="ps1">1. Credencial para votar (INE)</h3>
-            <span class="form-card__aside">Campos requeridos <span class="req">*</span></span>
-          </header>
-          <div class="field-row field-row--fotos">
-            ${campoFoto('pFrente', 'Foto INE (frente)')}
-            ${campoFoto('pReverso', 'Foto INE (reverso)')}
+        <section class="card wiz-step" data-paso="1" aria-label="Paso 1: ${PASOS[0]}">
+          <p class="wiz-step__help">Toma o carga la foto del frente y del reverso de la INE. Se recorta sola para guardar solo la credencial.</p>
+          <div class="ine-fotos">
+            ${campoFoto('pFrente', 'Frente de la INE')}
+            ${campoFoto('pReverso', 'Reverso de la INE')}
           </div>
           <div class="ine-cam" id="ineCam" hidden></div>
+          ${acciones(1)}
+        </section>
+
+        <section class="card wiz-step" data-paso="2" aria-label="Paso 2: ${PASOS[1]}" hidden>
           <div class="field-row field-row--fotos">
             ${campo('pVigencia', 'vigencia', 'Vigencia', { req: true, help: `Año final de la INE: ${ctx.vigenciaMin} o posterior.`, attrs: 'inputmode="numeric" maxlength="4"' })}
             ${campo('pSeccion', 'seccion', 'Sección', { req: true, help: `Debe ser la ${fmtNum(ctx.seccion)}.`, attrs: 'inputmode="numeric" maxlength="4"' })}
           </div>
-        </section>
-
-        <section class="card form-card" aria-labelledby="ps2">
-          <header class="form-card__head">
-            <span class="form-card__icon" aria-hidden="true">${I.user}</span>
-            <h3 id="ps2">2. Datos personales</h3>
-          </header>
           <div class="field-row">
             ${campo('pPaterno', 'paterno', 'Apellido paterno', { req: true, cls: 'input--upper', attrs: 'maxlength="60" autocapitalize="characters"' })}
             ${campo('pMaterno', 'materno', 'Apellido materno', { cls: 'input--upper', attrs: 'maxlength="60" autocapitalize="characters"' })}
@@ -84,13 +107,10 @@ export async function viewNuevoPromovido(route) {
             ${campo('pClave', 'claveElector', 'Clave de elector', { req: true, help: '18 caracteres, como aparece en la INE.', cls: 'input--upper mono', attrs: 'maxlength="18" autocapitalize="characters" spellcheck="false"' })}
             ${campo('pCurp', 'curp', 'CURP', { req: true, help: '18 caracteres.', cls: 'input--upper mono', attrs: 'maxlength="18" autocapitalize="characters" spellcheck="false"' })}
           </div>
+          ${acciones(2)}
         </section>
 
-        <section class="card form-card" aria-labelledby="ps3">
-          <header class="form-card__head">
-            <span class="form-card__icon" aria-hidden="true">${I.map}</span>
-            <h3 id="ps3">3. Domicilio</h3>
-          </header>
+        <section class="card wiz-step" data-paso="3" aria-label="Paso 3: ${PASOS[2]}" hidden>
           <div class="field-row">
             ${campo('pCp', 'cp', 'Código postal', { req: true, help: 'Al escribirlo se llenan localidad, municipio y estado.', attrs: 'inputmode="numeric" maxlength="5"' })}
             <div class="field">
@@ -110,13 +130,15 @@ export async function viewNuevoPromovido(route) {
             ${campo('pNumInt', 'numInt', 'No. Int.', { cls: 'input--upper', attrs: 'maxlength="12"' })}
             ${campo('pFracc', 'fracc', 'Fracc.', { cls: 'input--upper', attrs: 'maxlength="80"' })}
           </div>
+          ${acciones(3)}
         </section>
 
-        <p class="form-error" id="pFormErr" role="alert"></p>
-        <div class="form-footer">
-          <a class="btn btn--secondary" href="/promovidos" data-link>Cancelar</a>
-          <button class="btn" type="submit">Guardar promovido</button>
-        </div>
+        <section class="card wiz-step" data-paso="4" aria-label="Paso 4: ${PASOS[3]}" hidden>
+          <p class="wiz-step__help">Revisa que los datos coincidan con la credencial antes de guardar.</p>
+          <div id="wizResumen"></div>
+          <p class="form-error" id="pFormErr" role="alert"></p>
+          ${acciones(4)}
+        </section>
       </form>
     </div>`;
 }
@@ -145,6 +167,7 @@ export function mountNuevoPromovido(root, route) {
   };
   const setErrors = fieldErrorSetter(root, fields);
   const err = (id, msg) => ($(`#${id}-err`, root).textContent = msg || '');
+  const val = (id) => $(`#${id}`, root).value.trim();
   const fotos = { ineFrente: null, ineReverso: null };
 
   // ---------- Fotos: cámara con guía o imagen cargada ----------
@@ -163,14 +186,17 @@ export function mountNuevoPromovido(root, route) {
       box.prepend(img);
     }
     img.src = dataUrl;
-    box.classList.add('has-photo');
+    box.hidden = false;
+    // Con foto, los botones ofrecen reemplazarla
+    box.closest('.ine-field').classList.add('has-photo');
     err(id, '');
   };
 
   // Toda foto (tomada o cargada) pasa por el recorte automático antes de guardarse
   const procesar = async (id, fuente) => {
     const box = $(`#${id}Box`, root);
-    box.classList.add('is-busy');
+    const contenedor = box.closest('.ine-field');
+    contenedor.classList.add('is-busy');
     try {
       const r = await prepararINE(fuente);
       ponerFoto(id, r.dataUrl);
@@ -178,7 +204,7 @@ export function mountNuevoPromovido(root, route) {
     } catch (e) {
       err(id, e.message || 'No se pudo procesar la foto. Intenta de nuevo.');
     } finally {
-      box.classList.remove('is-busy');
+      contenedor.classList.remove('is-busy');
     }
   };
 
@@ -205,7 +231,7 @@ export function mountNuevoPromovido(root, route) {
         onCaptura: (dataUrl) => {
           cerrarCamara = null;
           procesar(id, dataUrl);
-          $(`#${id}Box`, root).scrollIntoView({ block: 'center', behavior: 'smooth' });
+          $(`#${id}`, root).closest('.ine-field').scrollIntoView({ block: 'center', behavior: 'smooth' });
         },
         onCerrar: () => (cerrarCamara = null),
       });
@@ -229,18 +255,14 @@ export function mountNuevoPromovido(root, route) {
     }
   };
 
-  form.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-foto="camara"]');
-    if (b) tomarFoto(b.dataset.lado);
-  });
-
-
   // ---------- Mayúsculas y solo dígitos ----------
-  root.querySelectorAll('.input--upper').forEach((el) => el.addEventListener('input', () => {
-    const pos = el.selectionStart;
-    el.value = el.value.toUpperCase();
-    el.setSelectionRange?.(pos, pos);
-  }));
+  root.querySelectorAll('.input--upper').forEach((el) =>
+    el.addEventListener('input', () => {
+      const pos = el.selectionStart;
+      el.value = el.value.toUpperCase();
+      el.setSelectionRange?.(pos, pos);
+    })
+  );
   for (const id of ['pVigencia', 'pSeccion', 'pCp']) {
     const el = $(`#${id}`, root);
     el.addEventListener('input', () => (el.value = el.value.replace(/\D/g, '')));
@@ -251,13 +273,15 @@ export function mountNuevoPromovido(root, route) {
   }
 
   // ---------- Avisos inmediatos: vigencia y sección ----------
+  const msgVigencia = (v) => `Esta INE vence en ${v}: no sirve para votar el ${ctx.eleccion}. Se requiere vigencia ${ctx.vigenciaMin} o posterior.`;
+  const msgSeccion = () => `Solo puedes capturar promovidos de la sección ${ctx.seccion}.`;
   $('#pVigencia', root).addEventListener('blur', (e) => {
     const v = Number(e.target.value);
-    err('pVigencia', e.target.value.length === 4 && v < ctx.vigenciaMin ? `Esta INE vence en ${v}: no sirve para votar el ${ctx.eleccion}. Se requiere vigencia ${ctx.vigenciaMin} o posterior.` : '');
+    err('pVigencia', e.target.value.length === 4 && v < ctx.vigenciaMin ? msgVigencia(v) : '');
   });
   $('#pSeccion', root).addEventListener('blur', (e) => {
     const v = Number(e.target.value);
-    err('pSeccion', e.target.value && v !== ctx.seccion ? `Solo puedes capturar promovidos de la sección ${ctx.seccion}.` : '');
+    err('pSeccion', e.target.value && v !== ctx.seccion ? msgSeccion() : '');
   });
 
   // ---------- Código postal → localidad, municipio y estado ----------
@@ -308,32 +332,137 @@ export function mountNuevoPromovido(root, route) {
     if (a && /fraccionamiento/i.test(a.tipo) && !$('#pFracc', root).value) $('#pFracc', root).value = a.nombre.toUpperCase();
     err('pLocalidad', '');
   });
-  const localidad = () => (sel.value === 'otra' ? otra.value : cpInfo?.asentamientos[Number(sel.value)]?.nombre || '');
+  const localidad = () => (sel.value === 'otra' ? otra.value.trim().toUpperCase() : (cpInfo?.asentamientos[Number(sel.value)]?.nombre || '').toUpperCase());
+
+  // ---------- Pasos ----------
+  const pasos = [...root.querySelectorAll('.wiz-step')];
+  const barra = $('.wiz-bar', root);
+  let paso = 1;
+
+  // Revisión de cada paso antes de avanzar (el servidor vuelve a validar todo al guardar)
+  function revisar(n) {
+    const e = {};
+    if (n === 1) {
+      if (!fotos.ineFrente) e.ineFrente = 'Toma o carga la foto del frente.';
+      if (!fotos.ineReverso) e.ineReverso = 'Toma o carga la foto del reverso.';
+    }
+    if (n === 2) {
+      const vig = Number(val('pVigencia'));
+      if (!/^\d{4}$/.test(val('pVigencia'))) e.vigencia = 'Escribe el año de vigencia (4 dígitos).';
+      else if (vig < ctx.vigenciaMin) e.vigencia = msgVigencia(vig);
+      if (!val('pSeccion')) e.seccion = 'Escribe la sección que aparece en la INE.';
+      else if (Number(val('pSeccion')) !== ctx.seccion) e.seccion = msgSeccion();
+      if (val('pPaterno').length < 2) e.paterno = 'Escribe el apellido paterno.';
+      if (val('pNombres').length < 2) e.nombres = 'Escribe el nombre o nombres.';
+      if (!CLAVE_RE.test(val('pClave'))) e.claveElector = 'La clave de elector tiene 18 caracteres: 6 letras, 8 números, H/M y 3 números.';
+      if (!CURP_RE.test(val('pCurp'))) e.curp = 'La CURP tiene 18 caracteres.';
+    }
+    if (n === 3) {
+      if (!cpInfo) e.cp = 'Escribe un código postal válido de 5 dígitos.';
+      else if (localidad().length < 2) e.localidad = 'Elige o escribe la localidad.';
+      if (val('pCalle').length < 2) e.calle = 'Escribe la calle.';
+      if (!val('pNumExt')) e.numExt = 'Escribe el número exterior (o S/N).';
+    }
+    return e;
+  }
+
+  const fila = (label, value) => `<div><dt>${label}</dt><dd>${value ? esc(value) : '—'}</dd></div>`;
+  const bloque = (titulo, n, filas) => `
+    <section class="wiz-sum">
+      <header><h4>${titulo}</h4><button type="button" class="link-btn" data-ir="${n}">Editar</button></header>
+      <dl class="ficha__grid">${filas.join('')}</dl>
+    </section>`;
+  function resumen() {
+    $('#wizResumen', root).innerHTML = [
+      bloque('Credencial', 2, [fila('Vigencia', val('pVigencia')), fila('Sección', val('pSeccion'))]),
+      bloque('Datos personales', 2, [
+        fila('Apellido paterno', val('pPaterno')),
+        fila('Apellido materno', val('pMaterno')),
+        fila('Nombre(s)', val('pNombres')),
+        fila('Clave de elector', val('pClave')),
+        fila('CURP', val('pCurp')),
+      ]),
+      bloque('Domicilio', 3, [
+        fila('Calle', val('pCalle')),
+        fila('No. Ext.', val('pNumExt')),
+        fila('No. Int.', val('pNumInt')),
+        fila('Fracc.', val('pFracc')),
+        fila('Localidad', localidad()),
+        fila('Código postal', val('pCp')),
+        fila('Municipio', val('pMunicipio')),
+        fila('Estado', val('pEstado')),
+      ]),
+    ].join('');
+  }
+
+  function ir(n) {
+    paso = n;
+    pasos.forEach((s) => (s.hidden = Number(s.dataset.paso) !== n));
+    barra.setAttribute('aria-valuenow', String(n));
+    barra.querySelectorAll('.wiz-bar__track span').forEach((s, i) => s.classList.toggle('is-on', i < n));
+    $('#wizLabel', root).textContent = `Paso ${n} de ${PASOS.length} · ${PASOS[n - 1]}`;
+    if (n !== 1) cerrarCamara?.();
+    if (n === 4) resumen();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  form.addEventListener('click', (e) => {
+    const foto = e.target.closest('[data-foto="camara"]');
+    if (foto) return tomarFoto(foto.dataset.lado);
+    const editar = e.target.closest('[data-ir]');
+    if (editar) return ir(Number(editar.dataset.ir));
+    const w = e.target.closest('[data-wiz]')?.dataset.wiz;
+    if (w === 'atras') return ir(paso - 1);
+    if (w === 'sig') {
+      const errs = revisar(paso);
+      setErrors(errs);
+      if (Object.keys(errs).length) return;
+      ir(paso + 1);
+    }
+  });
+  ir(1);
 
   // ---------- Guardar ----------
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (paso !== 4) return;
+    const btn = form.querySelector('[type="submit"]');
     const body = {
       ...Object.fromEntries(new FormData(form)),
       ineFrente: fotos.ineFrente,
       ineReverso: fotos.ineReverso,
       localidad: localidad(),
     };
-    const saved = await submitWith(form, 'Guardar promovido', 'Guardando…', setErrors, formErr, () => api('/api/promovidos', { method: 'POST', body }));
-    if (!saved) {
-      root.querySelector('[aria-invalid="true"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      return;
+    formErr.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+    let saved = null;
+    try {
+      saved = await api('/api/promovidos', { method: 'POST', body });
+    } catch (err) {
+      const f = err.data?.fields;
+      if (f && Object.keys(f).length) {
+        // Regresa al primer paso con error y lo marca
+        ir(Math.min(...Object.keys(f).map((k) => PASO_DE[k] || 4)));
+        setErrors(f);
+      } else formErr.textContent = navigator.onLine ? err.message : 'Sin conexión. Intenta de nuevo cuando estés en línea.';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Guardar promovido';
     }
+    if (!saved) return;
     toast(`Promovido registrado: ${saved.nombre}`);
     // Listo para la siguiente captura
     form.reset();
     fotos.ineFrente = fotos.ineReverso = null;
-    root.querySelectorAll('.ine-shot').forEach((b) => {
-      b.classList.remove('has-photo');
-      b.querySelector('img')?.remove();
+    root.querySelectorAll('.ine-preview').forEach((b) => {
+      b.hidden = true;
+      b.innerHTML = '';
     });
+    root.querySelectorAll('.ine-field').forEach((f) => f.classList.remove('has-photo'));
     limpiarCP();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setErrors();
+    ir(1);
   });
 
   // Al salir de la pantalla se apaga la cámara

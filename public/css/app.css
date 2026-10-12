@@ -1708,3 +1708,52 @@ button.ine-shot { width: 100%; padding: 0; font: inherit; }
   background: none; border-top: 0; backdrop-filter: none; -webkit-backdrop-filter: none;
 }
 .promo-page .back-link { margin-bottom: var(--space-lg); }
+
+/* ==========================================================================
+   Directriz móvil: las barras superiores no quedan fijas (suben con el scroll)
+   ========================================================================== */
+@media (max-width: 767px) {
+  .topbar, .god-banner, .god-banner:not([hidden]) ~ .topbar { position: static; }
+}
+
+/* ---------- Captura de promovido: asistente por pasos ---------- */
+.wiz {
+  display: flex; flex-direction: column; max-width: 760px;
+  min-height: calc(100vh - var(--header-h) - 2 * var(--space-2xl));
+  min-height: calc(100dvh - var(--header-h) - 2 * var(--space-2xl));
+}
+.wiz form { flex: 1; display: flex; flex-direction: column; }
+.wiz-bar { margin-bottom: var(--space-lg); }
+.wiz-bar__track { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.wiz-bar__track span { height: 3px; border-radius: 999px; background: #e5e5e5; transition: background-color var(--dur) var(--ease); }
+.wiz-bar__track span.is-on { background: #0a0a0a; }
+.wiz-bar__label { margin: 6px 0 0; font-size: 12px; color: var(--color-muted-foreground); }
+.wiz-step { flex: 1; display: flex; flex-direction: column; margin: 0; }
+.wiz-step[hidden] { display: none; }
+.wiz-step__help { margin: 0 0 var(--space-xl); font-size: 14px; color: var(--color-muted-foreground); }
+.wiz-actions { margin-top: auto; padding-top: var(--space-xl); display: flex; justify-content: space-between; gap: var(--space-md); }
+.wiz-actions .btn { min-width: 120px; }
+
+/* Fotos: sin recuadro hasta que hay imagen */
+.ine-fotos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--space-xl); }
+.ine-preview { position: relative; margin-bottom: var(--space-md); }
+.ine-preview img { display: block; width: 100%; aspect-ratio: 85.6 / 54; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--color-border); background: var(--color-surface-alt); }
+.ine-field .ine-shot__btns { margin-top: var(--space-sm); }
+.ine-field .ine-shot__btns .btn { min-height: 40px; }
+.ine-field.is-busy .ine-shot__btns::after { content: "Recortando…"; align-self: center; font-size: 13px; color: var(--color-muted-foreground); }
+.ine-field.is-busy .ine-shot__btns .btn { opacity: .5; pointer-events: none; }
+
+/* Verificación */
+.wiz-sum + .wiz-sum { margin-top: var(--space-xl); padding-top: var(--space-xl); border-top: 1px solid var(--color-border); }
+.wiz-sum header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--space-md); }
+.wiz-sum h4 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--color-muted-foreground); }
+.wiz-sum dd { font-weight: 700; overflow-wrap: anywhere; }
+
+@media (max-width: 767px) {
+  .wiz {
+    min-height: calc(100vh - var(--header-h) - var(--dock-space) - 2 * var(--space-xl));
+    min-height: calc(100dvh - var(--header-h) - var(--dock-space) - 2 * var(--space-xl));
+  }
+  .ine-fotos { grid-template-columns: minmax(0, 1fr); }
+  .wiz-actions .btn { flex: 1; min-width: 0; }
+}

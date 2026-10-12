@@ -436,6 +436,22 @@ app.get('/api/promovidos', requireUser, requirePromotor, async (req, res) => {
   res.json(await promovidos.listaDe(req.user));
 });
 
+// Ficha y fotos de la INE: el promotor que lo capturó y su rama hasta el CPV
+app.get('/api/promovidos/:id', requireUser, async (req, res) => {
+  const p = await promovidos.detalle(req.user, req.params.id);
+  if (!p) return res.status(404).json({ error: 'Promovido no encontrado' });
+  await audit.add({ action: 'promovido.view', by: req.realUser.id, as: req.user.id, promovido: p.id });
+  res.json(p);
+});
+
+app.get('/api/promovidos/:id/ine/:lado', requireUser, async (req, res) => {
+  const img = await promovidos.foto(req.user, req.params.id, req.params.lado);
+  if (!img) return res.status(404).end();
+  // Dato sensible: no se guarda en cachés compartidas
+  res.set('Cache-Control', 'private, no-store');
+  res.type('image/jpeg').send(img);
+});
+
 app.post('/api/promovidos', requireUser, requirePromotor, express.json({ limit: '8mb' }), async (req, res) => {
   try {
     const p = await promovidos.crear(req.user, req.body || {});

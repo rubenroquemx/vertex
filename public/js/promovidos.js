@@ -67,7 +67,7 @@ export async function viewNuevoPromovido(route) {
       <a class="back-link" href="/promovidos" data-link>${ICONS.back}<span>Promovidos</span></a>
       <div class="page-head">
         <h2>Nuevo promovido</h2>
-        <p>Sección <strong>${fmtNum(ctx.seccion)}</strong>${ctx.entidad.nombre ? ` · ${esc(ctx.entidad.nombre)}` : ''}. Solo puedes capturar personas de esta sección con INE vigente.</p>
+        <p>Sección <strong>${fmtNum(ctx.seccion)}</strong>${ctx.entidad.nombre ? ` · ${esc(ctx.entidad.nombre)}` : ''}. Solo puedes capturar personas de esta sección con INE vigente para la elección.</p>
       </div>
 
       <form id="promoForm" novalidate>
@@ -82,7 +82,7 @@ export async function viewNuevoPromovido(route) {
             ${campoFoto('pReverso', 'Foto INE (reverso)')}
           </div>
           <div class="field-row field-row--fotos">
-            ${campo('pVigencia', 'vigencia', 'Vigencia', { req: true, help: 'Año final que aparece en la INE.', attrs: 'inputmode="numeric" maxlength="4"' })}
+            ${campo('pVigencia', 'vigencia', 'Vigencia', { req: true, help: `Año final de la INE: ${ctx.vigenciaMin} o posterior.`, attrs: 'inputmode="numeric" maxlength="4"' })}
             ${campo('pSeccion', 'seccion', 'Sección', { req: true, help: `Debe ser la ${fmtNum(ctx.seccion)}.`, attrs: 'inputmode="numeric" maxlength="4"' })}
           </div>
         </section>
@@ -213,7 +213,7 @@ export function mountNuevoPromovido(root, route) {
   // ---------- Avisos inmediatos: vigencia y sección ----------
   $('#pVigencia', root).addEventListener('blur', (e) => {
     const v = Number(e.target.value);
-    err('pVigencia', e.target.value.length === 4 && v < ctx.anioActual ? `La INE no está vigente (venció en ${v}). No se puede capturar.` : '');
+    err('pVigencia', e.target.value.length === 4 && v < ctx.vigenciaMin ? `Esta INE vence en ${v}: no sirve para votar el ${ctx.eleccion}. Se requiere vigencia ${ctx.vigenciaMin} o posterior.` : '');
   });
   $('#pSeccion', root).addEventListener('blur', (e) => {
     const v = Number(e.target.value);
@@ -314,10 +314,10 @@ export async function viewPromovidos() {
       lista.length
         ? `<ul class="promo-list">${lista
             .map(
-              (p) => `<li class="promo-item">
+              (p) => `<li><a class="promo-item" href="/promovidos/${p.id}" data-link>
                 <strong>${esc(p.nombre)}</strong>
                 <span class="promo-item__meta"><span class="mono">${esc(p.claveElector)}</span><span>${esc(p.localidad)}</span><span>${fmtDate(p.createdAt)}</span></span>
-              </li>`
+              </a></li>`
             )
             .join('')}</ul>`
         : `<div class="empty">
@@ -326,4 +326,48 @@ export async function viewPromovidos() {
             <span>Toca el botón + para capturar el primero.</span>
           </div>`
     }`;
+}
+
+// ===========================================================================
+// Ficha del promovido (con fotos de la INE): solo la rama del promotor hasta el CPV
+// ===========================================================================
+export async function viewPromovido(route, params) {
+  const p = await api(`/api/promovidos/${params[0]}`);
+  const d = p.domicilio || {};
+  const dato = (label, value, cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value || '—'}</dd></div>`;
+  const direccion = [d.calle, d.numExt && `No. ${d.numExt}`, d.numInt && `Int. ${d.numInt}`].filter(Boolean).join(' ');
+  const fotoIne = (lado, label) => `
+    <figure class="ine-view">
+      <img src="/api/promovidos/${p.id}/ine/${lado}" alt="${label} de la INE de ${esc(p.nombre)}">
+      <figcaption>${label}</figcaption>
+    </figure>`;
+  return `
+    <div class="promo-page">
+      <a class="back-link" href="/promovidos" data-link>${ICONS.back}<span>Promovidos</span></a>
+      <div class="page-head">
+        <h2>${esc(p.nombre)}</h2>
+        <p>Sección ${fmtNum(p.seccion)} · registrado el ${fmtDate(p.createdAt)}${p.promotor ? ` por ${esc(p.promotor)}` : ''}</p>
+      </div>
+      <section class="card form-card" aria-labelledby="pv1">
+        <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.camera}</span><h3 id="pv1">Credencial para votar (INE)</h3></header>
+        <div class="ine-views">${fotoIne('frente', 'Frente')}${fotoIne('reverso', 'Reverso')}</div>
+        <dl class="ficha__grid">
+          ${dato('Clave de elector', esc(p.claveElector), 'mono')}
+          ${dato('CURP', esc(p.curp), 'mono')}
+          ${dato('Vigencia', esc(p.vigencia))}
+          ${dato('Sección', fmtNum(p.seccion))}
+        </dl>
+      </section>
+      <section class="card form-card" aria-labelledby="pv2">
+        <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${I.map}</span><h3 id="pv2">Domicilio</h3></header>
+        <dl class="ficha__grid">
+          ${dato('Calle y número', esc(direccion))}
+          ${dato('Fracc.', esc(d.fracc))}
+          ${dato('Localidad', esc(d.localidad))}
+          ${dato('Código postal', esc(d.cp))}
+          ${dato('Municipio', esc(d.municipio))}
+          ${dato('Estado', esc(d.estado))}
+        </dl>
+      </section>
+    </div>`;
 }

@@ -2,13 +2,18 @@
 // Reglas:
 //  - Solo de la sección asignada al Responsable de Sección del que depende el promotor
 //    (la sección impresa en la INE debe coincidir).
-//  - La INE debe estar vigente (año de vigencia ≥ año en curso).
+//  - La INE debe servir para votar en la elección: vigencia igual o mayor al año de la jornada.
+//  - Las fotos de la INE solo las ve la rama del promotor hasta el CPV.
 //  - Una persona solo puede promoverse una vez (clave de elector y CURP únicas).
 //  - Estado y municipio se toman del catálogo de SEPOMEX a partir del CP (no del navegador).
 const crypto = require('crypto');
 const { query, tx } = require('./db');
 const { users, promovidos: cachePromovidos } = require('./store');
 const geo = require('./geo');
+const { chainOf } = require('./access');
+
+// Jornada electoral: la INE debe estar vigente ese año para poder votar
+const ELECCION = { anio: 2027, texto: '6 de junio de 2027' };
 
 class PromovidoError extends Error {
   constructor(message, status = 422, fields) {
@@ -47,7 +52,8 @@ function contexto(promotor) {
     responsable: { id: resp.id, name: resp.name },
     entidad: { clave: t.entidad, nombre: state?.meta?.nombre || '' },
     seccion,
-    anioActual: new Date().getFullYear(),
+    vigenciaMin: ELECCION.anio,
+    eleccion: ELECCION.texto,
   };
 }
 
@@ -61,7 +67,7 @@ const CLAVE_ELECTOR_RE = /^[A-Z]{6}\d{8}[HMX]\d{3}$/;
 const CURP_RE =
   /^[A-Z][AEIOUX][A-Z]{2}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[HMX](AS|BC|BS|CC|CL|CM|CS|CH|DF|DG|GT|GR|HG|JC|MC|MN|MS|NT|NL|OC|PL|QT|QR|SP|SL|SR|TC|TS|TL|VZ|YN|ZS|NE)[B-DF-HJ-NP-TV-Z]{3}[A-Z\d]\d$/;
 
-function foto(dataUrl) {
+function fotoValida(dataUrl) {
   const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
   const buf = m ? Buffer.from(m[1], 'base64') : null;
   if (!buf || buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8 || buf[2] !== 0xff) return { error: 'Toma o elige la foto.' };
@@ -74,14 +80,14 @@ async function validar(promotor, body) {
   if (!ctx) throw new PromovidoError('Tu Responsable de Sección aún no tiene sección asignada; no puedes capturar promovidos.', 409);
   const errors = {};
 
-  const frente = foto(body.ineFrente);
-  const reverso = foto(body.ineReverso);
+  const frente = fotoValida(body.ineFrente);
+  const reverso = fotoValida(body.ineReverso);
   if (frente.error) errors.ineFrente = frente.error;
   if (reverso.error) errors.ineReverso = reverso.error;
 
   const vigencia = Number(String(body.vigencia || '').trim());
-  if (!Number.isInteger(vigencia) || vigencia < 2000 || vigencia > ctx.anioActual + 12) errors.vigencia = 'Escribe el año de vigencia que aparece en la INE (4 dígitos).';
-  else if (vigencia < ctx.anioActual) errors.vigencia = `La INE no está vigente (venció en ${vigencia}). No se puede capturar.`;
+  if (!Number.isInteger(vigencia) || vigencia < 2000 || vigencia > ELECCION.anio + 12) errors.vigencia = 'Escribe el año de vigencia que aparece en la INE (4 dígitos).';
+  else if (vigencia < ELECCION.anio) errors.vigencia = `Esta INE vence en ${vigencia}: no sirve para votar el ${ELECCION.texto}. Se requiere vigencia ${ELECCION.anio} o posterior.`;
 
   const seccion = Number(String(body.seccion || '').trim());
   if (!Number.isInteger(seccion) || seccion <= 0) errors.seccion = 'Escribe la sección que aparece en la INE.';
@@ -193,4 +199,44 @@ async function listaDe(promotor) {
 
 const contarDeResponsable = (respId) => cachePromovidos.all().filter((p) => p.responsableId === respId).length;
 
-module.exports = { PromovidoError, buscaCP, contexto, crear, listaDe, contarDeResponsable };
+// ¿Puede `viewer` ver el promovido (y sus fotos de INE)? El promotor que lo capturó y su rama
+// hacia arriba: Responsable de Sección, Coordinador de Zona y CPV. El super administrador no.
+function puedeVer(viewer, promotorId) {
+  if (!viewer || viewer.role === 'superadmin') return false;
+  const promotor = users.get(promotorId);
+  if (!promotor) return false;
+  return chainOf(promotor, users.all()).some((u) => u.id === viewer.id);
+}
+
+async function detalle(viewer, id) {
+  const { rows } = await query('SELECT id, promotor_id, seccion, data, clave_elector, curp, created_at FROM promovidos WHERE id = $1', [id]);
+  const r = rows[0];
+  if (!r || !puedeVer(viewer, r.promotor_id)) return null;
+  return {
+    id: r.id,
+    nombre: nombreCompleto(r.data),
+    paterno: r.data.paterno,
+    materno: r.data.materno,
+    nombres: r.data.nombres,
+    claveElector: r.clave_elector,
+    curp: r.curp,
+    vigencia: r.data.vigencia,
+    seccion: r.seccion,
+    domicilio: r.data.domicilio,
+    promotor: users.get(r.promotor_id)?.name || null,
+    createdAt: r.created_at.toISOString(),
+  };
+}
+
+async function foto(viewer, id, lado) {
+  if (!['frente', 'reverso'].includes(lado)) return null;
+  const { rows } = await query(
+    'SELECT p.promotor_id, i.image FROM promovidos p JOIN promovido_ine i ON i.promovido_id = p.id WHERE p.id = $1 AND i.lado = $2',
+    [id, lado]
+  );
+  const r = rows[0];
+  if (!r || !puedeVer(viewer, r.promotor_id)) return null;
+  return r.image;
+}
+
+module.exports = { PromovidoError, ELECCION, buscaCP, contexto, crear, listaDe, contarDeResponsable, puedeVer, detalle, foto };

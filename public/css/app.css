@@ -1653,3 +1653,12 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   .dock.has-fab { overflow: visible; }
   .dock.has-fab .dock__fab { margin-top: -34px; }
 }
+
+/* Ficha del promovido */
+a.promo-item { color: inherit; text-decoration: none; transition: border-color var(--dur) var(--ease); }
+a.promo-item:hover { border-color: #a3a3a3; }
+.ine-views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-lg); margin-bottom: var(--space-xl); }
+.ine-view { margin: 0; }
+.ine-view img { display: block; width: 100%; aspect-ratio: 1.586; object-fit: cover; border-radius: var(--radius); background: var(--color-surface-alt); border: 1px solid var(--color-border); }
+.ine-view figcaption { margin-top: 6px; font-size: 12px; color: var(--color-muted-foreground); }
+@media (max-width: 479px) { .ine-views { grid-template-columns: minmax(0, 1fr); } }

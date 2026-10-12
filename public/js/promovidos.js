@@ -625,6 +625,7 @@ const icono = (d) =>
 const ICONO_ENVIAR = icono('<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>');
 const ICONO_HISTORIAL = icono('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/>');
 const ICONO_PDF = icono('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M12 12v6M9 15l3 3 3-3"/>');
+const ICONO_OK = icono('<path d="M20 6 9 17l-5-5"/>');
 const ICONO_OBS = icono('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>');
 
 function itemHistorial(h) {
@@ -661,7 +662,32 @@ export async function viewPromovido(route, params, state) {
       <img src="/api/promovidos/${p.id}/ine/${lado}" alt="${label} de la INE de ${esc(p.nombre)}">
       <figcaption>${label}</figcaption>
     </figure>`;
-  const volver = state?.me?.role?.key === 'promotor' ? { href: '/promovidos', texto: 'Promovidos' } : { href: '/', texto: 'Panel' };
+  const rol = state?.me?.role?.key;
+  const volver = ['promotor', 'resp_seccion'].includes(rol) ? { href: '/promovidos', texto: 'Promovidos' } : { href: '/', texto: 'Panel' };
+  // Revisión del Responsable de Sección: aprobar o rechazar con motivo
+  const revision = p.puedeRevisar
+    ? `<section class="card rev-card" id="revCard" aria-labelledby="revT">
+        <div class="rev-card__txt">
+          <h3 id="revT">${p.estatus === 'rechazado' ? 'Rechazado: ¿ya está corregido?' : '¿Los datos coinciden con la INE?'}</h3>
+          <p>Compara las fotos con la clave de elector, la CURP, la vigencia y el domicilio. Al aprobarlo, el promotor ya no podrá modificarlo.</p>
+        </div>
+        <div class="rev-card__acc" id="revAcc">
+          <button class="btn btn--aprobar" type="button" id="revAprobar">${ICONO_OK}<span>Aprobar</span></button>
+          ${p.estatus === 'rechazado' ? '' : `<button class="btn btn--secondary" type="button" id="revRechazar">${ICONS.close}<span>Rechazar</span></button>`}
+        </div>
+        <form class="rev-card__form" id="revForm" hidden novalidate>
+          <label for="revMotivo">Motivo del rechazo <span class="req" aria-hidden="true">*</span></label>
+          <textarea class="input" id="revMotivo" rows="2" maxlength="500" placeholder="ej. La foto del reverso está borrosa y la CURP no coincide"></textarea>
+          <p class="field__help">El promotor lo verá en las observaciones para corregirlo.</p>
+          <p class="field__error" id="revMotivo-err" role="alert"></p>
+          <div class="rev-card__btns">
+            <button class="btn btn--secondary" type="button" id="revCancelar">Cancelar</button>
+            <button class="btn btn--destructive" type="submit">Rechazar promovido</button>
+          </div>
+        </form>
+        <p class="form-error" id="revErr" role="alert"></p>
+      </section>`
+    : '';
   return `
     <div class="promo-ficha">
       <a class="back-link" href="${volver.href}" data-link>${ICONS.back}<span>${volver.texto}</span></a>
@@ -677,6 +703,7 @@ export async function viewPromovido(route, params, state) {
         </div>
       </div>
 
+      ${revision}
       <div class="promo-ficha__grid ${p.puedeObservar ? '' : 'is-sola'}">
         <div class="promo-ficha__main">
           <section class="card form-card" aria-labelledby="pv1">
@@ -726,14 +753,51 @@ export async function viewPromovido(route, params, state) {
     </div>`;
 }
 
+// Aprobar / rechazar; al terminar abre el siguiente pendiente de la bandeja
+function montarRevision(root, p) {
+  const card = $('#revCard', root);
+  if (!card) return;
+  const err = $('#revErr', root);
+  const enviar = async (body, boton) => {
+    err.textContent = '';
+    boton.disabled = true;
+    try {
+      const r = await api(`/api/promovidos/${p.id}/revision`, { method: 'POST', body });
+      toast(r.estatus === 'validado' ? `${p.nombre} aprobado` : `${p.nombre} rechazado`);
+      navigate(r.siguiente ? `/promovidos/${r.siguiente}` : '/promovidos');
+    } catch (e) {
+      if (e.data?.fields?.motivo) $('#revMotivo-err', root).textContent = e.data.fields.motivo;
+      else err.textContent = e.message;
+      boton.disabled = false;
+    }
+  };
+  $('#revAprobar', root).addEventListener('click', (e) => enviar({ accion: 'aprobar' }, e.currentTarget));
+  $('#revRechazar', root)?.addEventListener('click', () => {
+    $('#revAcc', root).hidden = true;
+    $('#revForm', root).hidden = false;
+    $('#revMotivo', root).focus();
+  });
+  $('#revCancelar', root).addEventListener('click', () => {
+    $('#revForm', root).hidden = true;
+    $('#revAcc', root).hidden = false;
+  });
+  $('#revForm', root).addEventListener('submit', (e) => {
+    e.preventDefault();
+    $('#revMotivo-err', root).textContent = '';
+    enviar({ accion: 'rechazar', motivo: $('#revMotivo', root).value }, e.submitter || $('#revForm button[type="submit"]', root));
+  });
+}
+
 export function mountPromovido(root, route) {
   const p = route.promovido;
+  if (p) montarRevision(root, p);
   if (!p?.puedeObservar) return undefined;
   const lista = $('#obsLista', root);
   const form = $('#obsForm', root);
   const texto = $('#obsTexto', root);
   const errEl = $('#obsErr', root);
-  let ultimo = '';
+  // null (no '') para que una lista vacía también se pinte la primera vez
+  let ultimo = null;
 
   const pintar = (msgs) => {
     const firma = msgs.map((m) => m.id).join(',');

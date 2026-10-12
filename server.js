@@ -540,6 +540,21 @@ app.get('/api/promovidos/:id/pdf', requireUser, async (req, res) => {
   res.send(pdf);
 });
 
+// Revisión del Responsable de Sección: aprobar o rechazar (con motivo)
+app.post('/api/promovidos/:id/revision', requireUser, async (req, res) => {
+  try {
+    const r = await promovidos.revisar(req.user, req.params.id, req.body || {});
+    await audit.add({ action: `promovido.${r.estatus === 'validado' ? 'aprobar' : 'rechazar'}`, by: req.realUser.id, as: req.user.id, promovido: r.id });
+    res.json(r);
+  } catch (err) {
+    promovidoError(res, err);
+  }
+});
+app.get('/api/revision', requireUser, requireRole('resp_seccion'), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await promovidos.bandeja(req.user));
+});
+
 app.get('/api/promovidos/:id/historial', requireUser, async (req, res) => {
   const h = await promovidos.historial(req.user, req.params.id);
   if (!h) return res.status(404).json({ error: 'Promovido no encontrado' });
@@ -589,6 +604,10 @@ app.get('/api/panel/sa', requireUser, requireRole('superadmin'), async (req, res
   res.json(await panelSA.resumen());
 });
 
+app.get('/api/escritorio/seccion', requireUser, requireRole('resp_seccion'), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await panelSeccion.escritorio(req.user));
+});
 app.get('/api/panel/seccion/promotores', requireUser, (req, res) => {
   if (req.user.role !== 'resp_seccion') return res.status(403).json({ error: 'Solo para Responsables de Sección' });
   res.json(panelSeccion.avancePromotores(req.user));

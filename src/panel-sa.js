@@ -22,6 +22,8 @@ const ACCIONES = {
   'responsable.update': 'actualizó un Responsable de Sección',
   'promovido.create': 'capturó un promovido',
   'promovido.update': 'modificó un promovido',
+  'promovido.aprobar': 'aprobó un promovido',
+  'promovido.rechazar': 'rechazó un promovido',
   'config.update': 'cambió su factor de conversión',
   'material.articulo': 'agregó un artículo de material',
   'material.orden': 'creó una orden de entrega de material',

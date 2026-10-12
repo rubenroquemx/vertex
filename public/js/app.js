@@ -27,10 +27,11 @@ import { viewEscritorioCPV, mountEscritorioCPV } from './escritorio-cpv.js';
 import { viewResponsables, mountResponsables, viewResponsable, mountResponsable } from './responsables.js';
 import { viewConfiguracionCPV, mountConfiguracionCPV } from './configuracion-cpv.js';
 import { viewConfiguracionSA, mountConfiguracionSA } from './configuracion-sa.js';
-import { viewPanelSeccion } from './panel-seccion.js';
 import { viewMaterial, mountMaterial, viewEntregar, mountEntregar, viewOrden, mountOrden } from './material.js';
 import { viewPanelSA, mountPanelSA } from './panel-sa.js';
 import { viewEscritorioZona, mountEscritorioZona } from './escritorio-zona.js';
+import { viewEscritorioSeccion, mountEscritorioSeccion } from './escritorio-seccion.js';
+import { viewRevision, mountRevision } from './revision.js';
 import { viewNotificaciones, mountNotificaciones, iniciarCampana, actualizarContador } from './notificaciones.js';
 import { viewNuevoPromovido, mountNuevoPromovido, viewPromovidos, viewPromovido, mountPromovido } from './promovidos.js';
 
@@ -72,7 +73,7 @@ function buildMenu(me) {
     key === 'coord_promocion'
       ? { path: '/', title: 'Escritorio', icon: 'dashboard', view: viewEscritorioCPV, mount: mountEscritorioCPV }
       : key === 'resp_seccion'
-        ? { path: '/', title: 'Panel', icon: 'dashboard', view: viewPanelSeccion }
+        ? { path: '/', title: 'Panel', icon: 'dashboard', view: viewEscritorioSeccion, mount: mountEscritorioSeccion }
         : key === 'superadmin'
           ? { path: '/', title: 'Panel', icon: 'dashboard', view: viewPanelSA, mount: mountPanelSA }
           : key === 'coord_zona'
@@ -120,6 +121,8 @@ function buildMenu(me) {
       { path: '/estructura', title: 'Promotores territoriales', icon: 'tree', view: viewEstructura, mount: mountEstructura },
       // `fab`: en celulares va como botón + al centro de la barra inferior
       { path: '/estructura/nuevo', title: 'Nuevo promotor', icon: 'plus', fab: true, view: viewEstructura, mount: mountEstructura },
+      // Bandeja para aprobar o rechazar lo que capturan sus promotores
+      { path: '/promovidos', title: 'Promovidos', icon: 'check', view: viewRevision, mount: mountRevision },
       MATERIAL
     );
   } else if (me.childRole) {

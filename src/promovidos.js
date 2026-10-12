@@ -278,6 +278,8 @@ async function detalle(viewer, id) {
     vigenciaMin: ELECCION.anio,
     eleccion: ELECCION.texto,
     puedeObservar: esDeSuEquipo(viewer, r),
+    // Solo su Responsable de Sección directo aprueba o rechaza (lo aprobado ya no se revisa)
+    puedeRevisar: Boolean(viewer) && viewer.id === r.responsable_id && r.estatus !== 'validado',
   };
 }
 
@@ -304,7 +306,7 @@ async function filaEditable(viewer, id) {
   return r;
 }
 
-const ESTATUS_TEXTO = { en_revision: 'En revisión', validado: 'Validado', rechazado: 'Rechazado' };
+const ESTATUS_TEXTO = { en_revision: 'En revisión', validado: 'Aprobado', rechazado: 'Rechazado' };
 
 // Campos comparables (etiqueta → valor) de un registro, para el historial
 function plano(data, clave, curp, seccion) {
@@ -424,7 +426,87 @@ async function observar(viewer, id, texto) {
   return { id: String(rows[0].id), autor: viewer.name, propia: true, texto: t, at: rows[0].at.toISOString() };
 }
 
+// ===========================================================================
+// Revisión: el Responsable de Sección directo aprueba o rechaza lo que capturan sus promotores
+// ===========================================================================
+async function siguientePendiente(rsId, excluir = null) {
+  const { rows } = await query(
+    "SELECT id FROM promovidos WHERE responsable_id = $1 AND estatus = 'en_revision' AND id IS DISTINCT FROM $2 ORDER BY created_at LIMIT 1",
+    [rsId, excluir]
+  );
+  return rows[0]?.id || null;
+}
+
+async function revisar(viewer, id, body = {}) {
+  const row = await filaEditable(viewer, id);
+  if (viewer.id !== row.responsable_id) throw new PromovidoError('Solo el Responsable de Sección del promotor puede aprobar o rechazar.', 403);
+  const accion = String(body.accion || '');
+  if (!['aprobar', 'rechazar'].includes(accion)) throw new PromovidoError('Acción no válida.', 422);
+  if (row.estatus === 'validado') throw new PromovidoError('Este promovido ya fue aprobado.', 409);
+  const nuevo = accion === 'aprobar' ? 'validado' : 'rechazado';
+  if (row.estatus === nuevo) throw new PromovidoError('Este promovido ya fue rechazado.', 409);
+  const motivo = String(body.motivo || '').trim().slice(0, 500);
+  if (accion === 'rechazar' && motivo.length < 5) {
+    throw new PromovidoError('Escribe el motivo del rechazo para que el promotor pueda corregirlo.', 422, { motivo: 'Escribe el motivo del rechazo.' });
+  }
+  await tx(async (c) => {
+    await c.query('UPDATE promovidos SET estatus = $2, revisado_por = $3, revisado_at = now() WHERE id = $1', [id, nuevo, viewer.id]);
+    await c.query('INSERT INTO promovido_historial (promovido_id, user_id, user_name, accion, cambios) VALUES ($1, $2, $3, $4, $5)', [
+      id,
+      viewer.id,
+      viewer.name,
+      'editado',
+      JSON.stringify([{ campo: 'Estatus', antes: ESTATUS_TEXTO[row.estatus], despues: ESTATUS_TEXTO[nuevo] }]),
+    ]);
+    // El motivo (o el comentario al aprobar) queda en las observaciones para el promotor
+    if (motivo) {
+      await c.query('INSERT INTO promovido_observaciones (promovido_id, user_id, user_name, texto) VALUES ($1, $2, $3, $4)', [
+        id,
+        viewer.id,
+        viewer.name,
+        accion === 'rechazar' ? `Rechazado: ${motivo}` : motivo,
+      ]);
+    }
+  });
+  const enCache = cachePromovidos.all().find((p) => p.id === id);
+  if (enCache) enCache.estatus = nuevo;
+  const nombre = nombreCompleto(row.data);
+  await notificar([row.promotor_id], {
+    tipo: accion === 'aprobar' ? 'promovido.aprobado' : 'promovido.rechazado',
+    titulo: accion === 'aprobar' ? `${nombre} fue aprobado` : `${nombre} fue rechazado`,
+    cuerpo: accion === 'aprobar' ? `Lo aprobó ${viewer.name}.` : `Motivo: ${motivo}`,
+    url: `/promovidos/${id}`,
+    autorId: viewer.id,
+  });
+  return { id, estatus: nuevo, siguiente: await siguientePendiente(viewer.id, id) };
+}
+
+// Bandeja del Responsable de Sección: todo lo que capturaron sus promotores
+async function bandeja(rs) {
+  const { rows } = await query(
+    `SELECT p.id, p.promotor_id, p.data, p.estatus, p.created_at,
+            EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id) AS con_obs,
+            GREATEST(p.created_at, (SELECT max(h.at) FROM promovido_historial h WHERE h.promovido_id = p.id)) AS modificado
+     FROM promovidos p WHERE p.responsable_id = $1 ORDER BY p.created_at`,
+    [rs.id]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    nombre: nombreCompleto(r.data),
+    iniciales: `${(r.data.nombres || '?')[0]}${(r.data.paterno || '')[0] || ''}`,
+    promotorId: r.promotor_id,
+    promotor: users.get(r.promotor_id)?.name || 'Promotor eliminado',
+    estatus: r.estatus,
+    conObservaciones: r.con_obs,
+    createdAt: r.created_at.toISOString(),
+    modificado: r.modificado.toISOString(),
+  }));
+}
+
 module.exports = {
+  revisar,
+  bandeja,
+  siguientePendiente,
   PromovidoError,
   ELECCION,
   buscaCP,

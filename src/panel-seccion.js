@@ -50,4 +50,107 @@ function avancePromotores(resp) {
   return { meta: factor, porPromotor };
 }
 
-module.exports = { resumen, avancePromotores };
+// --- Escritorio del Responsable de Sección -------------------------------------------
+const { query } = require('./db');
+const TZ = 'America/Mexico_City';
+const DIAS_SERIE = 30;
+const ELECCION = new Date('2027-06-06T08:00:00-06:00');
+const FMT_DIA = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+
+async function escritorio(resp) {
+  const r = resumen(resp);
+  const s = r.secciones[0] || null;
+  const zona = users.get(resp.parentId);
+  const promotores = users
+    .all()
+    .filter((u) => u.parentId === resp.id && u.role === 'promotor')
+    .map((u) => ({ id: u.id, name: u.name, phone: u.phone || '', promovidos: 0, aprobados: 0, porRevisar: 0, rechazados: 0, ultima: null, serie: null }));
+  const porId = new Map(promotores.map((p) => [p.id, p]));
+
+  const hoy = new Date();
+  const dias = Array.from({ length: DIAS_SERIE }, (_, i) => FMT_DIA.format(new Date(hoy.getTime() - (DIAS_SERIE - 1 - i) * 86400000)));
+  const idx = new Map(dias.map((d, i) => [d, i]));
+  for (const p of promotores) p.serie = dias.map(() => 0);
+
+  const [prom, serie, mat, siguiente] = await Promise.all([
+    query(
+      `SELECT p.promotor_id AS pr, p.estatus,
+              (p.estatus = 'en_revision' AND EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id)) AS obs,
+              count(*)::int AS n,
+              count(*) FILTER (WHERE p.estatus = 'en_revision' AND p.created_at < now() - interval '3 days')::int AS viejos,
+              max(p.created_at) AS ultima
+       FROM promovidos p WHERE p.responsable_id = $1 GROUP BY 1, 2, 3`,
+      [resp.id]
+    ),
+    query(
+      `SELECT p.promotor_id AS pr, to_char(p.created_at AT TIME ZONE $2, 'YYYY-MM-DD') AS dia, count(*)::int AS n
+       FROM promovidos p WHERE p.responsable_id = $1 AND p.created_at >= now() - ($3 || ' days')::interval GROUP BY 1, 2`,
+      [resp.id, TZ, String(DIAS_SERIE + 1)]
+    ),
+    query(
+      `SELECT id, estado, (SELECT count(*)::int FROM material_evidencias ev WHERE ev.orden_id = o.id) AS fotos
+       FROM material_ordenes o WHERE para_id = $1 ORDER BY created_at`,
+      [resp.id]
+    ),
+    promovidos.siguientePendiente(resp.id),
+  ]);
+
+  const est = { aprobados: 0, revision: 0, observaciones: 0, rechazados: 0, viejos: 0 };
+  for (const x of prom.rows) {
+    const p = porId.get(x.pr);
+    if (p) {
+      p.promovidos += x.n;
+      if (x.estatus === 'validado') p.aprobados += x.n;
+      if (x.estatus === 'en_revision') p.porRevisar += x.n;
+      if (x.estatus === 'rechazado') p.rechazados += x.n;
+      if (!p.ultima || x.ultima > p.ultima) p.ultima = x.ultima;
+    }
+    if (x.estatus === 'validado') est.aprobados += x.n;
+    else if (x.estatus === 'rechazado') est.rechazados += x.n;
+    else if (x.obs) est.observaciones += x.n;
+    else est.revision += x.n;
+    est.viejos += x.viejos;
+  }
+  const total = dias.map(() => 0);
+  for (const x of serie.rows) {
+    const i = idx.get(x.dia);
+    if (i === undefined) continue;
+    total[i] += x.n;
+    const p = porId.get(x.pr);
+    if (p) p.serie[i] += x.n;
+  }
+  const material = { porRecibir: [], sinEvidencia: [], conEvidencia: 0, total: mat.rows.length };
+  for (const o of mat.rows) {
+    if (o.estado === 'pendiente') material.porRecibir.push(o.id);
+    else if (o.estado === 'recibida') material.sinEvidencia.push(o.id);
+    else material.conEvidencia += 1;
+  }
+
+  const meta = s?.meta || 0;
+  const capturados = est.aprobados + est.revision + est.observaciones + est.rechazados;
+  const semana = total.slice(-7).reduce((t, v) => t + v, 0);
+  const diasRestantes = Math.max(0, Math.ceil((ELECCION - Date.now()) / 86400000));
+  const promedio7d = semana / 7;
+  const faltan = Math.max(0, meta - capturados);
+
+  return {
+    seccion: s ? { clave: s.clave, municipio: s.municipio, electores: s.electores } : null,
+    zona: zona ? { nombre: zona.zona?.nombre || zona.name, codigo: zona.zona?.codigo || '', color: zona.zona?.color || '#2a78d6', coordinador: zona.name } : null,
+    metaPorPromotor: r.config.factor,
+    eleccion: { dias: diasRestantes },
+    kpis: { meta, promovidos: capturados, promotores: promotores.length, promotoresMeta: s?.promotores || 0, hoy: total[total.length - 1], semana, semanaAnterior: total.slice(-14, -7).reduce((t, v) => t + v, 0) },
+    ritmo: {
+      promedio7d: Math.round(promedio7d * 10) / 10,
+      necesario: diasRestantes ? Math.ceil(faltan / diasRestantes) : faltan,
+      faltan,
+      proyeccion: promedio7d > 0 && faltan > 0 ? new Date(Date.now() + (faltan / promedio7d) * 86400000).toISOString() : null,
+    },
+    estatus: est,
+    siguiente,
+    serie: { dias, total },
+    material,
+    promotores: promotores.map((p) => ({ ...p, ultima: p.ultima ? p.ultima.toISOString() : null })),
+  };
+}
+
+module.exports = { resumen, avancePromotores, escritorio };

@@ -1702,3 +1702,9 @@ button.ine-shot { width: 100%; padding: 0; font: inherit; }
 .ine-shot.is-busy::after { content: "Recortando…"; position: absolute; inset: auto 8px 8px auto; padding: 2px 8px; border-radius: 999px; background: rgba(10,10,10,.75); color: #fff; font-size: 12px; font-weight: 700; }
 .ine-cam .notice { margin: 0; }
 .ine-cam .notice .ine-cam__actions { justify-content: flex-start; }
+/* Captura de promovido: botones al final del formulario (no fijos en pantalla) */
+.promo-page .form-footer {
+  position: static; margin: var(--space-xl) 0 0; padding: 0;
+  background: none; border-top: 0; backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+.promo-page .back-link { margin-bottom: var(--space-lg); }

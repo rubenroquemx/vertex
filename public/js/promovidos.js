@@ -51,10 +51,6 @@ export async function viewNuevoPromovido(route) {
   return `
     <div class="promo-page">
       <a class="back-link" href="/promovidos" data-link>${ICONS.back}<span>Promovidos</span></a>
-      <div class="page-head">
-        <h2>Nuevo promovido</h2>
-        <p>Sección <strong>${fmtNum(ctx.seccion)}</strong>${ctx.entidad.nombre ? ` · ${esc(ctx.entidad.nombre)}` : ''}. Solo puedes capturar personas de esta sección con INE vigente para la elección.</p>
-      </div>
 
       <form id="promoForm" novalidate>
         <section class="card form-card" aria-labelledby="ps1">

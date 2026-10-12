@@ -19,7 +19,7 @@ import {
   abrirEnArea,
   navigate,
 } from './lib.js';
-import { viewCoordinador, mountCoordinador, I as CI, showAccessDialog } from './coordinador.js';
+import { viewCoordinador, mountCoordinador, I as CI, showAccessDialog, generatePassword, debounce } from './coordinador.js';
 import { openDeleteFlow } from './eliminar.js';
 import { viewZonas, mountZonas, viewZona, mountZona, baseMap, seccionesGeo } from './zonas.js';
 import { viewEscritorioCPV, mountEscritorioCPV } from './escritorio-cpv.js';
@@ -194,19 +194,44 @@ async function viewEstructura(route) {
         <p class="dialog__meta">Dependerá de: <strong>${esc(me.user.name)}</strong></p>
         <div class="field">
           <label for="nuName">Nombre completo <span class="req" aria-hidden="true">*</span></label>
-          <input class="input" id="nuName" name="name" required autocomplete="off" maxlength="120">
+          <input class="input" id="nuName" name="name" required autocomplete="off" maxlength="120" placeholder="ej. María López Hernández">
           <p class="field__error" id="nuName-err"></p>
         </div>
-        <div class="field">
-          <label for="nuPhone">Teléfono</label>
-          <input class="input" id="nuPhone" name="phone" type="tel" inputmode="numeric" autocomplete="off" maxlength="14" aria-describedby="nuPhone-help">
-          <p class="field__help" id="nuPhone-help">10 dígitos.</p>
-          <p class="field__error" id="nuPhone-err"></p>
+        <div class="field-row">
+          <div class="field">
+            <label for="nuUser">Usuario de acceso <span class="req" aria-hidden="true">*</span></label>
+            <div class="input-icon input-icon--text"><span aria-hidden="true">@</span>
+              <input class="input mono" id="nuUser" name="username" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false" required></div>
+            <p class="field__help">Te sugerimos uno a partir del nombre; puedes cambiarlo.</p>
+            <p class="field__ok" id="nuUser-ok" aria-live="polite"></p>
+            <p class="field__error" id="nuUser-err"></p>
+          </div>
+          <div class="field">
+            <div class="label-row">
+              <label for="nuPass">Contraseña <span class="req" aria-hidden="true">*</span></label>
+              <button type="button" class="link-btn" data-action="gen-pass">Generar segura</button>
+            </div>
+            <div class="input-icon input-icon--action"><span aria-hidden="true">${CI.lock}</span>
+              <input class="input mono" id="nuPass" name="password" type="text" autocomplete="new-password" spellcheck="false" required>
+              <button type="button" class="input-action" data-action="show-pass" aria-label="Ocultar contraseña" aria-pressed="true">${CI.eyeOff}</button>
+            </div>
+            <p class="field__help">Mínimo 8 caracteres, con letras y números.</p>
+            <p class="field__error" id="nuPass-err"></p>
+          </div>
         </div>
-        <div class="field">
-          <label for="nuEmail">Correo electrónico</label>
-          <input class="input" id="nuEmail" name="email" type="email" autocomplete="off">
-          <p class="field__error" id="nuEmail-err"></p>
+        <div class="field-row">
+          <div class="field">
+            <label for="nuPhone">Teléfono / WhatsApp <span class="req" aria-hidden="true">*</span></label>
+            <div class="input-icon"><span aria-hidden="true">${CI.phone}</span>
+              <input class="input" id="nuPhone" name="phone" type="tel" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="10 dígitos" required></div>
+            <p class="field__error" id="nuPhone-err"></p>
+          </div>
+          <div class="field">
+            <label for="nuEmail">Correo electrónico</label>
+            <div class="input-icon"><span aria-hidden="true">${CI.mail}</span>
+              <input class="input" id="nuEmail" name="email" type="email" autocomplete="off" placeholder="opcional"></div>
+            <p class="field__error" id="nuEmail-err"></p>
+          </div>
         </div>
         <p class="form-error" id="nuFormErr" role="alert"></p>
         <div class="dialog__actions">
@@ -528,8 +553,48 @@ function mountEstructura(root, route) {
 
   $('#fSearch', root).addEventListener('input', refresh);
 
-  const fields = { name: 'nuName', phone: 'nuPhone', email: 'nuEmail' };
+  const fields = { name: 'nuName', username: 'nuUser', password: 'nuPass', phone: 'nuPhone', email: 'nuEmail' };
   const setErrors = fieldErrorSetter(root, fields);
+
+  // Usuario sugerido a partir del nombre (editable) y verificación de disponibilidad
+  const userInput = $('#nuUser', root);
+  const userOk = $('#nuUser-ok', root);
+  const passInput = $('#nuPass', root);
+  let userTouched = false;
+  const checkUser = debounce(async () => {
+    const u = userInput.value.trim().toLowerCase();
+    userOk.textContent = '';
+    if (!u) return;
+    const r = await api(`/api/usernames/check?username=${encodeURIComponent(u)}`).catch(() => null);
+    if (!r || userInput.value.trim().toLowerCase() !== u) return;
+    $('#nuUser-err', root).textContent = r.error || '';
+    userOk.textContent = r.available ? 'Disponible' : '';
+  }, 350);
+  $('#nuName', root).addEventListener(
+    'input',
+    debounce(async () => {
+      if (userTouched) return;
+      const name = $('#nuName', root).value.trim();
+      if (name.length < 3) return;
+      const r = await api(`/api/usernames/suggest?name=${encodeURIComponent(name)}`).catch(() => null);
+      if (r?.username && !userTouched) {
+        userInput.value = r.username;
+        checkUser();
+      }
+    }, 400)
+  );
+  userInput.addEventListener('input', () => {
+    userTouched = true;
+    userInput.value = userInput.value.toLowerCase().replace(/\s/g, '');
+    checkUser();
+  });
+  const setShowPass = (on) => {
+    const btn = $('[data-action="show-pass"]', root);
+    passInput.type = on ? 'text' : 'password';
+    btn.setAttribute('aria-pressed', String(on));
+    btn.setAttribute('aria-label', on ? 'Ocultar contraseña' : 'Mostrar contraseña');
+    btn.innerHTML = on ? CI.eyeOff : CI.eye;
+  };
 
   // render() limpia view.onclick en cada navegación
   root.onclick = (e) => {
@@ -569,10 +634,24 @@ function mountEstructura(root, route) {
       render();
       return;
     }
+    if (action === 'gen-pass') {
+      passInput.value = generatePassword();
+      setShowPass(true);
+      $('#nuPass-err', root).textContent = '';
+      return;
+    }
+    if (action === 'show-pass') {
+      setShowPass(passInput.type === 'password');
+      return;
+    }
     if (action === 'new') {
       form.reset();
       setErrors();
       formErr.textContent = '';
+      userTouched = false;
+      userOk.textContent = '';
+      passInput.value = generatePassword();
+      setShowPass(true);
       abrirEnArea(dialog);
       $('#nuName', root).focus();
     }
@@ -597,7 +676,15 @@ function mountEstructura(root, route) {
       route.data.unshift(created);
       dialog.close();
       refresh();
-      toast(`Cuenta creada: ${created.name}`);
+      // Acceso listo para enviar por WhatsApp (la contraseña se muestra solo esta vez)
+      showAccessDialog(dialogo('nuAcceso'), {
+        user: created,
+        password: body.password,
+        wasEditing: false,
+        roleLabel: state.me.childRole.name,
+        backLabel: 'Listo',
+        backPath: location.pathname,
+      });
     }
   });
 }

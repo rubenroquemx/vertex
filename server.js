@@ -162,11 +162,14 @@ app.post('/api/users', requireUser, async (req, res) => {
   if (role.key === 'coord_zona') return res.status(422).json({ error: 'Usa el formulario de Nueva zona.' });
   if (role.key === 'resp_seccion') return res.status(422).json({ error: 'Usa el formulario de Nuevo responsable de sección.' });
 
-  const { data, errors } = cleanContact(req.body);
-  if (Object.keys(errors).length) return invalid(res, errors);
+  // Misma cuenta de acceso que los demás perfiles: usuario, contraseña y teléfono para WhatsApp
+  const cuenta = validateCuenta(req.body);
+  if (Object.keys(cuenta.errors).length) return invalid(res, cuenta.errors);
 
-  const created = await users.create({ ...data, role: role.key, parentId: req.user.id });
-  res.status(201).json(publicUser(created, users.all()));
+  const created = await users.create({ ...cuenta.data, role: role.key, parentId: req.user.id });
+  await users.update(created.id, { passwordHash: passwords.hash(cuenta.password) });
+  await audit.add({ action: 'user.create', by: req.realUser.id, as: req.user.id, user: created.id });
+  res.status(201).json(publicUser(users.get(created.id), users.all()));
 });
 
 // --- Eliminación de cuentas con respaldo de su rama --------------------------

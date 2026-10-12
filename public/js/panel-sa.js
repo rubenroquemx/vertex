@@ -53,14 +53,15 @@ function sparkline(serie) {
 // ---------------------------------------------------------------------------
 // Gráfico: promovidos por día (30 días), una sola serie
 // ---------------------------------------------------------------------------
-function barras30(el, { dias, total }) {
+// `referencia`: línea punteada opcional (p. ej. el ritmo diario necesario para la meta)
+export function barras30(el, { dias, total }, { referencia = null, color = '#2a78d6' } = {}) {
   const W = 720;
   const H = 240;
   const m = { top: 20, right: 8, bottom: 28, left: 44 };
   const iw = W - m.left - m.right;
   const ih = H - m.top - m.bottom;
   const max = (() => {
-    const v = Math.max(...total, 1);
+    const v = Math.max(...total, referencia?.valor || 0, 1);
     // 4 divisiones con paso «bonito» (1, 1.5, 2, 2.5, 3, 4 o 5 × potencia de 10)
     const pow = 10 ** Math.floor(Math.log10(v / 4));
     return [1, 1.5, 2, 2.5, 3, 4, 5, 10].find((k) => k * pow * 4 >= v) * pow * 4;
@@ -94,10 +95,14 @@ function barras30(el, { dias, total }) {
       </g>`;
     })
     .join('');
+  const ref = referencia
+    ? `<line x1="${m.left}" x2="${W - m.right}" y1="${y(referencia.valor)}" y2="${y(referencia.valor)}" class="sa-ref"/>
+       <text x="${m.left + 6}" y="${y(referencia.valor) - 6}" class="sa-ref__txt">${esc(referencia.etiqueta)}</text>`
+    : '';
   // Valor directo solo en hoy (no en cada barra)
   const lbl = total[hoy] ? `<text x="${m.left + band * hoy + band / 2}" y="${y(total[hoy]) - 6}" class="vz-value" text-anchor="end">${fmtNum(total[hoy])}</text>` : '';
   el.innerHTML = `<div class="vz-wrap">
-      <svg viewBox="0 0 ${W} ${H}" class="vz-svg" role="img" aria-label="Promovidos capturados por día en los últimos 30 días">${grid}${bars}${lbl}</svg>
+      <svg viewBox="0 0 ${W} ${H}" class="vz-svg" role="img" aria-label="Promovidos capturados por día en los últimos 30 días" style="--bar:${color}">${grid}${bars}${ref}${lbl}</svg>
       <div class="vz-tip" role="tooltip" hidden></div>
     </div>`;
   const wrap = el.querySelector('.vz-wrap');

@@ -1,108 +1,64 @@
 // Escritorio del Coordinador de Promoción del Voto (CPV).
-// Banda de cifras clave · mapa del territorio · zonas con mejor desempeño ·
-// promovidos de los últimos 7 días por zona · avance de la estructura por zona.
+// Meta y ritmo · cifras de la estructura · mapa de avance por sección · pendientes que requieren
+// atención · captura de 30 días contra el ritmo necesario · revisión · zonas · responsables · material.
 import { ICONS, $, esc, fmtNum, fmtSeccion, api, homeControl, navigate } from './lib.js';
 import { baseMap, seccionesGeo } from './zonas.js';
+import { barras30 } from './panel-sa.js';
 
-const DIA = new Intl.DateTimeFormat('es-MX', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
-const DIA_LARGO = new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
-const fecha = (key, fmt = DIA) => fmt.format(new Date(`${key}T12:00:00Z`));
-const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
-const num = (n) => (n === null || n === undefined ? '—' : fmtNum(n));
+const pct = (a, b) => (b ? (a / b) * 100 : 0);
+const pctTxt = (a, b) => {
+  if (!b) return '—';
+  const p = pct(a, b);
+  return `${p > 0 && p < 1 ? p.toFixed(1) : fmtNum(Math.round(p))}%`;
+};
+const FECHA = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
 
-// Escala "bonita" para el eje Y (0, 5, 10, 20, 25, 50…)
-function niceMax(v) {
-  if (v <= 4) return 4;
-  const pow = 10 ** Math.floor(Math.log10(v / 4));
-  const step = [1, 1.5, 2, 2.5, 3, 4, 5, 10].find((m) => (m * pow * 4) >= v) * pow;
-  return step * 4;
+// Avance por sección (mapa): una sola tonalidad, de claro (poco) a oscuro (mucho)
+const RANGOS = [
+  { hasta: 0.1, color: '#cde2fb', t: 'Menos de 10%' },
+  { hasta: 0.25, color: '#9ec5f4', t: '10% a 24%' },
+  { hasta: 0.5, color: '#5598e7', t: '25% a 49%' },
+  { hasta: 0.75, color: '#2a78d6', t: '50% a 74%' },
+  { hasta: Infinity, color: '#184f95', t: '75% o más' },
+];
+const colorAvance = (v) => RANGOS.find((r) => v < r.hasta).color;
+const SIN_RS = '#d4d4d4';
+
+const ESTATUS = [
+  { k: 'aprobados', t: 'Aprobados', c: '#16a34a' },
+  { k: 'revision', t: 'En revisión', c: '#f59e0b' },
+  { k: 'observaciones', t: 'Con observaciones', c: '#dc2626' },
+  { k: 'rechazados', t: 'Rechazados', c: '#4a3aa7' },
+];
+
+const barra = (valor, meta, color = '#171717') =>
+  `<span class="ec-bar" role="img" aria-label="${pctTxt(valor, meta)}"><span style="width:${Math.min(100, pct(valor, meta))}%;background:${color}"></span></span>`;
+
+function sparkline(serie, color) {
+  const W = 96;
+  const H = 26;
+  const max = Math.max(...serie, 1);
+  const d = serie.map((v, i) => `${i ? 'L' : 'M'}${((i / (serie.length - 1)) * W).toFixed(1)},${(H - 2 - (v / max) * (H - 4)).toFixed(1)}`).join(' ');
+  return `<svg class="ec-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" style="stroke:${color}"/></svg>`;
 }
 
-// ---------------------------------------------------------------------------
-// Gráfico de barras apiladas: promovidos por día y por zona
-// ---------------------------------------------------------------------------
-export function stackedBars(el, { dias, hoy, zonas }) {
-  const W = 720;
-  const H = 260;
-  const m = { top: 24, right: 8, bottom: 30, left: 36 };
-  const iw = W - m.left - m.right;
-  const ih = H - m.top - m.bottom;
-  const totals = dias.map((_, i) => zonas.reduce((t, z) => t + z.serie[i], 0));
-  const max = niceMax(Math.max(...totals, 1));
-  const band = iw / dias.length;
-  const bw = Math.min(44, band * 0.56);
-  const y = (v) => m.top + ih - (v / max) * ih;
-  const GAP = 2; // separación de 2 px entre segmentos
-
-  const grid = [0, 1, 2, 3, 4]
-    .map((k) => {
-      const v = (max / 4) * k;
-      return `<line x1="${m.left}" x2="${W - m.right}" y1="${y(v)}" y2="${y(v)}" class="vz-grid${k === 0 ? ' vz-base' : ''}"/>
-        <text x="${m.left - 8}" y="${y(v)}" class="vz-tick" text-anchor="end" dominant-baseline="middle">${fmtNum(v)}</text>`;
-    })
-    .join('');
-
-  const bars = dias
-    .map((d, i) => {
-      const x = m.left + band * i + (band - bw) / 2;
-      let acc = 0;
-      const segs = zonas.filter((z) => z.serie[i] > 0);
-      const rects = segs
-        .map((z, k) => {
-          const v = z.serie[i];
-          const y0 = y(acc);
-          const y1 = y(acc + v);
-          acc += v;
-          const h = Math.max(0, y0 - y1 - (k < segs.length - 1 ? GAP : 0));
-          const top = k === segs.length - 1; // solo el extremo superior va redondeado (4 px)
-          const r = top ? Math.min(4, h) : 0;
-          const yy = y0 - h;
-          return `<path d="M${x},${y0} V${yy + r} Q${x},${yy} ${x + r},${yy} H${x + bw - r} Q${x + bw},${yy} ${x + bw},${yy + r} V${y0} Z" fill="${z.color}"/>`;
-        })
-        .join('');
-      const label = totals[i] ? `<text x="${x + bw / 2}" y="${y(totals[i]) - 6}" class="vz-value" text-anchor="middle">${fmtNum(totals[i])}</text>` : '';
-      return `<g class="vz-col" data-i="${i}">
-        <rect class="vz-hit" x="${m.left + band * i}" y="${m.top}" width="${band}" height="${ih}" />
-        ${rects}${label}
-        <text x="${x + bw / 2}" y="${H - 8}" class="vz-tick${d === hoy ? ' vz-today' : ''}" text-anchor="middle">${d === hoy ? 'Hoy' : esc(fecha(d))}</text>
-      </g>`;
-    })
-    .join('');
-
-  el.innerHTML = `
-    <div class="vz-wrap">
-      <svg viewBox="0 0 ${W} ${H}" class="vz-svg" role="img" aria-label="Promovidos por día en los últimos 7 días, por zona">${grid}${bars}</svg>
-      <div class="vz-tip" role="tooltip" hidden></div>
-    </div>`;
-
-  // Tooltip por día (desglose por zona)
-  const wrap = el.querySelector('.vz-wrap');
-  const tip = el.querySelector('.vz-tip');
-  const svg = el.querySelector('svg');
-  const show = (i, evt) => {
-    const rows = zonas
-      .filter((z) => z.serie[i] > 0)
-      .map((z) => `<li><span class="vz-sw" style="background:${z.color}"></span><span>${esc(z.codigo)}</span><strong>${fmtNum(z.serie[i])}</strong></li>`)
-      .join('');
-    tip.innerHTML = `<p class="vz-tip__title">${esc(fecha(dias[i], DIA_LARGO))}</p>
-      ${rows ? `<ul>${rows}</ul>` : '<p class="vz-tip__empty">Sin promovidos</p>'}
-      <p class="vz-tip__total">Total <strong>${fmtNum(totals[i])}</strong></p>`;
-    tip.hidden = false;
-    const box = wrap.getBoundingClientRect();
-    const colX = ((m.left + band * (i + 0.5)) / W) * box.width;
-    const left = Math.min(Math.max(colX - tip.offsetWidth / 2, 0), box.width - tip.offsetWidth);
-    tip.style.left = `${left}px`;
-    tip.style.top = `${Math.max(0, (y(totals[i]) / H) * box.height - tip.offsetHeight - 12)}px`;
-    svg.querySelectorAll('.vz-col').forEach((g) => g.classList.toggle('is-dim', Number(g.dataset.i) !== i));
-  };
-  const hide = () => {
-    tip.hidden = true;
-    svg.querySelectorAll('.vz-col').forEach((g) => g.classList.remove('is-dim'));
-  };
-  svg.querySelectorAll('.vz-col').forEach((g) => {
-    g.addEventListener('mouseenter', (e) => show(Number(g.dataset.i), e));
-    g.addEventListener('mouseleave', hide);
-  });
+// Pendientes que requieren atención, de lo más urgente a lo menos
+function alertas(d) {
+  const k = d.kpis;
+  const out = [];
+  const add = (nivel, titulo, texto, href) => out.push({ nivel, titulo, texto, href });
+  const vacantes = k.secciones - k.seccionesCubiertas;
+  if (d.ritmo.faltan && d.ritmo.promedio7d < d.ritmo.necesario)
+    add('alta', 'Ritmo por debajo de la meta', `Capturan ${fmtNum(d.ritmo.promedio7d)} al día; se necesitan ${fmtNum(d.ritmo.necesario)} para llegar a tiempo.`, null);
+  if (d.estatus.viejos) add('alta', `${fmtNum(d.estatus.viejos)} promovidos esperan revisión hace más de 3 días`, 'Los Responsables de Sección deben aprobarlos o dejar observaciones.', null);
+  if (vacantes) add('media', `${fmtNum(vacantes)} ${vacantes === 1 ? 'sección sin' : 'secciones sin'} Responsable de Sección`, `Cobertura actual: ${pctTxt(k.seccionesCubiertas, k.secciones)} de tus secciones.`, '/zonas');
+  if (d.totales.vacantes) add('media', `${fmtNum(d.totales.vacantes)} secciones sin zona`, 'Asígnalas a un Coordinador de Zona.', '/zonas/nueva');
+  if (k.promotores < k.promotoresMeta * 0.5)
+    add('media', 'Faltan Promotores Territoriales', `Tienes ${fmtNum(k.promotores)} de ${fmtNum(k.promotoresMeta)} requeridos (${pctTxt(k.promotores, k.promotoresMeta)}).`, null);
+  if (d.estatus.observaciones) add('baja', `${fmtNum(d.estatus.observaciones)} promovidos con observaciones`, 'Esperan corrección de su Promotor Territorial.', null);
+  if (d.material.sinEvidencia) add('baja', `${fmtNum(d.material.sinEvidencia)} órdenes de material sin evidencia`, 'Responsables que recibieron material y no han subido sus fotos.', '/material');
+  if (d.material.porRecibirZonas) add('baja', `${fmtNum(d.material.porRecibirZonas)} ${d.material.porRecibirZonas === 1 ? 'orden' : 'órdenes'} de material por recibir`, 'Tus Coordinadores de Zona aún no confirman la recepción.', '/material');
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,125 +73,159 @@ export async function viewEscritorioCPV(route) {
       <span>Cuando el administrador te asigne un territorio, aquí verás el avance de tu estructura.</span></div>`;
   }
   const k = d.kpis;
-  const t = d.totales;
-  const hayPromovidos = k.promovidos > 0;
-  const hay7d = d.serie.total.some((v) => v > 0);
+  const r = d.ritmo;
+  const enRitmo = !r.faltan || r.promedio7d >= r.necesario;
+  const semanaDelta = k.semanaAnterior ? Math.round(pct(k.semana - k.semanaAnterior, k.semanaAnterior)) : null;
+  const est = d.estatus;
+  const totalEst = ESTATUS.reduce((t, e) => t + est[e.k], 0);
+  const avisos = alertas(d);
 
-  // Desempeño: promovidos (7 días, luego históricos), después cobertura de la estructura
-  const ranking = [...d.zonas].sort(
-    (a, b) =>
-      b.promovidos7d - a.promovidos7d ||
-      b.promovidos - a.promovidos ||
-      pct(b.seccionesCubiertas, b.secciones) - pct(a.seccionesCubiertas, a.secciones) ||
-      b.promotores - a.promotores
-  );
-  const maxProm = Math.max(1, ...ranking.map((z) => z.promovidos7d));
+  const hero = `
+    <section class="ec-hero" aria-label="Meta de promovidos">
+      <div>
+        <p class="ec-hero__label">Promovidos de tu estructura</p>
+        <p class="ec-hero__value">${fmtNum(k.promovidos)}<span> de ${fmtNum(k.meta)}</span></p>
+        <div class="ec-hero__bar" role="img" aria-label="Avance de la meta: ${pctTxt(k.promovidos, k.meta)}"><span style="width:${Math.min(100, pct(k.promovidos, k.meta))}%"></span></div>
+        <p class="ec-hero__pie"><strong>${pctTxt(k.promovidos, k.meta)}</strong> de la meta · faltan ${fmtNum(r.faltan)} · ${fmtNum(d.eleccion.dias)} días para la elección</p>
+      </div>
+      <dl class="ec-hero__ritmo">
+        <div><dt>Ritmo actual</dt><dd>${fmtNum(r.promedio7d)}<small>/día</small></dd><p>Promedio de los últimos 7 días${semanaDelta !== null ? ` · ${semanaDelta >= 0 ? '▲' : '▼'} ${Math.abs(semanaDelta)}% vs. semana anterior` : ''}</p></div>
+        <div><dt>Ritmo necesario</dt><dd>${fmtNum(r.necesario)}<small>/día</small></dd><p>Para completar la meta antes de la elección</p></div>
+        <div class="ec-hero__estado ${enRitmo ? 'is-ok' : 'is-bajo'}">
+          <span aria-hidden="true">${enRitmo ? '✓' : '!'}</span>
+          <p>${
+            !r.faltan
+              ? 'Meta alcanzada.'
+              : enRitmo
+                ? `A este ritmo llegas a la meta el <strong>${esc(FECHA.format(new Date(r.proyeccion)))}</strong>.`
+                : `A este ritmo no llegas a tiempo${r.proyeccion ? ` (lo harías el ${esc(FECHA.format(new Date(r.proyeccion)))})` : ''}.`
+          }</p>
+        </div>
+      </dl>
+    </section>`;
 
-  const kpi = (label, value, extra = '', action = '') =>
-    `<div class="kband__item">${action}<span class="kband__value">${value}</span><span class="kband__label">${label}</span>${extra}</div>`;
+  const kpi = (label, valor, meta, sub, href) => `
+    <${href ? `a href="${href}" data-link` : 'div'} class="ec-kpi">
+      <span class="ec-kpi__label">${label}</span>
+      <span class="ec-kpi__valor">${valor}</span>
+      ${meta !== null ? barra(meta[0], meta[1]) : ''}
+      <span class="ec-kpi__sub">${sub}</span>
+    </${href ? 'a' : 'div'}>`;
+  const kpis = `
+    <div class="ec-kpis">
+      ${kpi('Secciones con responsable', fmtNum(k.seccionesCubiertas), [k.seccionesCubiertas, k.secciones], `${pctTxt(k.seccionesCubiertas, k.secciones)} de ${fmtNum(k.secciones)} secciones`, '/zonas')}
+      ${kpi('Promotores Territoriales', fmtNum(k.promotores), [k.promotores, k.promotoresMeta], `${pctTxt(k.promotores, k.promotoresMeta)} de ${fmtNum(k.promotoresMeta)} requeridos`)}
+      ${kpi('Aprobados', fmtNum(est.aprobados), [est.aprobados, totalEst], `${pctTxt(est.aprobados, totalEst)} de lo capturado`)}
+      ${kpi('Por revisar', fmtNum(est.revision + est.observaciones), null, `${fmtNum(est.viejos)} con más de 3 días`)}
+      ${kpi('Material con evidencia', fmtNum(d.material.conEvidencia), [d.material.conEvidencia, d.material.ordenes], `de ${fmtNum(d.material.ordenes)} órdenes a responsables`, '/material')}
+    </div>`;
+
+  const mapa = `
+    <section class="card ec-mapa" aria-labelledby="ecMapT">
+      <header class="dash-card__head">
+        <h3 id="ecMapT">Avance por sección</h3>
+        <div class="seg" role="group" aria-label="Colorear el mapa por">
+          <button type="button" class="seg__btn is-on" data-modo="avance" aria-pressed="true">Avance</button>
+          <button type="button" class="seg__btn" data-modo="zona" aria-pressed="false">Zonas</button>
+        </div>
+      </header>
+      <div class="map ec-mapa__map" id="dMap"></div>
+      <ul class="legend" id="ecLeyenda"></ul>
+      <p class="map-card__info" id="dInfo" aria-live="polite"></p>
+    </section>`;
+
+  const atencion = `
+    <section class="card ec-atencion" aria-labelledby="ecAtT">
+      <header class="dash-card__head"><h3 id="ecAtT">Requiere tu atención</h3><span class="muted">${fmtNum(avisos.length)}</span></header>
+      ${
+        avisos.length
+          ? `<ul class="ec-avisos">${avisos
+              .map(
+                (a) => `<li class="ec-aviso is-${a.nivel}">
+                  <span class="ec-aviso__punto" aria-hidden="true"></span>
+                  <div><strong>${a.titulo}</strong><p>${a.texto}</p>${a.href ? `<a href="${a.href}" data-link>Ir</a>` : ''}</div>
+                  <span class="sr-only">Prioridad ${a.nivel}</span>
+                </li>`
+              )
+              .join('')}</ul>`
+          : '<p class="muted">Todo en orden por ahora.</p>'
+      }
+    </section>`;
+
+  const grafica = `
+    <section class="card" aria-labelledby="ecChT">
+      <header class="dash-card__head"><h3 id="ecChT">Promovidos capturados por día</h3><span class="muted">Últimos 30 días · la línea es el ritmo necesario</span></header>
+      <div id="dChart"></div>
+      <details class="vz-table"><summary>Ver como tabla</summary>
+        <div class="table-wrap"><table class="table"><thead><tr><th scope="col">Día</th><th scope="col" class="num">Promovidos</th></tr></thead>
+        <tbody>${d.serie.dias.map((x, i) => `<tr><td>${esc(x)}</td><td class="num">${fmtNum(d.serie.total[i])}</td></tr>`).reverse().join('')}</tbody></table></div>
+      </details>
+    </section>`;
+
+  const estatus = `
+    <section class="card" aria-labelledby="ecEsT">
+      <header class="dash-card__head"><h3 id="ecEsT">Revisión de promovidos</h3><span class="muted">${fmtNum(totalEst)}</span></header>
+      <div class="sa-stack" role="img" aria-label="${ESTATUS.map((e) => `${e.t}: ${fmtNum(est[e.k])}`).join(', ')}">
+        ${ESTATUS.filter((e) => est[e.k]).map((e) => `<span style="flex:${est[e.k]};background:${e.c}" title="${e.t}: ${fmtNum(est[e.k])}"></span>`).join('')}
+      </div>
+      <ul class="sa-leyenda">${ESTATUS.map(
+        (e) => `<li><span class="vz-sw" style="background:${e.c}"></span><span>${e.t}</span><strong>${fmtNum(est[e.k])}</strong><small>${pctTxt(est[e.k], totalEst)}</small></li>`
+      ).join('')}</ul>
+      <p class="sa-nota">Cada Responsable de Sección aprueba los promovidos de sus promotores.</p>
+    </section>`;
+
+  // Celda de avance: cifra y %, barra y la meta debajo
+  const celda = (v, meta, color) =>
+    `<td><div class="ec-celda"><strong>${fmtNum(v)}</strong><span class="ec-celda__p">${pctTxt(v, meta)}</span></div>${barra(v, meta, color)}<small class="ec-celda__meta">de ${fmtNum(meta)}</small></td>`;
+  const zonasOrden = [...d.zonas].sort((a, b) => pct(b.promovidos, b.meta) - pct(a.promovidos, a.meta));
+  const tablaZonas = `
+    <section class="card" aria-labelledby="ecZT">
+      <header class="dash-card__head"><h3 id="ecZT">Zonas</h3><a class="link-btn" href="/zonas" data-link>Administrar zonas</a></header>
+      ${
+        zonasOrden.length
+          ? `<div class="table-wrap"><table class="table ec-zonas">
+          <thead><tr><th scope="col">Zona</th><th scope="col">Promovidos</th><th scope="col">Promotores</th><th scope="col">Secciones cubiertas</th><th scope="col" class="num">Por revisar</th><th scope="col" class="num">Material</th><th scope="col">30 días</th></tr></thead>
+          <tbody>${zonasOrden
+            .map(
+              (z) => `<tr>
+                <th scope="row"><span class="ec-zona"><span class="vz-sw" style="background:${z.color}"></span><span><strong>${esc(z.codigo)}</strong><small>${esc(z.nombre)} · ${esc(z.coordinador)}</small></span></span></th>
+                ${celda(z.promovidos, z.meta, z.color)}
+                ${celda(z.promotores, z.promotoresMeta, z.color)}
+                ${celda(z.seccionesCubiertas, z.secciones, z.color)}
+                <td class="num">${fmtNum(z.porRevisar)}</td>
+                <td class="num">${z.material.ordenes ? `${fmtNum(z.material.conEvidencia)} <small class="muted">de ${fmtNum(z.material.ordenes)}</small>` : '—'}</td>
+                <td>${sparkline(z.serie, z.color)}</td>
+              </tr>`
+            )
+            .join('')}</tbody></table></div>`
+          : `<div class="empty empty--sm"><strong>Aún no tienes zonas</strong><a class="btn btn--sm" href="/zonas/nueva" data-link>${ICONS.plus}<span>Crear zona</span></a></div>`
+      }
+    </section>`;
+
+  const listaRS = (lista) =>
+    lista.length
+      ? `<ol class="ec-rs">${lista
+          .map(
+            (x) => `<li>
+              <div class="ec-rs__top"><span class="vz-sw" style="background:${x.color}"></span><strong>${esc(x.name)}</strong><span class="ec-rs__p">${pctTxt(x.promovidos, x.meta)}</span></div>
+              ${barra(x.promovidos, x.meta, x.color)}
+              <p>Sección ${fmtSeccion(x.seccion)} · ${esc(x.zona)} · ${fmtNum(x.promovidos)} de ${fmtNum(x.meta)} · ${fmtNum(x.promotores)} ${x.promotores === 1 ? 'promotor' : 'promotores'}</p>
+            </li>`
+          )
+          .join('')}</ol>`
+      : '<p class="muted">Aún no hay Responsables de Sección.</p>';
+  const responsables = `
+    <section class="card" aria-labelledby="ecRsT"><header class="dash-card__head"><h3 id="ecRsT">Responsables con mayor avance</h3><span class="muted">de ${fmtNum(d.responsables.total)}</span></header>${listaRS(d.responsables.mejores)}</section>
+    <section class="card" aria-labelledby="ecRbT"><header class="dash-card__head"><h3 id="ecRbT">Responsables que necesitan apoyo</h3><span class="muted">Menor avance</span></header>${listaRS(d.responsables.rezagados)}</section>`;
 
   return `
-    <section class="kband" aria-label="Cifras principales">
-      ${kpi('Zonas creadas', fmtNum(k.zonas))}
-      ${k.vacantes ? kpi('Secciones sin asignar', fmtNum(k.vacantes), `<a class="kband__link" href="/zonas/nueva" data-link>Asignar</a>`) : ''}
-      ${kpi('Coordinadores de zona', fmtNum(k.coordinadores))}
-      ${kpi('Responsables de sección', fmtNum(k.responsables))}
-      ${kpi('Promotores territoriales', fmtNum(k.promotores))}
-      ${kpi('Promovidos', fmtNum(k.promovidos), k.promovidosHoy ? `<span class="kband__delta">+${fmtNum(k.promovidosHoy)} hoy</span>` : '')}
-    </section>
-
-    <div class="dash-grid">
-      <section class="card dash-map" aria-labelledby="dMapT">
-        <header class="dash-card__head">
-          <h3 id="dMapT">Tu territorio</h3>
-          <span class="muted">${esc(d.entidad.nombre)} · ${fmtNum(t.secciones)} secciones · ${num(t.electores)} electores</span>
-        </header>
-        <div class="map dash-map__map" id="dMap"></div>
-        <ul class="legend" aria-label="Zonas">
-          ${d.zonas.map((z) => `<li><span class="vz-sw" style="background:${z.color}"></span>${esc(z.codigo)}</li>`).join('')}
-          ${t.vacantes ? '<li><span class="vz-sw vz-sw--vacant"></span>Sin asignar</li>' : ''}
-        </ul>
-        <p class="map-card__info" id="dInfo" aria-live="polite"></p>
-      </section>
-
-      <section class="card" aria-labelledby="dRankT">
-        <header class="dash-card__head">
-          <h3 id="dRankT">Zonas con mejor desempeño</h3>
-          <span class="muted">Promovidos 7 días</span>
-        </header>
-        ${
-          ranking.length
-            ? `<ol class="rank">
-                ${ranking
-                  .slice(0, 6)
-                  .map(
-                    (z, i) => `<li class="rank__item">
-                      <span class="rank__pos">${i + 1}</span>
-                      <div class="rank__body">
-                        <div class="rank__top"><span class="vz-sw" style="background:${z.color}"></span><strong>${esc(z.codigo)}</strong><span class="muted rank__name">${esc(z.nombre)}</span><span class="rank__num">${fmtNum(z.promovidos7d)}</span></div>
-                        <div class="rank__bar"><span style="width:${(z.promovidos7d / maxProm) * 100}%;background:${z.color}"></span></div>
-                        <div class="rank__meta muted">${fmtNum(z.promotores)} promotores · ${pct(z.seccionesCubiertas, z.secciones)}% secciones con responsable</div>
-                      </div>
-                    </li>`
-                  )
-                  .join('')}
-              </ol>
-              ${hayPromovidos ? '' : '<p class="dash-note">Aún no hay promovidos: el orden se basa en el avance de la estructura.</p>'}`
-            : `<div class="empty empty--sm"><strong>Aún no tienes zonas</strong><a class="btn btn--sm" href="/zonas/nueva" data-link>${ICONS.plus}<span>Crear zona</span></a></div>`
-        }
-      </section>
-
-      <section class="card dash-wide" aria-labelledby="dChartT">
-        <header class="dash-card__head">
-          <h3 id="dChartT">Promovidos de los últimos 7 días</h3>
-          <span class="muted">Por día y por zona</span>
-        </header>
-        ${
-          hay7d
-            ? `<ul class="legend legend--top" aria-label="Zonas">${d.zonas
-                .filter((z) => z.promovidos7d)
-                .map((z) => `<li><span class="vz-sw" style="background:${z.color}"></span>${esc(z.codigo)}</li>`)
-                .join('')}</ul>
-              <div id="dChart"></div>
-              <details class="vz-table">
-                <summary>Ver como tabla</summary>
-                <div class="table-wrap"><table class="table">
-                  <thead><tr><th scope="col">Zona</th>${d.serie.dias.map((x) => `<th scope="col" class="num">${esc(fecha(x))}</th>`).join('')}<th scope="col" class="num">Total</th></tr></thead>
-                  <tbody>${d.zonas
-                    .map((z) => `<tr><td>${esc(z.codigo)}</td>${z.serie.map((v) => `<td class="num num--r">${fmtNum(v)}</td>`).join('')}<td class="num num--r"><strong>${fmtNum(z.promovidos7d)}</strong></td></tr>`)
-                    .join('')}</tbody>
-                </table></div>
-              </details>`
-            : `<div class="empty empty--chart"><span aria-hidden="true">${ICONS.users}</span><strong>Sin promovidos en los últimos 7 días</strong>
-                <span>Cuando los Promotores Territoriales capturen promovidos, aquí verás el avance diario de cada zona.</span></div>`
-        }
-      </section>
-
-      <section class="card" aria-labelledby="dStructT">
-        <header class="dash-card__head">
-          <h3 id="dStructT">Avance de la estructura</h3>
-          <span class="muted">Secciones con responsable</span>
-        </header>
-        ${
-          d.zonas.length
-            ? `<ul class="hbars">${d.zonas
-                .map((z) => {
-                  const p = pct(z.seccionesCubiertas, z.secciones);
-                  return `<li>
-                    <div class="hbars__top"><span class="vz-sw" style="background:${z.color}"></span><span>${esc(z.codigo)}</span><strong>${p}%</strong></div>
-                    <div class="hbars__track" role="img" aria-label="${esc(z.codigo)}: ${p}% de secciones con responsable"><span style="width:${p}%"></span></div>
-                    <div class="muted hbars__meta">${fmtNum(z.seccionesCubiertas)} de ${fmtNum(z.secciones)} secciones · ${fmtNum(z.responsables)} responsables</div>
-                  </li>`;
-                })
-                .join('')}</ul>`
-            : '<p class="dash-note">Crea zonas para ver el avance de tu estructura.</p>'
-        }
-        <div class="cover">
-          <div class="cover__row"><span>Territorio repartido en zonas</span><strong>${pct(t.asignadas, t.secciones)}%</strong></div>
-          <div class="hbars__track"><span style="width:${pct(t.asignadas, t.secciones)}%"></span></div>
-          <div class="muted hbars__meta">${fmtNum(t.asignadas)} de ${fmtNum(t.secciones)} secciones · ${num(t.electoresAsignados)} de ${num(t.electores)} electores</div>
-        </div>
-      </section>
+    <div class="ec">
+      ${hero}
+      ${kpis}
+      <div class="ec-row ec-row--mapa">${mapa}${atencion}</div>
+      <div class="ec-row ec-row--chart">${grafica}${estatus}</div>
+      ${tablaZonas}
+      <div class="ec-row ec-row--2">${responsables}</div>
     </div>`;
 }
 
@@ -243,41 +233,70 @@ export function mountEscritorioCPV(root, route) {
   const d = route.data;
   if (!d?.entidad) return undefined;
 
-  if (d.serie.total.some((v) => v > 0)) {
-    stackedBars($('#dChart', root), { dias: d.serie.dias, hoy: d.serie.hoy, zonas: d.zonas.filter((z) => z.promovidos7d) });
-  }
+  barras30($('#dChart', root), d.serie, d.ritmo.faltan ? { referencia: { valor: d.ritmo.necesario, etiqueta: `Ritmo necesario: ${fmtNum(d.ritmo.necesario)}/día` } } : {});
 
-  // Mapa: secciones del territorio coloreadas por zona; las vacantes en gris
+  // Mapa: secciones coloreadas por avance contra su meta (o por zona)
   const info = $('#dInfo', root);
+  const leyenda = $('#ecLeyenda', root);
   const { map, destroy } = baseMap($('#dMap', root));
   let bounds = null;
+  let layer = null;
+  let modo = 'avance';
   homeControl(() => bounds && map.fitBounds(bounds, { padding: [12, 12] })).addTo(map);
   const zonaById = new Map(d.zonas.map((z) => [z.id, z]));
   const bySec = new Map(d.secciones.map((s) => [s.c, s]));
-  const resumen = `${fmtNum(d.totales.asignadas)} de ${fmtNum(d.totales.secciones)} secciones en zonas`;
+  const resumen = `${fmtNum(d.kpis.seccionesCubiertas)} de ${fmtNum(d.kpis.secciones)} secciones con Responsable de Sección`;
+
+  const estilo = (f) => {
+    const s = bySec.get(f.properties.seccion);
+    if (modo === 'zona') {
+      const z = zonaById.get(s?.z);
+      return z
+        ? { color: '#ffffff', weight: 0.8, opacity: 1, fillColor: z.color, fillOpacity: 0.7 }
+        : { color: '#ffffff', weight: 0.8, opacity: 1, fillColor: '#71717a', fillOpacity: 0.35 };
+    }
+    if (!s?.rs) return { color: '#a3a3a3', weight: 0.8, opacity: 1, dashArray: '3 3', fillColor: SIN_RS, fillOpacity: 0.6 };
+    return { color: '#ffffff', weight: 0.8, opacity: 1, fillColor: colorAvance(s.m ? s.p / s.m : 0), fillOpacity: 0.85 };
+  };
+  const pintarLeyenda = () => {
+    leyenda.innerHTML =
+      modo === 'avance'
+        ? `${RANGOS.map((r) => `<li><span class="vz-sw" style="background:${r.color}"></span>${r.t}</li>`).join('')}<li><span class="vz-sw" style="background:${SIN_RS}"></span>Sin responsable</li>`
+        : d.zonas.map((z) => `<li><span class="vz-sw" style="background:${z.color}"></span>${esc(z.codigo)}</li>`).join('');
+  };
+  pintarLeyenda();
+  root.querySelectorAll('[data-modo]').forEach((b) =>
+    b.addEventListener('click', () => {
+      modo = b.dataset.modo;
+      root.querySelectorAll('[data-modo]').forEach((x) => {
+        x.classList.toggle('is-on', x === b);
+        x.setAttribute('aria-pressed', String(x === b));
+      });
+      pintarLeyenda();
+      layer?.setStyle(estilo);
+    })
+  );
+
   info.textContent = 'Cargando mapa…';
   (async () => {
     try {
       const fc = await seccionesGeo(d.entidad.clave, d.secciones.map((s) => s.c));
-      const layer = L.geoJSON(fc, {
-        style: (f) => {
-          const z = zonaById.get(bySec.get(f.properties.seccion)?.z);
-          return z
-            ? { color: z.color, weight: 0.6, opacity: 1, fillColor: z.color, fillOpacity: 0.55 }
-            : { color: '#3f3f46', weight: 0.6, opacity: 0.8, fillColor: '#71717a', fillOpacity: 0.28 };
-        },
+      layer = L.geoJSON(fc, {
+        style: estilo,
         onEachFeature(f, l) {
           const s = bySec.get(f.properties.seccion);
           const z = zonaById.get(s?.z);
-          const label = `Sección ${fmtSeccion(f.properties.seccion)} · ${z ? `${z.codigo} ${z.nombre}` : 'Sin asignar'}${s?.e !== null && s?.e !== undefined ? ` · ${fmtNum(s.e)} electores` : ''}`;
+          const label = `Sección ${fmtSeccion(f.properties.seccion)} · ${z ? z.codigo : 'Sin zona'} · ${
+            s?.rs ? `${fmtNum(s.p)} de ${fmtNum(s.m)} promovidos (${pctTxt(s.p, s.m)}) · ${s.rs}` : 'Sin Responsable de Sección'
+          }`;
           l.bindTooltip(esc(label), { sticky: true, direction: 'top', className: 'map-tip' });
           l.on({
             mouseover: () => {
-              l.setStyle({ weight: 2 });
+              l.setStyle({ weight: 2.5, color: '#171717' });
               info.textContent = label;
             },
             mouseout: () => {
-              l.setStyle({ weight: 0.6 });
+              layer.resetStyle(l);
               info.textContent = resumen;
             },
             click: () => z && navigate('/zonas'),

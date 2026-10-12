@@ -599,7 +599,7 @@ app.get('/api/panel/seccion', requireUser, (req, res) => {
 });
 
 // Escritorio del CPV: cifras agregadas de su estructura
-app.get('/api/escritorio/cpv', requireUser, requireCPV, (req, res) => res.json(escritorio.cpv(req.user)));
+app.get('/api/escritorio/cpv', requireUser, requireCPV, async (req, res) => res.json(await escritorio.cpv(req.user)));
 
 app.get('/api/zonas', requireUser, requireCPV, (req, res) => res.json(zonas.resumen(req.user)));
 

@@ -2027,7 +2027,7 @@ a.promo-item:hover { background: var(--color-surface-alt); }
 .sa-card__head h3 svg { width: 18px; height: 18px; }
 .sa-card__head .muted { font-size: 12px; }
 .sa-bar { fill: var(--bar, #2a78d6); }
-.sa-bar.is-hoy { fill: #1c5cab; }
+.sa-bar.is-hoy { fill: var(--bar, #2a78d6); filter: brightness(.78); }
 .sa-ref { stroke: #171717; stroke-width: 1.5; stroke-dasharray: 5 4; }
 .sa-ref__txt { font-size: 12px; font-weight: 700; fill: #171717; font-family: var(--font); paint-order: stroke; stroke: var(--color-card); stroke-width: 4px; }
 
@@ -2189,4 +2189,24 @@ a.ec-kpi:hover { box-shadow: var(--shadow-card), inset 0 0 0 1px var(--color-bor
   .ec-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ec-kpi:last-child { grid-column: 1 / -1; }
   .ec-mapa__map { height: 340px; }
+}
+
+/* ---------- Panel del Coordinador de Zona ---------- */
+.ec-hero__label .vz-sw { vertical-align: -1px; margin-right: 4px; }
+.ez-orden { display: inline-flex; align-items: center; gap: var(--space-md); font-size: 13px; color: var(--color-muted-foreground); }
+.ez-orden .input { width: auto; min-height: 34px; padding-top: 4px; padding-bottom: 4px; font-size: 13px; }
+.ez-rs { display: grid; gap: 2px; text-align: left; text-transform: none; letter-spacing: 0; }
+.ez-rs small { font-size: 12px; font-weight: 400; color: var(--color-muted-foreground); }
+.ez-viejos { display: block; font-size: 11px; color: #b91c1c; font-weight: 700; }
+.ez-mat { font-size: 13px; white-space: nowrap; }
+.ez-contacto { white-space: nowrap; }
+.ez-contacto .promo-contacto__btn { width: 34px; height: 34px; display: inline-grid; }
+.ez-tabla tbody tr:hover { background: var(--color-surface-alt); }
+.ez-material { margin-top: var(--space-lg); padding-top: var(--space-sm); border-top: 1px solid var(--color-border); }
+.ez-vacantes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-md); }
+.ez-vacantes li { display: grid; gap: 2px; padding: var(--space-md) var(--space-lg); border-radius: 12px; border: 1px dashed #a3a3a3; background: #fafafa; }
+.ez-vacantes strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.ez-vacantes span { font-size: 12px; color: var(--color-muted-foreground); }
+@media (max-width: 767px) {
+  .ez-orden span { display: none; }
 }

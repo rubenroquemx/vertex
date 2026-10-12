@@ -5,36 +5,36 @@ import { ICONS, $, esc, fmtNum, fmtSeccion, api, homeControl, navigate } from '.
 import { baseMap, seccionesGeo } from './zonas.js';
 import { barras30 } from './panel-sa.js';
 
-const pct = (a, b) => (b ? (a / b) * 100 : 0);
-const pctTxt = (a, b) => {
+export const pct = (a, b) => (b ? (a / b) * 100 : 0);
+export const pctTxt = (a, b) => {
   if (!b) return '—';
   const p = pct(a, b);
   return `${p > 0 && p < 1 ? p.toFixed(1) : fmtNum(Math.round(p))}%`;
 };
-const FECHA = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
+export const FECHA = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
 
 // Avance por sección (mapa): una sola tonalidad, de claro (poco) a oscuro (mucho)
-const RANGOS = [
+export const RANGOS = [
   { hasta: 0.1, color: '#cde2fb', t: 'Menos de 10%' },
   { hasta: 0.25, color: '#9ec5f4', t: '10% a 24%' },
   { hasta: 0.5, color: '#5598e7', t: '25% a 49%' },
   { hasta: 0.75, color: '#2a78d6', t: '50% a 74%' },
   { hasta: Infinity, color: '#184f95', t: '75% o más' },
 ];
-const colorAvance = (v) => RANGOS.find((r) => v < r.hasta).color;
-const SIN_RS = '#d4d4d4';
+export const colorAvance = (v) => RANGOS.find((r) => v < r.hasta).color;
+export const SIN_RS = '#d4d4d4';
 
-const ESTATUS = [
+export const ESTATUS = [
   { k: 'aprobados', t: 'Aprobados', c: '#16a34a' },
   { k: 'revision', t: 'En revisión', c: '#f59e0b' },
   { k: 'observaciones', t: 'Con observaciones', c: '#dc2626' },
   { k: 'rechazados', t: 'Rechazados', c: '#4a3aa7' },
 ];
 
-const barra = (valor, meta, color = '#171717') =>
+export const barra = (valor, meta, color = '#171717') =>
   `<span class="ec-bar" role="img" aria-label="${pctTxt(valor, meta)}"><span style="width:${Math.min(100, pct(valor, meta))}%;background:${color}"></span></span>`;
 
-function sparkline(serie, color) {
+export function sparkline(serie, color) {
   const W = 96;
   const H = 26;
   const max = Math.max(...serie, 1);

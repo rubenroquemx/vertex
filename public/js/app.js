@@ -30,6 +30,7 @@ import { viewConfiguracionSA, mountConfiguracionSA } from './configuracion-sa.js
 import { viewPanelSeccion } from './panel-seccion.js';
 import { viewMaterial, mountMaterial, viewEntregar, mountEntregar, viewOrden, mountOrden } from './material.js';
 import { viewPanelSA, mountPanelSA } from './panel-sa.js';
+import { viewEscritorioZona, mountEscritorioZona } from './escritorio-zona.js';
 import { viewNotificaciones, mountNotificaciones, iniciarCampana, actualizarContador } from './notificaciones.js';
 import { viewNuevoPromovido, mountNuevoPromovido, viewPromovidos, viewPromovido, mountPromovido } from './promovidos.js';
 
@@ -74,6 +75,8 @@ function buildMenu(me) {
         ? { path: '/', title: 'Panel', icon: 'dashboard', view: viewPanelSeccion }
         : key === 'superadmin'
           ? { path: '/', title: 'Panel', icon: 'dashboard', view: viewPanelSA, mount: mountPanelSA }
+          : key === 'coord_zona'
+            ? { path: '/', title: 'Panel', icon: 'dashboard', view: viewEscritorioZona, mount: mountEscritorioZona }
         : { path: '/', title: 'Panel', icon: 'dashboard', view: () => DASHBOARDS[key](me) };
   const groups = [{ label: 'General', items: [inicio] }];
 

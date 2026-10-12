@@ -1386,6 +1386,7 @@ function renderDock(menu) {
     const resto = items.filter((r) => r !== fab);
     const mitad = Math.ceil(resto.length / 2);
     const link = (r) => `<a class="dock__link" href="${r.path}" data-link title="${esc(r.title)}" aria-label="${esc(r.title)}">${ICONS[r.icon]}</a>`;
+    $('#dock').classList.add('has-fab');
     $('#dock').innerHTML = [
       ...resto.slice(0, mitad).map(link),
       `<a class="dock__fab" href="${fab.path}" data-link title="${esc(fab.title)}" aria-label="${esc(fab.title)}">${ICONS[fab.icon]}</a>`,
@@ -1393,6 +1394,7 @@ function renderDock(menu) {
     ].join('');
     return;
   }
+  $('#dock').classList.remove('has-fab');
   $('#dock').innerHTML = menu
     .map(
       (g) => `<div class="dock__group" role="group" aria-label="${esc(g.label)}">${g.items

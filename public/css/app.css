@@ -1647,3 +1647,9 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .promo-item strong { font-size: 15px; }
 .promo-item__meta { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 13px; color: var(--color-muted-foreground); }
 @media (max-width: 767px) { .promo-new { display: none !important; } }
+
+/* El botón + sobresale de la barra (la barra no debe recortarlo) */
+@media (max-width: 767px) {
+  .dock.has-fab { overflow: visible; }
+  .dock.has-fab .dock__fab { margin-top: -34px; }
+}

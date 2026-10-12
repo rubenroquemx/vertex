@@ -1664,7 +1664,7 @@ a.promo-item:hover { border-color: #a3a3a3; }
 @media (max-width: 479px) { .ine-views { grid-template-columns: minmax(0, 1fr); } }
 
 
-/* ---------- Foto de la INE: tomar o cargar, cámara con guía y lectura (OCR) ---------- */
+/* ---------- Foto de la INE: tomar o cargar, cámara con guía y recorte automático ---------- */
 button.ine-shot { width: 100%; padding: 0; font: inherit; }
 .ine-shot__btns { display: flex; gap: var(--space-md); margin-top: var(--space-md); }
 .ine-shot__btns .btn { flex: 1; min-height: 34px; padding-left: 8px; padding-right: 8px; }
@@ -1695,12 +1695,10 @@ button.ine-shot { width: 100%; padding: 0; font: inherit; }
   .ine-cam__actions .btn { flex: 1; }
 }
 
-.ine-ocr { margin: 0 0 var(--space-xl); padding: var(--space-md) var(--space-lg); border-radius: var(--radius); font-size: 13px; background: var(--color-surface-alt); border: 1px solid var(--color-border); }
-.ine-ocr.is-busy::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px; border: 2px solid #d4d4d4; border-top-color: #0a0a0a; border-radius: 50%; animation: spin 1s linear infinite; }
-.ine-ocr.is-warn { background: var(--color-destructive-soft); border-color: #fecaca; color: #991b1b; }
-/* Campo llenado con la lectura de la INE (por revisar) */
-.input.is-ocr { box-shadow: inset 3px 0 0 #0a0a0a; background: #fafaf5; }
 @media (max-width: 767px) {
   .field-row--fotos .ine-shot__btns { flex-direction: column; gap: var(--space-sm); }
   .field-row--fotos .ine-shot__btns .btn { width: 100%; }
 }
+.ine-shot.is-busy::after { content: "Recortando…"; position: absolute; inset: auto 8px 8px auto; padding: 2px 8px; border-radius: 999px; background: rgba(10,10,10,.75); color: #fff; font-size: 12px; font-weight: 700; }
+.ine-cam .notice { margin: 0; }
+.ine-cam .notice .ine-cam__actions { justify-content: flex-start; }

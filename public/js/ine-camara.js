@@ -16,7 +16,7 @@ export const camaraDisponible = () => Boolean(window.isSecureContext && navigato
  */
 export async function abrirCamara(contenedor, { titulo, onCaptura, onCerrar }) {
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 2560 }, height: { ideal: 1440 } },
     audio: false,
   });
   contenedor.innerHTML = `
@@ -44,7 +44,9 @@ export async function abrirCamara(contenedor, { titulo, onCaptura, onCerrar }) {
     contenedor.onclick = null;
   };
 
-  // Recorta exactamente lo que se ve dentro del marco (el video se muestra con object-fit: cover)
+  // Toma lo que se ve dentro del marco con un margen alrededor (el video se muestra con
+  // object-fit: cover); el recorte automático deja después solo la credencial.
+  const MARGEN = 0.12;
   const capturar = () => {
     const vw = video.videoWidth;
     const vh = video.videoHeight;
@@ -55,18 +57,19 @@ export async function abrirCamara(contenedor, { titulo, onCaptura, onCerrar }) {
     const offY = (vh * escala - box.height) / 2;
     const fw = box.width * ANCHO_MARCO;
     const fh = fw / PROPORCION;
-    const fx = (box.width - fw) / 2;
-    const fy = (box.height - fh) / 2;
-    const sx = (fx + offX) / escala;
-    const sy = (fy + offY) / escala;
-    const sw = fw / escala;
-    const sh = fh / escala;
-    const salida = Math.min(1600, Math.round(sw));
+    let sx = ((box.width - fw) / 2 + offX) / escala - (fw / escala) * MARGEN;
+    let sy = ((box.height - fh) / 2 + offY) / escala - (fh / escala) * MARGEN;
+    let sw = (fw / escala) * (1 + 2 * MARGEN);
+    let sh = (fh / escala) * (1 + 2 * MARGEN);
+    sx = Math.max(0, sx);
+    sy = Math.max(0, sy);
+    sw = Math.min(vw - sx, sw);
+    sh = Math.min(vh - sy, sh);
     const c = document.createElement('canvas');
-    c.width = salida;
-    c.height = Math.round(salida / PROPORCION);
+    c.width = Math.round(sw);
+    c.height = Math.round(sh);
     c.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', 0.85);
+    return c.toDataURL('image/jpeg', 0.92);
   };
 
   contenedor.onclick = (e) => {
@@ -77,7 +80,10 @@ export async function abrirCamara(contenedor, { titulo, onCaptura, onCerrar }) {
     }
     if (a === 'capturar') {
       const foto = capturar();
-      if (!foto) return;
+      if (!foto) {
+        contenedor.querySelector('.ine-cam__head span').textContent = 'La cámara aún no está lista. Espera un momento y vuelve a capturar.';
+        return;
+      }
       cerrar();
       onCaptura(foto);
     }

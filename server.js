@@ -805,11 +805,6 @@ app.get(['/sw.js', '/manifest.webmanifest'], (req, res, next) => {
 // --- Archivos estáticos ----------------------------------------------------
 // Leaflet (mapas OpenStreetMap) servido desde node_modules
 app.use('/vendor/leaflet', express.static(path.join(__dirname, 'node_modules', 'leaflet', 'dist'), { maxAge: isProd ? '30d' : 0 }));
-// Tesseract.js (OCR de la INE en el dispositivo): librería, núcleo WebAssembly y modelo de español
-const vendor = (ruta, carpeta) => app.use(ruta, express.static(path.join(__dirname, 'node_modules', ...carpeta), { maxAge: isProd ? '30d' : 0 }));
-vendor('/vendor/tesseract', ['tesseract.js', 'dist']);
-vendor('/vendor/tesseract-core', ['tesseract.js-core']);
-vendor('/vendor/tessdata', ['@tesseract.js-data', 'spa', '4.0.0_best_int']);
 const REVALIDAR = /\.(html|css|js|webmanifest)$/;
 app.use(
   express.static(PUBLIC_DIR, {

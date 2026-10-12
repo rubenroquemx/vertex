@@ -10,7 +10,8 @@
     "dev": "node --env-file-if-exists=.env --watch-path=server.js --watch-path=src server.js",
     "icons": "node scripts/generate-icons.js",
     "empaquetar": "node scripts/empaquetar.js",
-    "exportar-cuentas": "node scripts/exportar-cuentas.js"
+    "exportar-cuentas": "node scripts/exportar-cuentas.js",
+    "datos-ejemplo": "node --env-file-if-exists=.env scripts/datos-ejemplo.js"
   },
   "engines": {
     "node": ">=18"

@@ -1813,3 +1813,10 @@ button.ine-shot { width: 100%; padding: 0; font: inherit; }
   .obs { position: static; max-height: none; }
   .obs__lista { max-height: 420px; }
 }
+
+.promo-ficha__acciones { display: flex; gap: var(--space-md); }
+.promo-ficha__acciones .btn svg { width: 18px; height: 18px; }
+@media (max-width: 767px) {
+  .promo-ficha__acciones { width: 100%; }
+  .promo-ficha__acciones .btn { flex: 1; }
+}

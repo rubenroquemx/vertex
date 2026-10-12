@@ -20,6 +20,7 @@ const responsables = require('./src/responsables');
 const metas = require('./src/metas');
 const panelSeccion = require('./src/panel-seccion');
 const promovidos = require('./src/promovidos');
+const promovidoPdf = require('./src/promovido-pdf');
 const padron = require('./src/padron');
 const territory = require('./src/territory');
 const { PARTIDOS } = require('./src/partidos');
@@ -454,6 +455,18 @@ app.put('/api/promovidos/:id', requireUser, express.json({ limit: '8mb' }), asyn
   } catch (err) {
     promovidoError(res, err);
   }
+});
+
+// Ficha en PDF (sin historial ni observaciones): quien puede ver la ficha
+app.get('/api/promovidos/:id/pdf', requireUser, async (req, res) => {
+  const p = await promovidos.detalle(req.user, req.params.id);
+  if (!p) return res.status(404).json({ error: 'Promovido no encontrado' });
+  const [frente, reverso] = await Promise.all([promovidos.foto(req.user, p.id, 'frente'), promovidos.foto(req.user, p.id, 'reverso')]);
+  const pdf = await promovidoPdf.generar(p, { frente, reverso }, req.user.name);
+  await audit.add({ action: 'promovido.pdf', by: req.realUser.id, as: req.user.id, promovido: p.id });
+  const archivo = `promovido-${p.nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase()}.pdf`;
+  res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${archivo}"`, 'Cache-Control': 'private, no-store' });
+  res.send(pdf);
 });
 
 app.get('/api/promovidos/:id/historial', requireUser, async (req, res) => {

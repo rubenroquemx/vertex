@@ -2305,3 +2305,18 @@ a.ec-kpi:hover { box-shadow: var(--shadow-card), inset 0 0 0 1px var(--color-bor
   .rev-mini { right: 16px; bottom: calc(var(--dock-space) + 16px); }
   .rev-mini__btn { width: 52px; height: 52px; }
 }
+
+/* ---------- Revisión: menú del motivo de rechazo ---------- */
+.rev-motivos { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; min-width: 0; }
+.rev-motivos legend { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+.rev-motivo { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: var(--color-surface-alt); box-shadow: inset 0 0 0 1px var(--color-border); cursor: pointer; font-size: 14px; }
+.rev-motivo:has(input:checked) { background: #fef2f2; box-shadow: inset 0 0 0 1.5px #dc2626; }
+.rev-motivo input { accent-color: #dc2626; margin: 0; }
+.rev-motivo__otra[hidden] { display: none; }
+.rev-motivos .field__error { margin: 0; }
+.rev-motivos .field__error:empty { display: none; }
+.rev-card__form .rev-motivos { max-width: 420px; }
+.rev-mini { flex-direction: column; align-items: flex-end; gap: 12px; }
+.rev-mini__btns { display: flex; gap: 12px; }
+.rev-mini__menu { width: 270px; padding: var(--space-lg); border-radius: 16px; background: var(--color-card); box-shadow: 0 12px 40px rgba(0,0,0,.28); }
+.rev-mini__menu[hidden] { display: none; }

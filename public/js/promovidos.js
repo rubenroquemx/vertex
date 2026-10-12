@@ -675,16 +675,7 @@ export async function viewPromovido(route, params, state) {
           <button class="btn btn--aprobar" type="button" id="revAprobar">${ICONO_OK}<span>Aprobar</span></button>
           ${p.estatus === 'rechazado' ? '' : `<button class="btn btn--secondary" type="button" id="revRechazar">${ICONS.close}<span>Rechazar</span></button>`}
         </div>
-        <form class="rev-card__form" id="revForm" hidden novalidate>
-          <label for="revMotivo">Motivo del rechazo <span class="req" aria-hidden="true">*</span></label>
-          <textarea class="input" id="revMotivo" rows="2" maxlength="500" placeholder="ej. La foto del reverso está borrosa y la CURP no coincide"></textarea>
-          <p class="field__help">El promotor lo verá en las observaciones para corregirlo.</p>
-          <p class="field__error" id="revMotivo-err" role="alert"></p>
-          <div class="rev-card__btns">
-            <button class="btn btn--secondary" type="button" id="revCancelar">Cancelar</button>
-            <button class="btn btn--destructive" type="submit">Rechazar promovido</button>
-          </div>
-        </form>
+        <form class="rev-card__form" id="revForm" hidden novalidate>${menuMotivo('revM')}</form>
         <p class="form-error" id="revErr" role="alert"></p>
       </section>`
     : '';
@@ -753,12 +744,53 @@ export async function viewPromovido(route, params, state) {
     </div>`;
 }
 
+// Menú del motivo de rechazo: opciones frecuentes u «Otra» con texto libre
+const MOTIVOS = ['INE no vigente', 'Sección inválida'];
+const menuMotivo = (id) => `
+  <fieldset class="rev-motivos">
+    <legend>¿Por qué se rechaza?</legend>
+    ${MOTIVOS.map((m) => `<label class="rev-motivo"><input type="radio" name="${id}" value="${m}"><span>${m}</span></label>`).join('')}
+    <label class="rev-motivo"><input type="radio" name="${id}" value="otra"><span>Otra</span></label>
+    <input class="input rev-motivo__otra" type="text" maxlength="300" placeholder="Menciona el motivo" aria-label="Otro motivo" hidden>
+    <p class="field__error" data-motivo-err role="alert"></p>
+    <div class="rev-card__btns">
+      <button class="btn btn--secondary btn--sm" type="button" data-motivo-cancelar>Cancelar</button>
+      <button class="btn btn--destructive btn--sm" type="submit">Rechazar</button>
+    </div>
+  </fieldset>`;
+
+// Conecta un menú de motivo; devuelve una función para limpiarlo
+function conectarMotivo(form, { onCancelar, onEnviar }) {
+  const otra = form.querySelector('.rev-motivo__otra');
+  const errEl = form.querySelector('[data-motivo-err]');
+  form.addEventListener('change', (e) => {
+    if (e.target.type !== 'radio') return;
+    errEl.textContent = '';
+    otra.hidden = e.target.value !== 'otra';
+    if (!otra.hidden) otra.focus();
+  });
+  form.querySelector('[data-motivo-cancelar]').addEventListener('click', onCancelar);
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const elegido = form.querySelector('input[type="radio"]:checked');
+    const motivo = !elegido ? '' : elegido.value === 'otra' ? otra.value.trim() : elegido.value;
+    if (!elegido) errEl.textContent = 'Elige el motivo del rechazo.';
+    else if (elegido.value === 'otra' && motivo.length < 5) errEl.textContent = 'Menciona el motivo (al menos 5 letras).';
+    else onEnviar(motivo, e.submitter || form.querySelector('[type="submit"]'), errEl);
+  });
+  return () => {
+    form.reset();
+    otra.hidden = true;
+    errEl.textContent = '';
+  };
+}
+
 // Aprobar / rechazar; al terminar abre el siguiente pendiente de la bandeja
 function montarRevision(root, p) {
   const card = $('#revCard', root);
   if (!card) return;
   const err = $('#revErr', root);
-  const enviar = async (body, boton) => {
+  const enviar = async (body, boton, errEl = err) => {
     err.textContent = '';
     boton.disabled = true;
     try {
@@ -766,44 +798,60 @@ function montarRevision(root, p) {
       toast(r.estatus === 'validado' ? `${p.nombre} aprobado` : `${p.nombre} rechazado`);
       navigate(r.siguiente ? `/promovidos/${r.siguiente}` : '/promovidos');
     } catch (e) {
-      if (e.data?.fields?.motivo) $('#revMotivo-err', root).textContent = e.data.fields.motivo;
-      else err.textContent = e.message;
+      errEl.textContent = e.data?.fields?.motivo || e.message;
       boton.disabled = false;
     }
   };
+  const rechazar = (motivo, boton, errEl) => enviar({ accion: 'rechazar', motivo }, boton, errEl);
   $('#revAprobar', root).addEventListener('click', (e) => enviar({ accion: 'aprobar' }, e.currentTarget));
+  const form = $('#revForm', root);
+  const limpiarForm = conectarMotivo(form, {
+    onCancelar: () => {
+      limpiarForm();
+      form.hidden = true;
+      $('#revAcc', root).hidden = false;
+    },
+    onEnviar: rechazar,
+  });
   $('#revRechazar', root)?.addEventListener('click', () => {
     $('#revAcc', root).hidden = true;
-    $('#revForm', root).hidden = false;
-    $('#revMotivo', root).focus();
-  });
-  $('#revCancelar', root).addEventListener('click', () => {
-    $('#revForm', root).hidden = true;
-    $('#revAcc', root).hidden = false;
-  });
-  $('#revForm', root).addEventListener('submit', (e) => {
-    e.preventDefault();
-    $('#revMotivo-err', root).textContent = '';
-    enviar({ accion: 'rechazar', motivo: $('#revMotivo', root).value }, e.submitter || $('#revForm button[type="submit"]', root));
+    form.hidden = false;
+    form.querySelector('input[type="radio"]').focus();
   });
 
   // Al bajar (tarjeta fuera de vista), los botones quedan abajo en pequeño: palomita y tache
   const mini = document.createElement('div');
   mini.className = 'rev-mini';
   mini.hidden = true;
+  const puedeRechazar = Boolean($('#revRechazar', root));
   mini.innerHTML = `
-    <button class="rev-mini__btn rev-mini__btn--ok" type="button" title="Aprobar" aria-label="Aprobar a ${esc(p.nombre)}">${ICONO_OK}</button>
-    ${$('#revRechazar', root) ? `<button class="rev-mini__btn rev-mini__btn--no" type="button" title="Rechazar" aria-label="Rechazar a ${esc(p.nombre)}">${ICONS.close}</button>` : ''}`;
+    ${puedeRechazar ? `<form class="rev-mini__menu" id="revMiniMenu" hidden novalidate>${menuMotivo('revMiniM')}</form>` : ''}
+    <div class="rev-mini__btns">
+      <button class="rev-mini__btn rev-mini__btn--ok" type="button" title="Aprobar" aria-label="Aprobar a ${esc(p.nombre)}">${ICONO_OK}</button>
+      ${puedeRechazar ? `<button class="rev-mini__btn rev-mini__btn--no" type="button" title="Rechazar" aria-label="Rechazar a ${esc(p.nombre)}" aria-expanded="false" aria-controls="revMiniMenu">${ICONS.close}</button>` : ''}
+    </div>`;
   root.appendChild(mini);
   mini.querySelector('.rev-mini__btn--ok').addEventListener('click', (e) => enviar({ accion: 'aprobar' }, e.currentTarget));
-  // Rechazar necesita motivo: regresa a la tarjeta con el campo abierto
-  mini.querySelector('.rev-mini__btn--no')?.addEventListener('click', () => {
-    $('#revRechazar', root).click();
-    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => $('#revMotivo', root).focus({ preventScroll: true }), 350);
+  // La tachita abre el menú del motivo justo arriba de los botones
+  const menu = $('#revMiniMenu', mini);
+  const btnNo = mini.querySelector('.rev-mini__btn--no');
+  let limpiarMenu = () => {};
+  const cerrarMenu = () => {
+    if (!menu) return;
+    limpiarMenu();
+    menu.hidden = true;
+    btnNo.setAttribute('aria-expanded', 'false');
+  };
+  if (menu) limpiarMenu = conectarMotivo(menu, { onCancelar: cerrarMenu, onEnviar: rechazar });
+  btnNo?.addEventListener('click', () => {
+    if (!menu.hidden) return cerrarMenu();
+    menu.hidden = false;
+    btnNo.setAttribute('aria-expanded', 'true');
+    menu.querySelector('input[type="radio"]').focus();
   });
   const io = new IntersectionObserver(([en]) => {
     mini.hidden = en.isIntersecting || en.boundingClientRect.top > 0;
+    if (mini.hidden) cerrarMenu();
   });
   io.observe(card);
   return () => io.disconnect();

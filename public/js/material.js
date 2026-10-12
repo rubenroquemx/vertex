@@ -33,6 +33,8 @@ export async function viewMaterial(route, params, state) {
   const yo = state.me.user.id;
   const porRecibir = r.recibidas.filter((o) => o.estado === 'pendiente');
   const sinEvidencia = r.recibidas.filter((o) => o.estado === 'recibida' && o.requiereEvidencia);
+  // Fuera del CPV solo se listan los artículos que le han entregado
+  if (!r.esCPV) r.inventario = r.inventario.filter((a) => a.recibido || a.porRecibir || a.repartido);
   const hayInventario = r.inventario.length > 0;
 
   const inventario = hayInventario

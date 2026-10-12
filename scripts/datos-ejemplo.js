@@ -341,7 +341,158 @@ async function generar(nombreCpv, porcentaje) {
   console.log('Reinicia el servidor para que tome los datos nuevos.');
 }
 
+// ---------- Material electoral de ejemplo ----------
+// Lo creado se anota en data/MATERIAL_EJEMPLO.json para poder borrarlo sin tocar lo capturado a mano.
+const REGISTRO_MATERIAL = path.join(__dirname, '..', 'data', 'MATERIAL_EJEMPLO.json');
+const ARTICULOS_EJEMPLO = [
+  ['Gorra', 'piezas', 24000],
+  ['Playera', 'piezas', 18000],
+  ['Bandera', 'piezas', 9000],
+  ['Volante', 'millares', 400],
+  ['Calcomanía para auto', 'piezas', 30000],
+  ['Lona', 'piezas', 900],
+  ['Pulsera', 'piezas', 35000],
+  ['Abanico', 'piezas', 12000],
+  ['Bolsa ecológica', 'piezas', 8000],
+];
+const NOTAS = ['', '', '', 'Para el recorrido del fin de semana', 'Reforzar colonias del centro', 'Material para el evento del domingo', 'Primera entrega del mes'];
+
+async function fotosEvidencia() {
+  const sharp = require('sharp');
+  const colores = ['#c9d6df', '#d8cfc4', '#cfd8c4', '#d6c9df', '#dfd2c9', '#c4d3d8'];
+  return Promise.all(
+    colores.map((c, i) =>
+      sharp(
+        Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480">
+          <rect width="640" height="480" fill="${c}"/>
+          <circle cx="${180 + i * 40}" cy="200" r="70" fill="#ffffff" opacity=".45"/>
+          <rect x="${300 - i * 20}" y="230" width="220" height="140" rx="16" fill="#ffffff" opacity=".35"/>
+          <text x="320" y="440" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#5b6770">EVIDENCIA DE EJEMPLO ${i + 1}</text>
+        </svg>`)
+      )
+        .jpeg({ quality: 60 })
+        .toBuffer()
+    )
+  );
+}
+
+// Reparte `total` en partes enteras proporcionales a `pesos`
+function repartir(total, pesos) {
+  const suma = pesos.reduce((t, p) => t + p, 0) || 1;
+  const partes = pesos.map((p) => Math.floor((total * p) / suma));
+  let resto = total - partes.reduce((t, p) => t + p, 0);
+  for (let i = 0; resto > 0; i = (i + 1) % partes.length, resto--) partes[i] += 1;
+  return partes;
+}
+
+async function generarMaterial(nombreCpv) {
+  const cpv = store.users.all().find((u) => u.role === 'coord_promocion' && u.name === nombreCpv);
+  if (!cpv) throw new Error(`No encontré al CPV «${nombreCpv}».`);
+  if (fs.existsSync(REGISTRO_MATERIAL)) throw new Error('Ya hay material de ejemplo. Bórralo primero con: npm run datos-ejemplo -- borrar-material');
+  const existentes = await db.query('SELECT lower(nombre) n FROM material_articulos WHERE cpv_id = $1', [cpv.id]);
+  const ocupados = new Set(existentes.rows.map((r) => r.n));
+  const articulos = ARTICULOS_EJEMPLO.filter(([n]) => !ocupados.has(n.toLowerCase())).map(([nombre, unidad, total]) => ({
+    id: crypto.randomUUID(),
+    nombre,
+    unidad,
+    total,
+  }));
+  const fotos = await fotosEvidencia();
+  const todos = store.users.all();
+  const zonasCpv = todos.filter((u) => u.role === 'coord_zona' && u.parentId === cpv.id);
+  const registro = { articulos: articulos.map((a) => a.id), ordenes: [] };
+  const conteo = { articulos: articulos.length, ordenesZona: 0, ordenesResponsable: 0, pendientes: 0, recibidas: 0, comprobadas: 0, fotos: 0 };
+
+  await db.tx(async (c) => {
+    const orden = async ({ de, para, items, estado, creada, nota = '' }) => {
+      const id = crypto.randomUUID();
+      const recibida = estado === 'pendiente' ? null : new Date(Math.min(Date.now() - 3600000, creada.getTime() + entero(2, 48) * 3600000));
+      const comprobada = estado === 'comprobada' ? new Date(Math.min(Date.now() - 1800000, recibida.getTime() + entero(4, 120) * 3600000)) : null;
+      await c.query(
+        'INSERT INTO material_ordenes (id, cpv_id, de_id, para_id, estado, nota, created_at, recibida_at, comprobada_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+        [id, cpv.id, de.id, para.id, estado, nota, creada, recibida, comprobada]
+      );
+      for (const it of items.filter((i) => i.cantidad > 0))
+        await c.query('INSERT INTO material_orden_items (orden_id, articulo_id, cantidad) VALUES ($1, $2, $3)', [id, it.articulo.id, it.cantidad]);
+      if (comprobada) {
+        const n = entero(5, 9);
+        for (let k = 0; k < n; k++)
+          await c.query('INSERT INTO material_evidencias (orden_id, user_id, image, at) VALUES ($1, $2, $3, $4)', [id, para.id, fotos[(k + entero(0, 5)) % fotos.length], comprobada]);
+        conteo.fotos += n;
+      }
+      registro.ordenes.push(id);
+      conteo[estado === 'pendiente' ? 'pendientes' : estado === 'recibida' ? 'recibidas' : 'comprobadas'] += 1;
+      return id;
+    };
+
+    // Inventario del CPV: artículos con 2 o 3 entradas en los últimos 2 meses
+    for (const a of articulos) {
+      await c.query('INSERT INTO material_articulos (id, cpv_id, nombre, unidad, created_at) VALUES ($1, $2, $3, $4, $5)', [a.id, cpv.id, a.nombre, a.unidad, hace(65)]);
+      const entradas = repartir(a.total, Array.from({ length: entero(2, 3) }, () => entre(0.5, 1.5)));
+      for (const [i, n] of entradas.entries())
+        await c.query('INSERT INTO material_entradas (cpv_id, articulo_id, cantidad, user_id, at) VALUES ($1, $2, $3, $1, $4)', [cpv.id, a.id, n, hace(60 - i * 18)]);
+    }
+
+    // CPV → zonas: ~75% del inventario, según el tamaño de cada zona; 2 o 3 órdenes por zona
+    const pesosZona = zonasCpv.map((z) => (z.territorio?.secciones || []).length || 1);
+    const recibidoZona = new Map(zonasCpv.map((z) => [z.id, new Map()]));
+    for (const a of articulos) a.porZona = repartir(Math.floor(a.total * entre(0.65, 0.85)), pesosZona);
+    for (const [zi, z] of zonasCpv.entries()) {
+      const nOrdenes = entero(2, 3);
+      for (let k = 0; k < nOrdenes; k++) {
+        const ultima = k === nOrdenes - 1;
+        const items = articulos
+          .filter(() => rnd() < 0.75)
+          .map((a) => ({ articulo: a, cantidad: Math.floor(a.porZona[zi] / nOrdenes) }));
+        if (!items.length) continue;
+        // La última orden de algunas zonas sigue por recibir
+        const estado = ultima && rnd() < 0.35 ? 'pendiente' : 'recibida';
+        await orden({ de: cpv, para: z, items, estado, creada: hace(50 - k * 15), nota: uno(NOTAS) });
+        conteo.ordenesZona += 1;
+        if (estado !== 'pendiente') for (const it of items) recibidoZona.get(z.id).set(it.articulo.id, (recibidoZona.get(z.id).get(it.articulo.id) || 0) + it.cantidad);
+      }
+    }
+
+    // Zona → Responsables de Sección: reparten ~70% de lo recibido; 1 o 2 órdenes por responsable
+    for (const z of zonasCpv) {
+      const responsables = todos.filter((u) => u.role === 'resp_seccion' && u.parentId === z.id);
+      if (!responsables.length) continue;
+      const pesos = responsables.map(() => entre(0.5, 1.5));
+      const cuotas = new Map();
+      for (const [artId, n] of recibidoZona.get(z.id)) cuotas.set(artId, repartir(Math.floor(n * entre(0.6, 0.8)), pesos));
+      for (const [ri, rs] of responsables.entries()) {
+        const nOrdenes = rnd() < 0.4 ? 2 : 1;
+        for (let k = 0; k < nOrdenes; k++) {
+          const items = articulos
+            .filter((a) => cuotas.has(a.id) && rnd() < 0.7)
+            .map((a) => ({ articulo: a, cantidad: Math.floor(cuotas.get(a.id)[ri] / nOrdenes) }))
+            .filter((i) => i.cantidad > 0);
+          if (!items.length) continue;
+          const x = rnd();
+          const estado = x < 0.55 ? 'comprobada' : x < 0.8 ? 'recibida' : 'pendiente';
+          await orden({ de: z, para: rs, items, estado, creada: hace(entero(2, 16) - k), nota: uno(NOTAS) });
+          conteo.ordenesResponsable += 1;
+        }
+      }
+    }
+  });
+
+  fs.mkdirSync(path.dirname(REGISTRO_MATERIAL), { recursive: true });
+  fs.writeFileSync(REGISTRO_MATERIAL, JSON.stringify(registro));
+  console.log(JSON.stringify(conteo));
+}
+
+async function borrarMaterial() {
+  if (!fs.existsSync(REGISTRO_MATERIAL)) return console.log('No hay material de ejemplo registrado.');
+  const r = JSON.parse(fs.readFileSync(REGISTRO_MATERIAL, 'utf8'));
+  const o = await db.query('DELETE FROM material_ordenes WHERE id = ANY($1::uuid[])', [r.ordenes]);
+  const a = await db.query('DELETE FROM material_articulos WHERE id = ANY($1::uuid[])', [r.articulos]);
+  fs.unlinkSync(REGISTRO_MATERIAL);
+  console.log(`Borrados: ${a.rowCount} artículos y ${o.rowCount} órdenes de entrega de ejemplo.`);
+}
+
 async function borrar() {
+  await borrarMaterial();
   const c1 = await db.query("DELETE FROM promovidos WHERE data->>'ejemplo' = 'true'");
   // Primero los promotores y después los responsables
   const c2 = await db.query("DELETE FROM users WHERE data->>'ejemplo' = 'true' AND role = 'promotor'");
@@ -357,10 +508,16 @@ async function borrar() {
     await geo.init();
     await padron.init();
     await generar(nombre, Number(pct));
+  } else if (accion === 'material') {
+    await generarMaterial(nombre);
+  } else if (accion === 'borrar-material') {
+    await borrarMaterial();
   } else if (accion === 'borrar') {
     await borrar();
   } else {
-    console.log('Uso: npm run datos-ejemplo -- generar "Nombre del CPV" 30   |   npm run datos-ejemplo -- borrar');
+    console.log(
+      'Uso: npm run datos-ejemplo -- generar "Nombre del CPV" 30 | material "Nombre del CPV" | borrar-material | borrar'
+    );
   }
   await db.pool.end();
   process.exit(0);

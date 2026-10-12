@@ -105,7 +105,7 @@ function buildMenu(me) {
   } else if (key === 'resp_seccion') {
     // Sin separador de sección: va junto al Panel
     groups[0].items.push(
-      { path: '/estructura', title: 'Mis promovidos', icon: 'tree', view: viewEstructura, mount: mountEstructura },
+      { path: '/estructura', title: 'Promotores territoriales', icon: 'tree', view: viewEstructura, mount: mountEstructura },
       // `fab`: en celulares va como botón + al centro de la barra inferior
       { path: '/estructura/nuevo', title: 'Nuevo promotor', icon: 'plus', fab: true, view: viewEstructura, mount: mountEstructura }
     );

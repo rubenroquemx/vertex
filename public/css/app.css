@@ -1933,3 +1933,10 @@ a.promo-item:hover { background: var(--color-surface-alt); }
 @media (max-width: 767px) {
   .prom-avance .promo-list { margin: 0 calc(-1 * var(--space-xl)); }
 }
+
+/* Promotores del Responsable de Sección: buscador, conteo y botón en una sola línea */
+.toolbar__new { flex-shrink: 0; }
+.scroll-centinela { height: 1px; }
+@media (max-width: 767px) {
+  .toolbar:has(.toolbar__new) .toolbar__count, .toolbar__new { display: none; }
+}

@@ -181,9 +181,7 @@ async function viewEstructura(route) {
   if (esRS) route.avance = await api('/api/panel/seccion/promotores');
 
   return `
-    ${esRS ? `<div class="promo-lista__acciones">
-      <button class="btn" type="button" data-action="new">${ICONS.plus}<span>Nuevo ${esc(child.name)}</span></button>
-    </div>` : `<div class="page-head page-head--actions">
+    ${esRS ? '' : `<div class="page-head page-head--actions">
       <div>
         <h2>${route.title}</h2>
         <p>${esc(child.plural)} ${isSA ? 'registrados en el sistema' : 'que dependen de ti'}.${
@@ -200,6 +198,7 @@ async function viewEstructura(route) {
         <input class="input input--icon" type="search" id="fSearch" placeholder="Buscar por nombre" autocomplete="off">
       </label>
       <span class="toolbar__count" id="fCount" aria-live="polite"></span>
+      ${esRS ? `<button class="btn toolbar__new" type="button" data-action="new">${ICONS.plus}<span>Nuevo ${esc(child.name)}</span></button>` : ''}
     </div>
 
     <div class="${esRS ? 'prom-avance' : 'table-wrap'}" id="usersTable"></div>
@@ -542,15 +541,15 @@ const inicialesDe = (name) => {
   return `${p[0]?.[0] || '?'}${p[1]?.[0] || ''}`.toUpperCase();
 };
 
+const LOTE_PROMOTORES = 30;
+let scrollPromotores = null;
 function renderPromotoresAvance(root, list, avance) {
   const q = $('#fSearch', root).value.trim().toLowerCase();
   const rows = list.filter((u) => !q || u.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name, 'es'));
   $('#fCount', root).textContent = `${rows.length} de ${list.length} ${list.length === 1 ? 'promotor' : 'promotores'}`;
   const canGod = Boolean(state.me.godMode);
   const meta = avance?.meta || 0;
-  $('#usersTable', root).innerHTML = rows.length
-    ? `<ul class="promo-list">${rows
-        .map((u) => {
+  const fila = (u) => {
           const a = avance?.porPromotor?.[u.id] || { capturados: 0, aprobados: 0 };
           const pct = meta ? a.capturados / meta : 0;
           const tel = String(u.phone || '').replace(/\D/g, '').slice(-10);
@@ -574,13 +573,35 @@ function renderPromotoresAvance(root, list, avance) {
                 : ''
             }</span>
           </li>`;
-        })
-        .join('')}</ul>`
-    : `<div class="empty">
+  };
+  scrollPromotores?.disconnect();
+  const box = $('#usersTable', root);
+  if (!rows.length) {
+    box.innerHTML = `<div class="empty">
         <span aria-hidden="true">${ICONS.users}</span>
         <strong>${list.length ? 'Sin resultados' : 'Aún no tienes Promotores Territoriales'}</strong>
         <span>${list.length ? 'Prueba con otro nombre.' : 'Toca el botón + para dar de alta el primero.'}</span>
       </div>`;
+    return;
+  }
+  // Scroll infinito: se pintan por lotes conforme el usuario baja
+  box.innerHTML = '<ul class="promo-list"></ul><div class="scroll-centinela" aria-hidden="true"></div>';
+  const ul = $('.promo-list', box);
+  const centinela = $('.scroll-centinela', box);
+  let pintados = 0;
+  const masFilas = () => {
+    ul.insertAdjacentHTML('beforeend', rows.slice(pintados, pintados + LOTE_PROMOTORES).map(fila).join(''));
+    pintados = Math.min(rows.length, pintados + LOTE_PROMOTORES);
+    if (pintados >= rows.length) {
+      scrollPromotores?.disconnect();
+      centinela.remove();
+    }
+  };
+  masFilas();
+  if (pintados < rows.length) {
+    scrollPromotores = new IntersectionObserver((e) => e[0].isIntersecting && masFilas(), { rootMargin: '400px' });
+    scrollPromotores.observe(centinela);
+  }
 }
 
 function renderUsersTable(root, list, avance) {

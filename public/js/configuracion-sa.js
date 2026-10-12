@@ -48,17 +48,10 @@ function panelCuentas() {
           <p class="field__help" id="ccResumen"></p>
           <p class="field__error" id="ccFile-err"></p>
         </div>
-        <div class="field-row">
-          <div class="field">
-            <label for="ccConfirm">Escribe REEMPLAZAR</label>
-            <input class="input mono" id="ccConfirm" name="confirmacion" autocomplete="off" autocapitalize="characters" spellcheck="false">
-            <p class="field__error" id="ccConfirm-err"></p>
-          </div>
-          <div class="field">
-            <label for="ccPass">Tu contraseña</label>
-            <input class="input" id="ccPass" name="password" type="password" autocomplete="current-password">
-            <p class="field__error" id="ccPass-err"></p>
-          </div>
+        <div class="field">
+          <label for="ccPass">Tu contraseña</label>
+          <input class="input" id="ccPass" name="password" type="password" autocomplete="current-password">
+          <p class="field__error" id="ccPass-err"></p>
         </div>
         <p class="form-error" id="ccErr" role="alert"></p>
         <div class="form-actions">
@@ -79,9 +72,9 @@ const NIVELES = {
 function mountCuentas(root) {
   const form = $('#ccForm', root);
   const btn = form.querySelector('[type="submit"]');
-  const setErrors = fieldErrorSetter(root, { archivo: 'ccFile', confirmacion: 'ccConfirm', password: 'ccPass' });
+  const setErrors = fieldErrorSetter(root, { archivo: 'ccFile', password: 'ccPass' });
   let archivo = null;
-  const listo = () => (btn.disabled = !(archivo && $('#ccConfirm', root).value.trim().toUpperCase() === 'REEMPLAZAR' && $('#ccPass', root).value));
+  const listo = () => (btn.disabled = !(archivo && $('#ccPass', root).value));
   $('#ccFile', root).addEventListener('change', async (e) => {
     archivo = null;
     $('#ccResumen', root).textContent = '';
@@ -113,7 +106,7 @@ function mountCuentas(root) {
     try {
       const r = await api('/api/configuracion/cuentas/importar', {
         method: 'POST',
-        body: { archivo, confirmacion: $('#ccConfirm', root).value, password: $('#ccPass', root).value },
+        body: { archivo, password: $('#ccPass', root).value },
       });
       toast(`Listo: ${r.cuentas} cuentas cargadas. Inicia sesión con el Super administrador del archivo.`);
       setTimeout(() => (location.href = '/'), 1800);

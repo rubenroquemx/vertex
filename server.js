@@ -622,7 +622,7 @@ app.post('/api/configuracion/whatsapp/mensaje-prueba', requireUser, requireRole(
 
 // --- Configuración › General: reemplazar todas las cuentas (Super administrador) ---
 // Recibe el archivo de `npm run exportar-cuentas`. Borra las cuentas actuales (y sus sesiones,
-// incluida la de quien importa) y carga las del archivo. Requiere contraseña y confirmación escrita.
+// incluida la de quien importa) y carga las del archivo. Requiere la contraseña de quien importa.
 app.post(
   '/api/configuracion/cuentas/importar',
   requireUser,
@@ -630,9 +630,6 @@ app.post(
   express.json({ limit: '60mb' }),
   async (req, res) => {
     if (req.realUser.role !== 'superadmin') return res.status(403).json({ error: 'Solo el Super administrador puede reemplazar las cuentas.' });
-    if (String(req.body?.confirmacion || '').trim().toUpperCase() !== 'REEMPLAZAR') {
-      return invalid(res, { confirmacion: 'Escribe REEMPLAZAR para confirmar.' });
-    }
     const check = auth.confirmPassword(req.realUser, req.body?.password);
     if (!check.ok) return res.status(check.status).json(check.field ? { error: check.error, fields: { password: check.error } } : { error: check.error });
     try {

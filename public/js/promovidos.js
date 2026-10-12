@@ -2,8 +2,7 @@
 // La sección y la vigencia se validan aquí para avisar al momento, y de nuevo en el servidor.
 import { ICONS, $, esc, fmtNum, fmtDate, api, fieldErrorSetter, toast } from './lib.js';
 import { I, debounce } from './coordinador.js';
-import { camaraDisponible, abrirCamara } from './ine-camara.js';
-import { prepararINE } from './ine-recorte.js';
+import { camaraDisponible, abrirCamara, ajustarEnGuia } from './ine-camara.js';
 
 const sinSeccion = (msg) => `
   <div class="empty">
@@ -84,7 +83,7 @@ export async function viewNuevoPromovido(route) {
 
       <form id="promoForm" novalidate>
         <section class="card wiz-step" data-paso="1" aria-label="Paso 1: ${PASOS[0]}">
-          <p class="wiz-step__help">Toma o carga la foto del frente y del reverso de la INE. Se recorta sola para guardar solo la credencial.</p>
+          <p class="wiz-step__help">Toma o carga la foto del frente y del reverso de la INE y encuádrala en la guía: se guarda solo lo que queda dentro del marco.</p>
           <div class="ine-fotos">
             ${campoFoto('pFrente', 'Frente de la INE')}
             ${campoFoto('pReverso', 'Reverso de la INE')}
@@ -192,26 +191,27 @@ export function mountNuevoPromovido(root, route) {
     err(id, '');
   };
 
-  // Toda foto (tomada o cargada) pasa por el recorte automático antes de guardarse
-  const procesar = async (id, fuente) => {
-    const box = $(`#${id}Box`, root);
-    const contenedor = box.closest('.ine-field');
-    contenedor.classList.add('is-busy');
-    try {
-      const r = await prepararINE(fuente);
-      ponerFoto(id, r.dataUrl);
-      if (!r.recortada) err(id, 'No se detectó el borde de la credencial: se guardará la foto completa. Para un mejor recorte, colócala sobre un fondo liso y oscuro.');
-    } catch (e) {
-      err(id, e.message || 'No se pudo procesar la foto. Intenta de nuevo.');
-    } finally {
-      contenedor.classList.remove('is-busy');
-    }
-  };
-
+  // Foto cargada (o tomada con la cámara del teléfono): se encuadra en la guía y se guarda
+  // solo lo que queda dentro del marco
   const desdeArchivo = async (id, input) => {
     const file = input.files?.[0];
     input.value = '';
-    if (file) await procesar(id, file);
+    if (!file) return;
+    cerrarCamara?.();
+    try {
+      cerrarCamara = await ajustarEnGuia(camBox, {
+        titulo: LADOS[id].titulo,
+        fuente: file,
+        onListo: (dataUrl) => {
+          cerrarCamara = null;
+          ponerFoto(id, dataUrl);
+          $(`#${id}`, root).closest('.ine-field').scrollIntoView({ block: 'center', behavior: 'smooth' });
+        },
+        onCerrar: () => (cerrarCamara = null),
+      });
+    } catch (e) {
+      err(id, e.message || 'No se pudo abrir la foto. Intenta con otra.');
+    }
   };
 
   for (const id of Object.keys(LADOS)) {
@@ -230,7 +230,7 @@ export function mountNuevoPromovido(root, route) {
         titulo: LADOS[id].titulo,
         onCaptura: (dataUrl) => {
           cerrarCamara = null;
-          procesar(id, dataUrl);
+          ponerFoto(id, dataUrl);
           $(`#${id}`, root).closest('.ine-field').scrollIntoView({ block: 'center', behavior: 'smooth' });
         },
         onCerrar: () => (cerrarCamara = null),

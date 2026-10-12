@@ -1664,7 +1664,7 @@ a.promo-item:hover { border-color: #a3a3a3; }
 @media (max-width: 479px) { .ine-views { grid-template-columns: minmax(0, 1fr); } }
 
 
-/* ---------- Foto de la INE: tomar o cargar, cámara con guía y recorte automático ---------- */
+/* ---------- Foto de la INE: tomar o cargar y encuadrar en la guía ---------- */
 button.ine-shot { width: 100%; padding: 0; font: inherit; }
 .ine-shot__btns { display: flex; gap: var(--space-md); margin-top: var(--space-md); }
 .ine-shot__btns .btn { flex: 1; min-height: 34px; padding-left: 8px; padding-right: 8px; }
@@ -1699,7 +1699,6 @@ button.ine-shot { width: 100%; padding: 0; font: inherit; }
   .field-row--fotos .ine-shot__btns { flex-direction: column; gap: var(--space-sm); }
   .field-row--fotos .ine-shot__btns .btn { width: 100%; }
 }
-.ine-shot.is-busy::after { content: "Recortando…"; position: absolute; inset: auto 8px 8px auto; padding: 2px 8px; border-radius: 999px; background: rgba(10,10,10,.75); color: #fff; font-size: 12px; font-weight: 700; }
 .ine-cam .notice { margin: 0; }
 .ine-cam .notice .ine-cam__actions { justify-content: flex-start; }
 /* Captura de promovido: botones al final del formulario (no fijos en pantalla) */
@@ -1740,8 +1739,6 @@ button.ine-shot { width: 100%; padding: 0; font: inherit; }
 .ine-preview img { display: block; width: 100%; aspect-ratio: 85.6 / 54; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--color-border); background: var(--color-surface-alt); }
 .ine-field .ine-shot__btns { margin-top: var(--space-sm); }
 .ine-field .ine-shot__btns .btn { min-height: 40px; }
-.ine-field.is-busy .ine-shot__btns::after { content: "Recortando…"; align-self: center; font-size: 13px; color: var(--color-muted-foreground); }
-.ine-field.is-busy .ine-shot__btns .btn { opacity: .5; pointer-events: none; }
 
 /* Verificación */
 .wiz-sum + .wiz-sum { margin-top: var(--space-xl); padding-top: var(--space-xl); border-top: 1px solid var(--color-border); }
@@ -1757,3 +1754,11 @@ button.ine-shot { width: 100%; padding: 0; font: inherit; }
   .ine-fotos { grid-template-columns: minmax(0, 1fr); }
   .wiz-actions .btn { flex: 1; min-width: 0; }
 }
+
+/* Ajuste de una foto cargada dentro de la guía (arrastrar y acercar) */
+.ine-ajuste { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab; }
+.ine-ajuste:active { cursor: grabbing; }
+.ine-ajuste img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; will-change: transform; }
+.ine-cam__frame { pointer-events: none; }
+.ine-zoom { display: flex; align-items: center; gap: var(--space-md); margin-top: var(--space-md); font-size: 13px; color: var(--color-muted-foreground); }
+.ine-zoom input { flex: 1; accent-color: #0a0a0a; }

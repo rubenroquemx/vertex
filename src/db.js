@@ -168,6 +168,37 @@ const MIGRATIONS = [
       CREATE INDEX promovidos_estatus_idx ON promovidos(responsable_id, estatus);
     `,
   },
+  {
+    id: 5,
+    name: 'historial y observaciones de promovidos',
+    sql: `
+      CREATE TABLE promovido_historial (
+        id            bigserial PRIMARY KEY,
+        promovido_id  uuid NOT NULL REFERENCES promovidos(id) ON DELETE CASCADE,
+        user_id       uuid REFERENCES users(id) ON DELETE SET NULL,
+        user_name     text NOT NULL,
+        accion        text NOT NULL,
+        cambios       jsonb NOT NULL DEFAULT '[]'::jsonb,
+        at            timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX promovido_historial_idx ON promovido_historial(promovido_id, at);
+
+      CREATE TABLE promovido_observaciones (
+        id            bigserial PRIMARY KEY,
+        promovido_id  uuid NOT NULL REFERENCES promovidos(id) ON DELETE CASCADE,
+        user_id       uuid REFERENCES users(id) ON DELETE SET NULL,
+        user_name     text NOT NULL,
+        texto         text NOT NULL,
+        at            timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX promovido_observaciones_idx ON promovido_observaciones(promovido_id, at);
+
+      -- Los promovidos que ya existían quedan con su alta en el historial
+      INSERT INTO promovido_historial (promovido_id, user_id, user_name, accion, at)
+        SELECT p.id, p.promotor_id, COALESCE(u.name, 'Promotor'), 'creado', p.created_at
+        FROM promovidos p LEFT JOIN users u ON u.id = p.promotor_id;
+    `,
+  },
 ];
 
 async function migrate() {

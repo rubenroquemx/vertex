@@ -60,7 +60,8 @@ app.use(compression());
 const jsonBody = express.json();
 // Rutas con fotos: su propio límite de tamaño
 const CON_FOTOS = new Set(['/api/me/avatar', '/api/promovidos']);
-app.use((req, res, next) => (CON_FOTOS.has(req.path) ? next() : jsonBody(req, res, next)));
+const PROMOVIDO_RE = /^\/api\/promovidos\/[0-9a-f-]{36}$/;
+app.use((req, res, next) => (CON_FOTOS.has(req.path) || (req.method === 'PUT' && PROMOVIDO_RE.test(req.path)) ? next() : jsonBody(req, res, next)));
 
 
 const publicUser = (u, all) => {
@@ -442,6 +443,40 @@ app.get('/api/promovidos/:id', requireUser, async (req, res) => {
   if (!p) return res.status(404).json({ error: 'Promovido no encontrado' });
   await audit.add({ action: 'promovido.view', by: req.realUser.id, as: req.user.id, promovido: p.id });
   res.json(p);
+});
+
+// Editar: el promotor que lo capturó o su Responsable de Sección (queda en el historial)
+app.put('/api/promovidos/:id', requireUser, express.json({ limit: '8mb' }), async (req, res) => {
+  try {
+    const r = await promovidos.actualizar(req.user, req.params.id, req.body || {});
+    if (r.cambios) await audit.add({ action: 'promovido.update', by: req.realUser.id, as: req.user.id, promovido: r.id, cambios: r.cambios });
+    res.json(r);
+  } catch (err) {
+    promovidoError(res, err);
+  }
+});
+
+app.get('/api/promovidos/:id/historial', requireUser, async (req, res) => {
+  const h = await promovidos.historial(req.user, req.params.id);
+  if (!h) return res.status(404).json({ error: 'Promovido no encontrado' });
+  res.json(h);
+});
+
+// Observaciones (chat entre el promotor y su Responsable de Sección)
+app.get('/api/promovidos/:id/observaciones', requireUser, async (req, res) => {
+  try {
+    res.json(await promovidos.observaciones(req.user, req.params.id));
+  } catch (err) {
+    promovidoError(res, err);
+  }
+});
+
+app.post('/api/promovidos/:id/observaciones', requireUser, async (req, res) => {
+  try {
+    res.status(201).json(await promovidos.observar(req.user, req.params.id, req.body?.texto));
+  } catch (err) {
+    promovidoError(res, err);
+  }
 });
 
 app.get('/api/promovidos/:id/ine/:lado', requireUser, async (req, res) => {

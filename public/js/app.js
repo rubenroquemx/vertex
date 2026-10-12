@@ -27,7 +27,7 @@ import { viewResponsables, mountResponsables, viewResponsable, mountResponsable 
 import { viewConfiguracionCPV, mountConfiguracionCPV } from './configuracion-cpv.js';
 import { viewConfiguracionSA, mountConfiguracionSA } from './configuracion-sa.js';
 import { viewPanelSeccion } from './panel-seccion.js';
-import { viewNuevoPromovido, mountNuevoPromovido, viewPromovidos, viewPromovido } from './promovidos.js';
+import { viewNuevoPromovido, mountNuevoPromovido, viewPromovidos, viewPromovido, mountPromovido } from './promovidos.js';
 
 const state = { me: null, routes: new Map() };
 
@@ -1856,7 +1856,11 @@ async function boot() {
     state.patternRoutes.push({ pattern: /^\/responsables\/([0-9a-f-]{36})\/editar$/, title: 'Editar responsable', view: viewResponsable, mount: mountResponsable });
   }
   if (state.me.role.key === 'promotor') {
-    state.patternRoutes.push({ pattern: /^\/promovidos\/([0-9a-f-]{36})$/, title: 'Promovido', view: viewPromovido });
+  }
+  if (state.me.role.key !== 'superadmin') {
+    // Ficha del promovido (la rama del promotor hasta el CPV) y su edición (promotor y responsable)
+    state.patternRoutes.push({ pattern: /^\/promovidos\/([0-9a-f-]{36})$/, title: 'Promovido', view: (r, p) => viewPromovido(r, p, state), mount: mountPromovido });
+    state.patternRoutes.push({ pattern: /^\/promovidos\/([0-9a-f-]{36})\/editar$/, title: 'Editar promovido', view: viewNuevoPromovido, mount: mountNuevoPromovido });
   }
   if (state.me.role.key === 'coord_promocion') {
     state.routes.set('/zonas/nueva', { path: '/zonas/nueva', title: 'Nueva zona', view: viewZona, mount: mountZona });

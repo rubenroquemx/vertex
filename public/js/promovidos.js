@@ -1,6 +1,6 @@
 // Promovidos del Promotor Territorial: captura (INE + datos + domicilio) y lista.
 // La sección y la vigencia se validan aquí para avisar al momento, y de nuevo en el servidor.
-import { ICONS, $, esc, fmtNum, fmtDate, fmtPhone, api, fieldErrorSetter, toast } from './lib.js';
+import { ICONS, $, esc, fmtNum, fmtDate, fmtDateTime, fmtPhone, api, fieldErrorSetter, toast, navigate } from './lib.js';
 import { I, debounce } from './coordinador.js';
 import { camaraDisponible, abrirCamara, ajustarEnGuia } from './ine-camara.js';
 
@@ -57,22 +57,33 @@ const PASO_DE = {
 const CLAVE_RE = /^[A-Z]{6}\d{8}[HMX]\d{3}$/;
 const CURP_RE = /^[A-Z]{4}\d{6}[HMX][A-Z]{5}[A-Z\d]\d$/;
 
-const acciones = (paso) => `
+// `editando`: id del promovido al editar (cancelar regresa a su ficha)
+const acciones = (paso, editando = null) => `
   <div class="wiz-actions">
-    ${paso === 1 ? '<a class="btn btn--secondary" href="/promovidos" data-link>Cancelar</a>' : '<button type="button" class="btn btn--secondary" data-wiz="atras">Atrás</button>'}
-    ${paso === 4 ? '<button class="btn" type="submit">Guardar promovido</button>' : '<button type="button" class="btn" data-wiz="sig">Siguiente</button>'}
+    ${paso === 1 ? `<a class="btn btn--secondary" href="/promovidos${editando ? `/${editando}` : ''}" data-link>Cancelar</a>` : '<button type="button" class="btn btn--secondary" data-wiz="atras">Atrás</button>'}
+    ${paso === 4 ? `<button class="btn" type="submit">${editando ? 'Guardar cambios' : 'Guardar promovido'}</button>` : '<button type="button" class="btn" data-wiz="sig">Siguiente</button>'}
   </div>`;
 
 // ===========================================================================
 // Nueva captura
 // ===========================================================================
-export async function viewNuevoPromovido(route) {
+// También sirve para editar: /promovidos/:id/editar (params[0] = id)
+export async function viewNuevoPromovido(route, params = []) {
+  const editando = params[0] || null;
   let ctx;
-  try {
-    ctx = await api('/api/promovidos/contexto');
-  } catch (err) {
-    if (err.status === 409) return sinSeccion(err.message);
-    throw err;
+  route.actual = null;
+  if (editando) {
+    const p = await api(`/api/promovidos/${editando}`);
+    if (!p.puedeEditar) return sinSeccion('Solo el promotor que lo capturó y su Responsable de Sección pueden editar este registro.');
+    route.actual = p;
+    ctx = { seccion: p.seccionPermitida, vigenciaMin: p.vigenciaMin, eleccion: p.eleccion };
+  } else {
+    try {
+      ctx = await api('/api/promovidos/contexto');
+    } catch (err) {
+      if (err.status === 409) return sinSeccion(err.message);
+      throw err;
+    }
   }
   route.ctx = ctx;
   return `
@@ -84,13 +95,13 @@ export async function viewNuevoPromovido(route) {
 
       <form id="promoForm" novalidate>
         <section class="card wiz-step" data-paso="1" aria-label="Paso 1: ${PASOS[0]}">
-          <p class="wiz-step__help">Toma o carga la foto del frente y del reverso de la INE y encuádrala en la guía: se guarda solo lo que queda dentro del marco.</p>
+          <p class="wiz-step__help">${editando ? 'Las fotos guardadas se conservan; tómalas o cárgalas de nuevo solo si quieres reemplazarlas.' : 'Toma o carga la foto del frente y del reverso de la INE y encuádrala en la guía: se guarda solo lo que queda dentro del marco.'}</p>
           <div class="ine-fotos">
             ${campoFoto('pFrente', 'Frente de la INE')}
             ${campoFoto('pReverso', 'Reverso de la INE')}
           </div>
           <div class="ine-cam" id="ineCam" hidden></div>
-          ${acciones(1)}
+          ${acciones(1, editando)}
         </section>
 
         <section class="card wiz-step" data-paso="2" aria-label="Paso 2: ${PASOS[1]}" hidden>
@@ -108,7 +119,7 @@ export async function viewNuevoPromovido(route) {
             ${campo('pCurp', 'curp', 'CURP', { req: true, help: '18 caracteres.', cls: 'input--upper mono', attrs: 'maxlength="18" autocapitalize="characters" spellcheck="false"' })}
           </div>
           ${campo('pTelefono', 'telefono', 'Teléfono (WhatsApp)', { req: true, help: '10 dígitos.', attrs: 'type="tel" inputmode="numeric" maxlength="14" autocomplete="off"' })}
-          ${acciones(2)}
+          ${acciones(2, editando)}
         </section>
 
         <section class="card wiz-step" data-paso="3" aria-label="Paso 3: ${PASOS[2]}" hidden>
@@ -131,14 +142,14 @@ export async function viewNuevoPromovido(route) {
             ${campo('pNumInt', 'numInt', 'No. Int.', { cls: 'input--upper', attrs: 'maxlength="12"' })}
             ${campo('pFracc', 'fracc', 'Fracc.', { cls: 'input--upper', attrs: 'maxlength="80"' })}
           </div>
-          ${acciones(3)}
+          ${acciones(3, editando)}
         </section>
 
         <section class="card wiz-step" data-paso="4" aria-label="Paso 4: ${PASOS[3]}" hidden>
           <p class="wiz-step__help">Revisa que los datos coincidan con la credencial antes de guardar.</p>
           <div id="wizResumen"></div>
           <p class="form-error" id="pFormErr" role="alert"></p>
-          ${acciones(4)}
+          ${acciones(4, editando)}
         </section>
       </form>
     </div>`;
@@ -292,6 +303,8 @@ export function mountNuevoPromovido(root, route) {
   const sel = $('#pLocalidad', root);
   const otra = $('#pLocalidadOtra', root);
   let cpInfo = null;
+  // Al editar: localidad guardada, que se elige al cargar las opciones del CP
+  let localidadInicial = route.actual?.domicilio?.localidad || '';
   const limpiarCP = (msg = 'Primero escribe el CP') => {
     cpInfo = null;
     sel.innerHTML = `<option value="">${esc(msg)}</option>`;
@@ -316,7 +329,13 @@ export function mountNuevoPromovido(root, route) {
         r.asentamientos.map((a, i) => `<option value="${i}">${esc(a.nombre)} · ${esc(a.tipo)}</option>`).join('') +
         '<option value="otra">Otra (escribirla)</option>';
       sel.disabled = false;
-      if (r.asentamientos.length === 1) {
+      if (localidadInicial) {
+        const i = r.asentamientos.findIndex((a) => a.nombre.toUpperCase() === localidadInicial.toUpperCase());
+        sel.value = i >= 0 ? String(i) : 'otra';
+        if (i < 0) otra.value = localidadInicial;
+        sel.dispatchEvent(new Event('change'));
+        localidadInicial = '';
+      } else if (r.asentamientos.length === 1) {
         sel.value = '0';
         sel.dispatchEvent(new Event('change'));
       }
@@ -346,8 +365,9 @@ export function mountNuevoPromovido(root, route) {
   function revisar(n) {
     const e = {};
     if (n === 1) {
-      if (!fotos.ineFrente) e.ineFrente = 'Toma o carga la foto del frente.';
-      if (!fotos.ineReverso) e.ineReverso = 'Toma o carga la foto del reverso.';
+      // Al editar, las fotos guardadas cuentan
+      if (!fotos.ineFrente && !route.actual) e.ineFrente = 'Toma o carga la foto del frente.';
+      if (!fotos.ineReverso && !route.actual) e.ineReverso = 'Toma o carga la foto del reverso.';
     }
     if (n === 2) {
       const vig = Number(val('pVigencia'));
@@ -427,6 +447,39 @@ export function mountNuevoPromovido(root, route) {
   });
   ir(1);
 
+  // ---------- Edición: datos y fotos guardados ----------
+  const actual = route.actual;
+  if (actual) {
+    const d = actual.domicilio || {};
+    const poner = (id, v) => {
+      const el = $(`#${id}`, root);
+      el.value = v ?? '';
+    };
+    poner('pVigencia', actual.vigencia);
+    poner('pSeccion', actual.seccion);
+    poner('pPaterno', actual.paterno);
+    poner('pMaterno', actual.materno);
+    poner('pNombres', actual.nombres);
+    poner('pClave', actual.claveElector);
+    poner('pCurp', actual.curp);
+    poner('pTelefono', actual.telefono);
+    poner('pCalle', d.calle);
+    poner('pNumExt', d.numExt);
+    poner('pNumInt', d.numInt);
+    poner('pFracc', d.fracc);
+    poner('pCp', d.cp);
+    cp.dispatchEvent(new Event('input'));
+    for (const [id, lado] of [
+      ['pFrente', 'frente'],
+      ['pReverso', 'reverso'],
+    ]) {
+      const box = $(`#${id}Box`, root);
+      box.innerHTML = `<img src="/api/promovidos/${actual.id}/ine/${lado}" alt="Foto guardada: ${lado} de la INE">`;
+      box.hidden = false;
+      box.closest('.ine-field').classList.add('has-photo');
+    }
+  }
+
   // ---------- Guardar ----------
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -434,16 +487,20 @@ export function mountNuevoPromovido(root, route) {
     const btn = form.querySelector('[type="submit"]');
     const body = {
       ...Object.fromEntries(new FormData(form)),
+      // Al editar solo se envían las fotos reemplazadas
       ineFrente: fotos.ineFrente,
       ineReverso: fotos.ineReverso,
       localidad: localidad(),
     };
+    const etiqueta = actual ? 'Guardar cambios' : 'Guardar promovido';
     formErr.textContent = '';
     btn.disabled = true;
     btn.textContent = 'Guardando…';
     let saved = null;
     try {
-      saved = await api('/api/promovidos', { method: 'POST', body });
+      saved = actual
+        ? await api(`/api/promovidos/${actual.id}`, { method: 'PUT', body })
+        : await api('/api/promovidos', { method: 'POST', body });
     } catch (err) {
       const f = err.data?.fields;
       if (f && Object.keys(f).length) {
@@ -453,9 +510,14 @@ export function mountNuevoPromovido(root, route) {
       } else formErr.textContent = navigator.onLine ? err.message : 'Sin conexión. Intenta de nuevo cuando estés en línea.';
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Guardar promovido';
+      btn.textContent = etiqueta;
     }
     if (!saved) return;
+    if (actual) {
+      toast(saved.cambios ? 'Cambios guardados' : 'No hubo cambios que guardar');
+      navigate(`/promovidos/${actual.id}`);
+      return;
+    }
     toast(`Promovido registrado (en revisión): ${saved.nombre}`);
     // Listo para la siguiente captura
     form.reset();
@@ -517,10 +579,42 @@ export async function viewPromovidos() {
 }
 
 // ===========================================================================
-// Ficha del promovido (con fotos de la INE): solo la rama del promotor hasta el CPV
+// Ficha del promovido: datos, fotos de la INE, historial de cambios y observaciones.
+// La ve la rama del promotor hasta el CPV; editan y conversan solo el promotor que lo
+// capturó y su Responsable de Sección.
 // ===========================================================================
-export async function viewPromovido(route, params) {
-  const p = await api(`/api/promovidos/${params[0]}`);
+const icono = (d) =>
+  `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICONO_ENVIAR = icono('<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>');
+const ICONO_HISTORIAL = icono('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/>');
+const ICONO_OBS = icono('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>');
+
+function itemHistorial(h) {
+  const detalle =
+    h.accion === 'creado'
+      ? '<p class="hist__txt">Registró al promovido.</p>'
+      : `<ul class="hist__cambios">${h.cambios
+          .map((c) =>
+            c.campo.startsWith('Foto')
+              ? `<li><span>${esc(c.campo)}</span> reemplazada</li>`
+              : `<li><span>${esc(c.campo)}:</span> <s>${c.antes ? esc(c.antes) : '(vacío)'}</s> → <strong>${c.despues ? esc(c.despues) : '(vacío)'}</strong></li>`
+          )
+          .join('')}</ul>`;
+  return `<li class="hist__item">
+      <div class="hist__head"><strong>${esc(h.autor)}</strong><time datetime="${h.at}">${esc(fmtDateTime(h.at))}</time></div>
+      ${detalle}
+    </li>`;
+}
+
+const mensaje = (m) => `
+  <li class="obs__msg ${m.propia ? 'is-propia' : ''}" data-id="${m.id}">
+    <p class="obs__burbuja">${esc(m.texto).replace(/\n/g, '<br>')}</p>
+    <span class="obs__meta">${m.propia ? 'Tú' : esc(m.autor)} · <time datetime="${m.at}">${esc(fmtDateTime(m.at))}</time></span>
+  </li>`;
+
+export async function viewPromovido(route, params, state) {
+  const [p, hist] = await Promise.all([api(`/api/promovidos/${params[0]}`), api(`/api/promovidos/${params[0]}/historial`)]);
+  route.promovido = p;
   const d = p.domicilio || {};
   const dato = (label, value, cls = '') => `<div><dt>${label}</dt><dd class="${cls}">${value || '—'}</dd></div>`;
   const direccion = [d.calle, d.numExt && `No. ${d.numExt}`, d.numInt && `Int. ${d.numInt}`].filter(Boolean).join(' ');
@@ -529,34 +623,122 @@ export async function viewPromovido(route, params) {
       <img src="/api/promovidos/${p.id}/ine/${lado}" alt="${label} de la INE de ${esc(p.nombre)}">
       <figcaption>${label}</figcaption>
     </figure>`;
+  const volver = state?.me?.role?.key === 'promotor' ? { href: '/promovidos', texto: 'Promovidos' } : { href: '/', texto: 'Panel' };
   return `
-    <div class="promo-page">
-      <a class="back-link" href="/promovidos" data-link>${ICONS.back}<span>Promovidos</span></a>
-      <div class="page-head">
-        <h2>${esc(p.nombre)}</h2>
-        <p>${chipEstatus(p.estatus)} Sección ${fmtNum(p.seccion)} · registrado el ${fmtDate(p.createdAt)}${p.promotor ? ` por ${esc(p.promotor)}` : ''}${p.revisadoPor ? ` · revisado por ${esc(p.revisadoPor)}` : ''}</p>
+    <div class="promo-ficha">
+      <a class="back-link" href="${volver.href}" data-link>${ICONS.back}<span>${volver.texto}</span></a>
+      <div class="page-head page-head--actions">
+        <div>
+          <h2>${esc(p.nombre)}</h2>
+          <p>${chipEstatus(p.estatus)} Sección ${fmtNum(p.seccion)} · registrado el ${fmtDate(p.createdAt)}${p.promotor ? ` por ${esc(p.promotor)}` : ''}${p.revisadoPor ? ` · revisado por ${esc(p.revisadoPor)}` : ''}</p>
+        </div>
+        ${p.puedeEditar ? `<a class="btn btn--secondary" href="/promovidos/${p.id}/editar" data-link>${ICONS.edit}<span>Editar</span></a>` : ''}
       </div>
-      <section class="card form-card" aria-labelledby="pv1">
-        <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.camera}</span><h3 id="pv1">Credencial para votar (INE)</h3></header>
-        <div class="ine-views">${fotoIne('frente', 'Frente')}${fotoIne('reverso', 'Reverso')}</div>
-        <dl class="ficha__grid">
-          ${dato('Clave de elector', esc(p.claveElector), 'mono')}
-          ${dato('CURP', esc(p.curp), 'mono')}
-          ${dato('Vigencia', esc(p.vigencia))}
-          ${dato('Sección', fmtNum(p.seccion))}
-          ${dato('Teléfono (WhatsApp)', p.telefono ? `<a href="https://wa.me/52${esc(p.telefono)}" target="_blank" rel="noopener">${esc(fmtPhone(p.telefono))}</a>` : '')}
-        </dl>
-      </section>
-      <section class="card form-card" aria-labelledby="pv2">
-        <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${I.map}</span><h3 id="pv2">Domicilio</h3></header>
-        <dl class="ficha__grid">
-          ${dato('Calle y número', esc(direccion))}
-          ${dato('Fracc.', esc(d.fracc))}
-          ${dato('Localidad', esc(d.localidad))}
-          ${dato('Código postal', esc(d.cp))}
-          ${dato('Municipio', esc(d.municipio))}
-          ${dato('Estado', esc(d.estado))}
-        </dl>
-      </section>
+
+      <div class="promo-ficha__grid ${p.puedeObservar ? '' : 'is-sola'}">
+        <div class="promo-ficha__main">
+          <section class="card form-card" aria-labelledby="pv1">
+            <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.camera}</span><h3 id="pv1">Credencial para votar (INE)</h3></header>
+            <div class="ine-views">${fotoIne('frente', 'Frente')}${fotoIne('reverso', 'Reverso')}</div>
+            <dl class="ficha__grid">
+              ${dato('Clave de elector', esc(p.claveElector), 'mono')}
+              ${dato('CURP', esc(p.curp), 'mono')}
+              ${dato('Vigencia', esc(p.vigencia))}
+              ${dato('Sección', fmtNum(p.seccion))}
+              ${dato('Teléfono (WhatsApp)', p.telefono ? `<a href="https://wa.me/52${esc(p.telefono)}" target="_blank" rel="noopener">${esc(fmtPhone(p.telefono))}</a>` : '')}
+            </dl>
+          </section>
+          <section class="card form-card" aria-labelledby="pv2">
+            <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${I.map}</span><h3 id="pv2">Domicilio</h3></header>
+            <dl class="ficha__grid">
+              ${dato('Calle y número', esc(direccion))}
+              ${dato('Fracc.', esc(d.fracc))}
+              ${dato('Localidad', esc(d.localidad))}
+              ${dato('Código postal', esc(d.cp))}
+              ${dato('Municipio', esc(d.municipio))}
+              ${dato('Estado', esc(d.estado))}
+            </dl>
+          </section>
+          <section class="card form-card" aria-labelledby="pv3">
+            <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONO_HISTORIAL}</span><h3 id="pv3">Historial de cambios</h3></header>
+            ${hist.length ? `<ol class="hist">${hist.map(itemHistorial).join('')}</ol>` : '<p class="muted">Sin movimientos.</p>'}
+          </section>
+        </div>
+
+        ${
+          p.puedeObservar
+            ? `<aside class="card obs" aria-labelledby="obsT">
+            <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONO_OBS}</span><h3 id="obsT">Observaciones</h3></header>
+            <p class="obs__nota">Solo las ven el promotor y su responsable de sección.</p>
+            <ol class="obs__lista" id="obsLista" aria-live="polite"><li class="obs__vacio">Cargando…</li></ol>
+            <form class="obs__form" id="obsForm" novalidate>
+              <label class="sr-only" for="obsTexto">Escribe una observación</label>
+              <textarea class="input obs__texto" id="obsTexto" rows="1" maxlength="1000" placeholder="Escribe una observación"></textarea>
+              <button class="obs__enviar" type="submit" aria-label="Enviar observación" title="Enviar">${ICONO_ENVIAR}</button>
+            </form>
+            <p class="field__error" id="obsErr" role="alert"></p>
+          </aside>`
+            : ''
+        }
+      </div>
     </div>`;
+}
+
+export function mountPromovido(root, route) {
+  const p = route.promovido;
+  if (!p?.puedeObservar) return undefined;
+  const lista = $('#obsLista', root);
+  const form = $('#obsForm', root);
+  const texto = $('#obsTexto', root);
+  const errEl = $('#obsErr', root);
+  let ultimo = '';
+
+  const pintar = (msgs) => {
+    const firma = msgs.map((m) => m.id).join(',');
+    if (firma === ultimo) return;
+    ultimo = firma;
+    const alFinal = lista.scrollHeight - lista.scrollTop - lista.clientHeight < 40;
+    lista.innerHTML = msgs.length ? msgs.map(mensaje).join('') : '<li class="obs__vacio">Aún no hay observaciones.</li>';
+    if (alFinal || msgs.at(-1)?.propia) lista.scrollTop = lista.scrollHeight;
+  };
+  const cargar = () =>
+    api(`/api/promovidos/${p.id}/observaciones`)
+      .then(pintar)
+      .catch(() => {});
+  cargar();
+  // Se actualiza mientras la ficha está abierta
+  const timer = setInterval(() => document.visibilityState === 'visible' && cargar(), 15000);
+
+  // El campo crece con el texto; Enter envía y Mayús+Enter hace salto de línea
+  const ajustar = () => {
+    texto.style.height = 'auto';
+    texto.style.height = `${Math.min(texto.scrollHeight, 140)}px`;
+  };
+  texto.addEventListener('input', ajustar);
+  texto.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const t = texto.value.trim();
+    if (!t) return;
+    const btn = form.querySelector('button');
+    btn.disabled = true;
+    errEl.textContent = '';
+    try {
+      await api(`/api/promovidos/${p.id}/observaciones`, { method: 'POST', body: { texto: t } });
+      texto.value = '';
+      ajustar();
+      await cargar();
+    } catch (err) {
+      errEl.textContent = navigator.onLine ? err.message : 'Sin conexión. Intenta de nuevo.';
+    } finally {
+      btn.disabled = false;
+      texto.focus();
+    }
+  });
+  return () => clearInterval(timer);
 }

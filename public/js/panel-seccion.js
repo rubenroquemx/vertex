@@ -2,8 +2,6 @@
 // según el cálculo (factor de conversión) que definió su Coordinador de Promoción del Voto.
 import { ICONS, esc, fmtNum, api } from './lib.js';
 
-const pct = (v) => `${fmtNum(v)}%`;
-
 export async function viewPanelSeccion() {
   const d = await api('/api/panel/seccion');
   // Sin encabezado: el título «Panel» ya está en la barra superior
@@ -29,10 +27,8 @@ export async function viewPanelSeccion() {
       </div>`;
   }
 
-  const c = d.config;
   const faltan = Math.max(d.promotores - d.registrados, 0);
   const avance = d.promotores ? Math.min(Math.round((d.registrados / d.promotores) * 100), 100) : 0;
-  const varias = d.secciones.length > 1;
   const promovidos = d.promovidos || 0;
   const faltanProm = Math.max(d.meta - promovidos, 0);
   const avanceProm = d.meta ? Math.min(Math.round((promovidos / d.meta) * 100), 100) : 0;
@@ -59,18 +55,5 @@ export async function viewPanelSeccion() {
       </div>
     </section>
     </div>
-
-    <section class="card ps-calc" aria-labelledby="psCalc">
-      <h3 class="card__title" id="psCalc">¿Cómo se calculó?</h3>
-      <p class="ps-calc__intro">Con los valores que definió tu Coordinador de Promoción del Voto:</p>
-      <ol class="ps-steps">
-        <li><span>Lista nominal${varias ? ' de tus secciones' : ` de la sección ${d.secciones[0].clave}`}</span><strong>${fmtNum(d.electores)} electores</strong></li>
-        <li><span>× Participación esperada</span><strong>${pct(c.participacion)}</strong></li>
-        <li><span>× Conversión a favor</span><strong>${pct(c.conversion)}</strong></li>
-        <li class="ps-steps__res"><span>= Meta de promovidos</span><strong>${fmtNum(d.meta)}</strong></li>
-        <li><span>÷ Promovidos por promotor</span><strong>${fmtNum(c.factor)}</strong></li>
-        <li class="ps-steps__res"><span>= Promotores necesarios</span><strong>${fmtNum(d.promotores)}</strong></li>
-      </ol>
-      <p class="field__help">Los resultados se redondean hacia arriba. Si tu coordinador cambia estos valores, la cifra se actualiza sola.</p>
-    </section>`;
+`;
 }

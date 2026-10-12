@@ -560,11 +560,7 @@ const chipEstatus = (e) => {
 export async function viewPromovidos() {
   const lista = await api('/api/promovidos');
   return `
-    <div class="page-head page-head--actions">
-      <div>
-        <h2>Promovidos</h2>
-        <p>${lista.length ? `Has registrado ${fmtNum(lista.length)} ${lista.length === 1 ? 'promovido' : 'promovidos'}.` : 'Aún no registras promovidos.'}</p>
-      </div>
+    <div class="promo-lista__acciones">
       <a class="btn promo-new" href="/promovidos/nuevo" data-link>${ICONS.plus}<span>Nuevo promovido</span></a>
     </div>
     ${

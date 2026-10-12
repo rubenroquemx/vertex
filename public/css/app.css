@@ -1820,3 +1820,6 @@ button.ine-shot { width: 100%; padding: 0; font: inherit; }
   .promo-ficha__acciones { width: 100%; }
   .promo-ficha__acciones .btn { flex: 1; }
 }
+/* Lista de promovidos: sin título (ya está en la barra superior); botón solo en escritorio */
+.promo-lista__acciones { display: flex; justify-content: flex-end; margin-bottom: var(--space-lg); }
+@media (max-width: 767px) { .promo-lista__acciones { display: none; } }

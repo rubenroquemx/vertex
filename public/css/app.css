@@ -1663,3 +1663,44 @@ a.promo-item:hover { border-color: #a3a3a3; }
 .ine-view figcaption { margin-top: 6px; font-size: 12px; color: var(--color-muted-foreground); }
 @media (max-width: 479px) { .ine-views { grid-template-columns: minmax(0, 1fr); } }
 
+
+/* ---------- Foto de la INE: tomar o cargar, cámara con guía y lectura (OCR) ---------- */
+button.ine-shot { width: 100%; padding: 0; font: inherit; }
+.ine-shot__btns { display: flex; gap: var(--space-md); margin-top: var(--space-md); }
+.ine-shot__btns .btn { flex: 1; min-height: 34px; padding-left: 8px; padding-right: 8px; }
+.ine-shot__btns .btn svg { width: 16px; height: 16px; }
+.ine-shot__btns label.btn { cursor: pointer; position: relative; }
+.ine-shot__btns label.btn:focus-within { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+.ine-shot.has-photo .ine-shot__empty { display: none; }
+
+.ine-cam { margin: var(--space-md) 0 var(--space-xl); }
+.ine-cam__head { display: grid; gap: 2px; margin-bottom: var(--space-md); font-size: 13px; color: var(--color-muted-foreground); }
+.ine-cam__head strong { font-size: 14px; color: var(--color-foreground); }
+.ine-cam__view { position: relative; overflow: hidden; aspect-ratio: 4 / 3; border-radius: var(--radius); background: #0a0a0a; }
+.ine-cam__view video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Marco del tamaño de la credencial; fuera de él se oscurece */
+.ine-cam__frame {
+  position: absolute; left: 6%; width: 88%; top: 50%; transform: translateY(-50%); aspect-ratio: 85.6 / 54;
+  border-radius: 12px; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .55); outline: 2px dashed rgba(255, 255, 255, .7); outline-offset: -2px;
+}
+.ine-cam__frame i { position: absolute; width: 26px; height: 26px; border: 4px solid #fff; }
+.ine-cam__frame i:nth-child(1) { top: -3px; left: -3px; border-right: 0; border-bottom: 0; border-radius: 12px 0 0 0; }
+.ine-cam__frame i:nth-child(2) { top: -3px; right: -3px; border-left: 0; border-bottom: 0; border-radius: 0 12px 0 0; }
+.ine-cam__frame i:nth-child(3) { bottom: -3px; left: -3px; border-right: 0; border-top: 0; border-radius: 0 0 0 12px; }
+.ine-cam__frame i:nth-child(4) { bottom: -3px; right: -3px; border-left: 0; border-top: 0; border-radius: 0 0 12px 0; }
+.ine-cam__actions { display: flex; gap: var(--space-md); justify-content: flex-end; margin-top: var(--space-md); }
+.ine-cam__actions .btn[data-cam="capturar"] { min-width: 160px; }
+@media (max-width: 767px) {
+  .ine-cam__view { aspect-ratio: 3 / 4; }
+  .ine-cam__actions .btn { flex: 1; }
+}
+
+.ine-ocr { margin: 0 0 var(--space-xl); padding: var(--space-md) var(--space-lg); border-radius: var(--radius); font-size: 13px; background: var(--color-surface-alt); border: 1px solid var(--color-border); }
+.ine-ocr.is-busy::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px; border: 2px solid #d4d4d4; border-top-color: #0a0a0a; border-radius: 50%; animation: spin 1s linear infinite; }
+.ine-ocr.is-warn { background: var(--color-destructive-soft); border-color: #fecaca; color: #991b1b; }
+/* Campo llenado con la lectura de la INE (por revisar) */
+.input.is-ocr { box-shadow: inset 3px 0 0 #0a0a0a; background: #fafaf5; }
+@media (max-width: 767px) {
+  .field-row--fotos .ine-shot__btns { flex-direction: column; gap: var(--space-sm); }
+  .field-row--fotos .ine-shot__btns .btn { width: 100%; }
+}

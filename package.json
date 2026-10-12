@@ -16,6 +16,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@tesseract.js-data/spa": "^1.0.0",
     "@webrek/mx-cp": "^0.2.0",
     "adm-zip": "^0.5.16",
     "compression": "^1.7.4",
@@ -24,7 +25,8 @@
     "leaflet": "^1.9.4",
     "pg": "^8.13.1",
     "proj4": "^2.12.1",
-    "shapefile": "^0.6.6"
+    "shapefile": "^0.6.6",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "sharp": "^0.33.5"

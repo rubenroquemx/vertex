@@ -2,6 +2,8 @@
 // La sección y la vigencia se validan aquí para avisar al momento, y de nuevo en el servidor.
 import { ICONS, $, esc, fmtNum, fmtDate, api, fieldErrorSetter, submitWith, toast } from './lib.js';
 import { I, debounce } from './coordinador.js';
+import { camaraDisponible, abrirCamara } from './ine-camara.js';
+import { leerINE } from './ine-ocr.js';
 
 const sinSeccion = (msg) => `
   <div class="empty">
@@ -32,13 +34,36 @@ function comprimir(file, max = 1600, calidad = 0.82) {
   });
 }
 
+// Localidad del catálogo que corresponde a la colonia leída en la INE (o -1).
+// Acepta que un nombre contenga al otro («TABASCO 2000» ↔ «Galaxia/tabasco 2000»); gana el más parecido.
+function coloniaParecida(asentamientos, colonia) {
+  const norm = (t) => ` ${t.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9Ñ]+/g, ' ').trim()} `;
+  const buscada = norm(colonia || '');
+  if (buscada.trim().length < 4) return -1;
+  let mejor = -1;
+  let dif = Infinity;
+  asentamientos.forEach((a, i) => {
+    const n = norm(a.nombre);
+    if (!n.includes(buscada) && !buscada.includes(n)) return;
+    const d = Math.abs(n.length - buscada.length);
+    if (d < dif) [mejor, dif] = [i, d];
+  });
+  return mejor;
+}
+
+// Foto de la INE: tomarla con la cámara (con guía) o cargar una imagen ya guardada en el teléfono
 const campoFoto = (id, label) => `
   <div class="field">
     <span class="field__label" id="${id}-label">${label} <span class="req" aria-hidden="true">*</span></span>
-    <label class="ine-shot" id="${id}Box">
-      <input type="file" accept="image/*" capture="environment" class="sr-only" id="${id}" aria-labelledby="${id}-label">
-      <span class="ine-shot__empty">${ICONS.camera}<span>Tomar foto</span></span>
-    </label>
+    <button type="button" class="ine-shot" id="${id}Box" data-foto="camara" data-lado="${id}" aria-label="Tomar foto: ${label}">
+      <span class="ine-shot__empty">${ICONS.camera}<span>Sin foto</span></span>
+    </button>
+    <div class="ine-shot__btns">
+      <button type="button" class="btn btn--secondary btn--sm" data-foto="camara" data-lado="${id}">${ICONS.camera}<span>Tomar foto</span></button>
+      <label class="btn btn--secondary btn--sm">${ICONS.upload}<span>Cargar</span>
+        <input type="file" accept="image/*" class="sr-only" id="${id}" aria-labelledby="${id}-label"></label>
+    </div>
+    <input type="file" accept="image/*" capture="environment" class="sr-only" id="${id}Cam" tabindex="-1" aria-hidden="true">
     <p class="field__error" id="${id}-err"></p>
   </div>`;
 
@@ -81,6 +106,8 @@ export async function viewNuevoPromovido(route) {
             ${campoFoto('pFrente', 'Foto INE (frente)')}
             ${campoFoto('pReverso', 'Foto INE (reverso)')}
           </div>
+          <div class="ine-cam" id="ineCam" hidden></div>
+          <p class="ine-ocr" id="pOcr" role="status" aria-live="polite" hidden></p>
           <div class="field-row field-row--fotos">
             ${campo('pVigencia', 'vigencia', 'Vigencia', { req: true, help: `Año final de la INE: ${ctx.vigenciaMin} o posterior.`, attrs: 'inputmode="numeric" maxlength="4"' })}
             ${campo('pSeccion', 'seccion', 'Sección', { req: true, help: `Debe ser la ${fmtNum(ctx.seccion)}.`, attrs: 'inputmode="numeric" maxlength="4"' })}
@@ -164,36 +191,128 @@ export function mountNuevoPromovido(root, route) {
   const err = (id, msg) => ($(`#${id}-err`, root).textContent = msg || '');
   const fotos = { ineFrente: null, ineReverso: null };
 
-  // ---------- Fotos ----------
-  for (const [key, id] of [
-    ['ineFrente', 'pFrente'],
-    ['ineReverso', 'pReverso'],
-  ]) {
-    const input = $(`#${id}`, root);
+  // ---------- Fotos: cámara con guía o imagen cargada ----------
+  const LADOS = { pFrente: { key: 'ineFrente', titulo: 'Frente de la INE' }, pReverso: { key: 'ineReverso', titulo: 'Reverso de la INE' } };
+  const camBox = $('#ineCam', root);
+  let cerrarCamara = null;
+
+  const ponerFoto = (id, dataUrl) => {
+    const { key } = LADOS[id];
+    fotos[key] = dataUrl;
     const box = $(`#${id}Box`, root);
-    input.addEventListener('change', async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      box.classList.add('is-busy');
-      try {
-        fotos[key] = await comprimir(file);
-        let img = box.querySelector('img');
-        if (!img) {
-          img = document.createElement('img');
-          img.alt = key === 'ineFrente' ? 'Vista previa del frente de la INE' : 'Vista previa del reverso de la INE';
-          box.prepend(img);
-        }
-        img.src = fotos[key];
-        box.classList.add('has-photo');
-        err(id, '');
-      } catch (e) {
-        err(id, e.message);
-      } finally {
-        box.classList.remove('is-busy');
-        input.value = '';
-      }
-    });
+    let img = box.querySelector('img');
+    if (!img) {
+      img = document.createElement('img');
+      img.alt = key === 'ineFrente' ? 'Vista previa del frente de la INE' : 'Vista previa del reverso de la INE';
+      box.prepend(img);
+    }
+    img.src = dataUrl;
+    box.classList.add('has-photo');
+    err(id, '');
+    if (key === 'ineFrente') leer(dataUrl);
+  };
+
+  const desdeArchivo = async (id, input) => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const box = $(`#${id}Box`, root);
+    box.classList.add('is-busy');
+    try {
+      ponerFoto(id, await comprimir(file));
+    } catch (e) {
+      err(id, e.message);
+    } finally {
+      box.classList.remove('is-busy');
+      input.value = '';
+    }
+  };
+
+  for (const id of Object.keys(LADOS)) {
+    $(`#${id}`, root).addEventListener('change', (e) => desdeArchivo(id, e.target));
+    $(`#${id}Cam`, root).addEventListener('change', (e) => desdeArchivo(id, e.target));
   }
+
+  const tomarFoto = async (id) => {
+    cerrarCamara?.();
+    cerrarCamara = null;
+    // Sin cámara en vivo (p. ej. sin HTTPS): se usa la cámara del teléfono sin guía
+    if (!camaraDisponible()) return $(`#${id}Cam`, root).click();
+    try {
+      cerrarCamara = await abrirCamara(camBox, {
+        titulo: LADOS[id].titulo,
+        onCaptura: (dataUrl) => {
+          cerrarCamara = null;
+          ponerFoto(id, dataUrl);
+          $(`#${id}Box`, root).scrollIntoView({ block: 'center', behavior: 'smooth' });
+        },
+        onCerrar: () => (cerrarCamara = null),
+      });
+    } catch {
+      // Permiso negado o cámara ocupada: cámara del sistema
+      $(`#${id}Cam`, root).click();
+    }
+  };
+
+  form.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-foto="camara"]');
+    if (b) tomarFoto(b.dataset.lado);
+  });
+
+  // ---------- OCR del frente: propone los datos, el promotor los revisa ----------
+  const ocrBox = $('#pOcr', root);
+  let ocrSeq = 0;
+  let coloniaOcr = '';
+  const estadoOcr = (texto, clase = '') => {
+    ocrBox.hidden = !texto;
+    ocrBox.className = `ine-ocr ${clase}`;
+    ocrBox.textContent = texto;
+  };
+  const rellenar = (id, valor) => {
+    const el = $(`#${id}`, root);
+    if (!valor || el.value.trim()) return false;
+    el.value = valor;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.classList.add('is-ocr');
+    return true;
+  };
+  async function leer(dataUrl) {
+    const seq = ++ocrSeq;
+    estadoOcr('Leyendo los datos de la INE…', 'is-busy');
+    try {
+      const { campos } = await leerINE(dataUrl, (p, etapa) => seq === ocrSeq && estadoOcr(`${etapa} de la INE… ${Math.round(p * 100)}%`, 'is-busy'));
+      if (seq !== ocrSeq) return;
+      const pares = [
+        ['pVigencia', campos.vigencia],
+        ['pSeccion', campos.seccion],
+        ['pPaterno', campos.paterno],
+        ['pMaterno', campos.materno],
+        ['pNombres', campos.nombres],
+        ['pClave', campos.claveElector],
+        ['pCurp', campos.curp],
+        ['pCalle', campos.calle],
+        ['pNumExt', campos.numExt],
+        ['pNumInt', campos.numInt],
+      ];
+      coloniaOcr = campos.colonia || '';
+      let n = pares.filter(([id, v]) => rellenar(id, v)).length;
+      if (rellenar('pCp', campos.cp)) n++;
+      // Avisos de vigencia y sección con lo leído
+      $('#pVigencia', root).dispatchEvent(new Event('blur'));
+      $('#pSeccion', root).dispatchEvent(new Event('blur'));
+      estadoOcr(
+        n
+          ? `Se llenaron ${n} ${n === 1 ? 'campo' : 'campos'} con la lectura de la INE (marcados). Revísalos contra la credencial antes de guardar.`
+          : 'No se pudieron leer los datos de la INE. Captúralos a mano o toma la foto de nuevo con más luz y sin reflejos.',
+        n ? 'is-ok' : 'is-warn'
+      );
+    } catch {
+      if (seq === ocrSeq) estadoOcr('No se pudo usar el lector de la INE en este dispositivo. Captura los datos a mano.', 'is-warn');
+    }
+  }
+  // Al corregir un campo leído, deja de marcarse como «leído»
+  form.addEventListener('input', (e) => {
+    if (e.isTrusted) e.target.classList?.remove('is-ocr');
+  });
 
   // ---------- Mayúsculas y solo dígitos ----------
   root.querySelectorAll('.input--upper').forEach((el) => el.addEventListener('input', () => {
@@ -249,10 +368,13 @@ export function mountNuevoPromovido(root, route) {
         r.asentamientos.map((a, i) => `<option value="${i}">${esc(a.nombre)} · ${esc(a.tipo)}</option>`).join('') +
         '<option value="otra">Otra (escribirla)</option>';
       sel.disabled = false;
-      if (r.asentamientos.length === 1) {
-        sel.value = '0';
+      const leida = coloniaParecida(r.asentamientos, coloniaOcr);
+      if (r.asentamientos.length === 1 || leida >= 0) {
+        sel.value = String(r.asentamientos.length === 1 ? 0 : leida);
         sel.dispatchEvent(new Event('change'));
+        if (leida >= 0) sel.classList.add('is-ocr');
       }
+      coloniaOcr = '';
     } catch (e) {
       if (cp.value !== v) return;
       limpiarCP('Código postal no encontrado');
@@ -292,9 +414,15 @@ export function mountNuevoPromovido(root, route) {
       b.classList.remove('has-photo');
       b.querySelector('img')?.remove();
     });
+    root.querySelectorAll('.is-ocr').forEach((el) => el.classList.remove('is-ocr'));
+    ocrSeq++;
+    estadoOcr('');
     limpiarCP();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
+
+  // Al salir de la pantalla se apaga la cámara
+  return () => cerrarCamara?.();
 }
 
 // ===========================================================================

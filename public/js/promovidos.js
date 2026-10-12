@@ -544,13 +544,16 @@ export function mountNuevoPromovido(root, route) {
 }
 
 // Estatus de revisión del promovido (lo valida su Responsable de Sección directo)
+// Semáforo: verde aprobado · rojo con observaciones del responsable (o rechazado) · naranja en revisión
 const ESTATUS = {
+  validado: { texto: 'Aprobado', clase: 'estatus--aprobado' },
+  observaciones: { texto: 'Con observaciones', clase: 'estatus--observaciones' },
+  rechazado: { texto: 'Rechazado', clase: 'estatus--observaciones' },
   en_revision: { texto: 'En revisión', clase: 'estatus--revision' },
-  validado: { texto: 'Validado', clase: 'estatus--validado' },
-  rechazado: { texto: 'Rechazado', clase: 'estatus--rechazado' },
 };
-const chipEstatus = (e) => {
-  const x = ESTATUS[e] || ESTATUS.en_revision;
+const chipEstatus = (p) => {
+  const clave = p.estatus === 'validado' ? 'validado' : p.estatus === 'rechazado' ? 'rechazado' : p.conObservaciones ? 'observaciones' : 'en_revision';
+  const x = ESTATUS[clave];
   return `<span class="estatus ${x.clase}">${x.texto}</span>`;
 };
 
@@ -568,7 +571,7 @@ export async function viewPromovidos() {
         ? `<ul class="promo-list">${lista
             .map(
               (p) => `<li><a class="promo-item" href="/promovidos/${p.id}" data-link>
-                <span class="promo-item__top"><strong>${esc(p.nombre)}</strong>${chipEstatus(p.estatus)}</span>
+                <span class="promo-item__top"><strong>${esc(p.nombre)}</strong>${chipEstatus(p)}</span>
                 <span class="promo-item__meta"><span class="mono">${esc(p.claveElector)}</span><span>${esc(p.localidad)}</span><span>${fmtDate(p.createdAt)}</span></span>
               </a></li>`
             )
@@ -634,7 +637,7 @@ export async function viewPromovido(route, params, state) {
       <div class="page-head page-head--actions">
         <div>
           <h2>${esc(p.nombre)}</h2>
-          <p>${chipEstatus(p.estatus)} Sección ${fmtSeccion(p.seccion)} · registrado el ${fmtDate(p.createdAt)}${p.promotor ? ` por ${esc(p.promotor)}` : ''}${p.revisadoPor ? ` · revisado por ${esc(p.revisadoPor)}` : ''}</p>
+          <p>${chipEstatus(p)} Sección ${fmtSeccion(p.seccion)} · registrado el ${fmtDate(p.createdAt)}${p.promotor ? ` por ${esc(p.promotor)}` : ''}${p.revisadoPor ? ` · revisado por ${esc(p.revisadoPor)}` : ''}</p>
         </div>
         <div class="promo-ficha__acciones">
           <a class="btn btn--secondary" href="/api/promovidos/${p.id}/pdf" download title="Descargar la ficha en PDF (sin historial ni observaciones)">${ICONO_PDF}<span>PDF</span></a>

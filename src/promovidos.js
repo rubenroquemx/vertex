@@ -201,8 +201,11 @@ const nombreCompleto = (d) => [d.nombres, d.paterno, d.materno].filter(Boolean).
 
 // Lista del promotor (sin fotos ni datos sensibles completos)
 async function listaDe(promotor) {
+  // Observaciones del Responsable de Sección (las del propio promotor no cuentan)
   const { rows } = await query(
-    'SELECT id, seccion, data, clave_elector, estatus, created_at FROM promovidos WHERE promotor_id = $1 ORDER BY created_at DESC',
+    `SELECT p.id, p.seccion, p.data, p.clave_elector, p.estatus, p.created_at,
+            EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id) AS con_obs
+     FROM promovidos p WHERE p.promotor_id = $1 ORDER BY p.created_at DESC`,
     [promotor.id]
   );
   return rows.map((r) => ({
@@ -213,6 +216,7 @@ async function listaDe(promotor) {
     localidad: r.data.domicilio?.localidad || '',
     vigencia: r.data.vigencia,
     estatus: r.estatus,
+    conObservaciones: r.con_obs,
     createdAt: r.created_at.toISOString(),
   }));
 }
@@ -230,7 +234,9 @@ function puedeVer(viewer, promotorId) {
 
 async function detalle(viewer, id) {
   const { rows } = await query(
-    'SELECT id, promotor_id, responsable_id, seccion, data, clave_elector, curp, estatus, revisado_por, revisado_at, created_at FROM promovidos WHERE id = $1',
+    `SELECT p.id, p.promotor_id, p.responsable_id, p.seccion, p.data, p.clave_elector, p.curp, p.estatus, p.revisado_por, p.revisado_at, p.created_at,
+            EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id) AS con_obs
+     FROM promovidos p WHERE p.id = $1`,
     [id]
   );
   const r = rows[0];
@@ -249,6 +255,7 @@ async function detalle(viewer, id) {
     domicilio: r.data.domicilio,
     promotor: users.get(r.promotor_id)?.name || null,
     estatus: r.estatus,
+    conObservaciones: r.con_obs,
     revisadoPor: r.revisado_por ? users.get(r.revisado_por)?.name || null : null,
     revisadoAt: r.revisado_at ? r.revisado_at.toISOString() : null,
     createdAt: r.created_at.toISOString(),

@@ -20,6 +20,7 @@ const responsables = require('./src/responsables');
 const metas = require('./src/metas');
 const panelSeccion = require('./src/panel-seccion');
 const promovidos = require('./src/promovidos');
+const cuentasIO = require('./src/cuentas-io');
 const padron = require('./src/padron');
 const territory = require('./src/territory');
 const { PARTIDOS } = require('./src/partidos');
@@ -59,7 +60,7 @@ app.use(compression());
 // La foto de perfil usa su propio parser con un límite mayor
 const jsonBody = express.json();
 // Rutas con fotos: su propio límite de tamaño
-const CON_FOTOS = new Set(['/api/me/avatar', '/api/promovidos']);
+const CON_FOTOS = new Set(['/api/me/avatar', '/api/promovidos', '/api/configuracion/cuentas/importar']);
 app.use((req, res, next) => (CON_FOTOS.has(req.path) ? next() : jsonBody(req, res, next)));
 
 
@@ -618,6 +619,33 @@ app.post('/api/configuracion/whatsapp/mensaje-prueba', requireUser, requireRole(
     res.status(502).json({ error: err.message });
   }
 });
+
+// --- Configuración › General: reemplazar todas las cuentas (Super administrador) ---
+// Recibe el archivo de `npm run exportar-cuentas`. Borra las cuentas actuales (y sus sesiones,
+// incluida la de quien importa) y carga las del archivo. Requiere contraseña y confirmación escrita.
+app.post(
+  '/api/configuracion/cuentas/importar',
+  requireUser,
+  requireRole('superadmin'),
+  express.json({ limit: '60mb' }),
+  async (req, res) => {
+    if (req.realUser.role !== 'superadmin') return res.status(403).json({ error: 'Solo el Super administrador puede reemplazar las cuentas.' });
+    if (String(req.body?.confirmacion || '').trim().toUpperCase() !== 'REEMPLAZAR') {
+      return invalid(res, { confirmacion: 'Escribe REEMPLAZAR para confirmar.' });
+    }
+    const check = auth.confirmPassword(req.realUser, req.body?.password);
+    if (!check.ok) return res.status(check.status).json(check.field ? { error: check.error, fields: { password: check.error } } : { error: check.error });
+    try {
+      const r = await cuentasIO.importar(req.body?.archivo);
+      await store.init({ seedIfEmpty: false });
+      await audit.add({ action: 'cuentas.importar', by: req.realUser.id, cuentas: r.cuentas, fotos: r.fotos, archivo: req.body?.archivo?.exportadoEn || null });
+      res.json(r);
+    } catch (err) {
+      if (err instanceof cuentasIO.CuentasError) return res.status(422).json({ error: err.message });
+      throw err;
+    }
+  }
+);
 
 // --- Perfil personal (todos los niveles) -----------------------------------
 app.patch('/api/me', requireUser, async (req, res) => {

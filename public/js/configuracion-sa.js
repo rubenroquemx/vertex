@@ -26,9 +26,104 @@ export async function viewConfiguracionSA(route) {
     </div>
     <section class="tabs__panel" role="tabpanel" id="panel-whatsapp" aria-labelledby="tab-whatsapp" ${route.tab === 'whatsapp' ? '' : 'hidden'}>${panelWhatsapp(route.data)}</section>
     <section class="tabs__panel" role="tabpanel" id="panel-general" aria-labelledby="tab-general" ${route.tab === 'general' ? '' : 'hidden'}>
-      <div class="empty"><span aria-hidden="true">${ICONS.settings}</span><strong>Ajustes generales</strong><span>Aquí se agregarán roles, permisos y catálogos.</span></div>
+      ${panelCuentas()}
     </section>
     <dialog class="dialog" id="waDialog" aria-labelledby="waDlgT"></dialog>`;
+}
+
+// Reemplazar todas las cuentas con un archivo de `npm run exportar-cuentas`
+function panelCuentas() {
+  return `
+    <section class="card form-card cfg-narrow" aria-labelledby="ccT">
+      <header class="form-card__head">
+        <span class="form-card__icon" aria-hidden="true">${ICONS.users}</span>
+        <h3 id="ccT">Reemplazar cuentas</h3>
+      </header>
+      <p class="units__help">Carga las cuentas exportadas de otra instalación de VERTEX (comando <span class="mono">npm run exportar-cuentas</span>). Incluye usuarios, contraseñas y fotos de perfil de todos los niveles.</p>
+      <div class="notice notice--danger">${ICONS.alert}<div><strong>Se borran todas las cuentas actuales</strong>, incluida la tuya, y se cierran todas las sesiones. Después entrarás con el usuario y la contraseña del Super administrador del archivo. Los promovidos, la cartografía, el padrón y la configuración no se tocan.</div></div>
+      <form id="ccForm" novalidate>
+        <div class="field">
+          <label for="ccFile">Archivo de cuentas (.json)</label>
+          <input class="input" id="ccFile" type="file" accept=".json,application/json">
+          <p class="field__help" id="ccResumen"></p>
+          <p class="field__error" id="ccFile-err"></p>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="ccConfirm">Escribe REEMPLAZAR</label>
+            <input class="input mono" id="ccConfirm" name="confirmacion" autocomplete="off" autocapitalize="characters" spellcheck="false">
+            <p class="field__error" id="ccConfirm-err"></p>
+          </div>
+          <div class="field">
+            <label for="ccPass">Tu contraseña</label>
+            <input class="input" id="ccPass" name="password" type="password" autocomplete="current-password">
+            <p class="field__error" id="ccPass-err"></p>
+          </div>
+        </div>
+        <p class="form-error" id="ccErr" role="alert"></p>
+        <div class="form-actions">
+          <button class="btn btn--destructive" type="submit" disabled>Reemplazar todas las cuentas</button>
+        </div>
+      </form>
+    </section>`;
+}
+
+const NIVELES = {
+  superadmin: 'Super admin',
+  coord_promocion: 'CPV',
+  coord_zona: 'Coord. de zona',
+  resp_seccion: 'Resp. de sección',
+  promotor: 'Promotores',
+};
+
+function mountCuentas(root) {
+  const form = $('#ccForm', root);
+  const btn = form.querySelector('[type="submit"]');
+  const setErrors = fieldErrorSetter(root, { archivo: 'ccFile', confirmacion: 'ccConfirm', password: 'ccPass' });
+  let archivo = null;
+  const listo = () => (btn.disabled = !(archivo && $('#ccConfirm', root).value.trim().toUpperCase() === 'REEMPLAZAR' && $('#ccPass', root).value));
+  $('#ccFile', root).addEventListener('change', async (e) => {
+    archivo = null;
+    $('#ccResumen', root).textContent = '';
+    setErrors();
+    const f = e.target.files?.[0];
+    if (f) {
+      try {
+        const data = JSON.parse(await f.text());
+        if (data.formato !== 'vertex-cuentas' || !Array.isArray(data.users)) throw new Error();
+        archivo = data;
+        const porRol = data.users.reduce((m, u) => ((m[u.role] = (m[u.role] || 0) + 1), m), {});
+        $('#ccResumen', root).textContent =
+          `${data.users.length} cuentas (${Object.entries(NIVELES).filter(([k]) => porRol[k]).map(([k, n]) => `${n}: ${porRol[k]}`).join(' · ')}), ` +
+          `${(data.avatars || []).length} fotos · exportado el ${fmtDateTime(data.exportadoEn)}`;
+      } catch {
+        setErrors({ archivo: 'El archivo no es una exportación de cuentas de VERTEX.' });
+      }
+    }
+    listo();
+  });
+  form.addEventListener('input', listo);
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (btn.disabled) return;
+    setErrors();
+    $('#ccErr', root).textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Reemplazando…';
+    try {
+      const r = await api('/api/configuracion/cuentas/importar', {
+        method: 'POST',
+        body: { archivo, confirmacion: $('#ccConfirm', root).value, password: $('#ccPass', root).value },
+      });
+      toast(`Listo: ${r.cuentas} cuentas cargadas. Inicia sesión con el Super administrador del archivo.`);
+      setTimeout(() => (location.href = '/'), 1800);
+    } catch (err) {
+      if (err.data?.fields) setErrors(err.data.fields);
+      else $('#ccErr', root).textContent = navigator.onLine ? err.message : 'Sin conexión.';
+      btn.textContent = 'Reemplazar todas las cuentas';
+      listo();
+    }
+  });
 }
 
 function panelWhatsapp(c) {
@@ -139,6 +234,7 @@ export function mountConfiguracionSA(root, route) {
   });
 
   mountWhatsapp(root, route);
+  mountCuentas(root);
   return undefined;
 }
 

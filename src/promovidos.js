@@ -15,6 +15,7 @@ const { users, promovidos: cachePromovidos } = require('./store');
 const geo = require('./geo');
 const { chainOf } = require('./access');
 const { fmtSeccion } = require('./formato');
+const { notificar } = require('./notificaciones');
 
 // Jornada electoral: la INE debe estar vigente ese año para poder votar
 const ELECCION = { anio: 2027, texto: '6 de junio de 2027' };
@@ -194,6 +195,13 @@ async function crear(promotor, body) {
     throw err;
   }
   cachePromovidos.remember({ id, promotorId: promotor.id, responsableId: v.ctx.responsable.id, seccion: v.seccion, estatus: 'en_revision', createdAt });
+  await notificar([v.ctx.responsable.id], {
+    tipo: 'promovido.nuevo',
+    titulo: `Nuevo promovido por revisar: ${nombreCompleto(v.data)}`,
+    cuerpo: `Capturado por ${promotor.name} · Sección ${fmtSeccion(v.seccion)}`,
+    url: `/promovidos/${id}`,
+    autorId: promotor.id,
+  });
   return { id, nombre: nombreCompleto(v.data), seccion: v.seccion, estatus: 'en_revision', createdAt };
 }
 
@@ -372,6 +380,14 @@ async function actualizar(viewer, id, body) {
     const enCache = cachePromovidos.all().find((p) => p.id === id);
     if (enCache) enCache.estatus = 'en_revision';
   }
+  // Avisa a la otra parte del equipo (promotor ↔ responsable)
+  await notificar([actual.promotor_id, actual.responsable_id], {
+    tipo: 'promovido.editado',
+    titulo: `${viewer.name} modificó a ${nombreCompleto(v.data)}`,
+    cuerpo: `${cambios.length} ${cambios.length === 1 ? 'cambio' : 'cambios'}${regresa ? ' · regresó a revisión' : ''}`,
+    url: `/promovidos/${id}`,
+    autorId: viewer.id,
+  });
   return { id, cambios: cambios.length };
 }
 
@@ -391,13 +407,20 @@ async function observaciones(viewer, id) {
 }
 
 async function observar(viewer, id, texto) {
-  await filaEditable(viewer, id);
+  const fila = await filaEditable(viewer, id);
   const t = String(texto || '').trim().slice(0, 1000);
   if (!t) throw new PromovidoError('Escribe la observación.', 422, { texto: 'Escribe la observación.' });
   const { rows } = await query(
     'INSERT INTO promovido_observaciones (promovido_id, user_id, user_name, texto) VALUES ($1, $2, $3, $4) RETURNING id, at',
     [id, viewer.id, viewer.name, t]
   );
+  await notificar([fila.promotor_id, fila.responsable_id], {
+    tipo: 'promovido.observacion',
+    titulo: `${viewer.name} dejó una observación sobre ${nombreCompleto(fila.data)}`,
+    cuerpo: t.length > 140 ? `${t.slice(0, 139)}…` : t,
+    url: `/promovidos/${id}`,
+    autorId: viewer.id,
+  });
   return { id: String(rows[0].id), autor: viewer.name, propia: true, texto: t, at: rows[0].at.toISOString() };
 }
 

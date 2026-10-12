@@ -199,6 +199,24 @@ const MIGRATIONS = [
         FROM promovidos p LEFT JOIN users u ON u.id = p.promotor_id;
     `,
   },
+  {
+    id: 6,
+    name: 'notificaciones',
+    sql: `
+      CREATE TABLE notificaciones (
+        id          bigserial PRIMARY KEY,
+        user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        tipo        text NOT NULL,
+        titulo      text NOT NULL,
+        cuerpo      text NOT NULL DEFAULT '',
+        url         text,
+        leida_at    timestamptz,
+        created_at  timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX notificaciones_user_idx ON notificaciones(user_id, created_at DESC);
+      CREATE INDEX notificaciones_no_leidas_idx ON notificaciones(user_id) WHERE leida_at IS NULL;
+    `,
+  },
 ];
 
 async function migrate() {

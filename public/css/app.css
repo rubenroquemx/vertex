@@ -1871,3 +1871,59 @@ a.promo-item:hover { background: var(--color-surface-alt); }
 .promo-fila:hover { background: var(--color-surface-alt); }
 .promo-fila a.promo-item:hover { background: transparent; }
 .promo-bloqueado { margin: 0 0 4px; font-size: 13px; color: #15803d; font-weight: 700; }
+
+/* ---------- Cuenta regresiva: reloj minimalista con animación sutil ---------- */
+.reloj { width: 14px; height: 14px; flex-shrink: 0; align-self: center; }
+.countdown__main .reloj { width: 18px; height: 18px; color: var(--color-sidebar-muted); }
+.reloj line { transform-box: view-box; transform-origin: 12px 12px; }
+.reloj__min { animation: reloj-giro 8s linear infinite; }
+.reloj__hora { animation: reloj-giro 96s linear infinite; }
+@keyframes reloj-giro { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .reloj line { animation: none; } }
+@media (max-width: 767px) {
+  .countdown-mini:not(:empty) { align-items: center; gap: 5px; }
+  .countdown-mini .reloj { opacity: .85; }
+}
+
+/* ---------- Notificaciones: campana de la barra superior ---------- */
+.topbar__notif {
+  position: relative; display: inline-grid; place-items: center; flex-shrink: 0;
+  width: 36px; height: 36px; border-radius: 50%; color: var(--color-foreground); text-decoration: none;
+}
+.topbar__notif:hover { background: var(--color-surface-alt); }
+.topbar__notif[aria-current="page"] { background: #171717; color: #fafafa; }
+.topbar__notif svg { width: 20px; height: 20px; }
+.topbar__badge {
+  position: absolute; top: 1px; right: 0; min-width: 17px; height: 17px; padding: 0 4px;
+  display: grid; place-items: center; border-radius: 999px;
+  background: #dc2626; color: #fff; font-size: 10px; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums; box-shadow: 0 0 0 2px var(--color-background);
+}
+.topbar__badge[hidden] { display: none; }
+
+/* ---------- Notificaciones: página ---------- */
+.notif-acciones { display: flex; justify-content: flex-end; margin-bottom: var(--space-lg); }
+.notif-grupo + .notif-grupo { margin-top: var(--space-xl); }
+.notif-lista { list-style: none; margin: 0; padding: 0; background: var(--color-card); border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
+.notif + .notif { border-top: 1px solid var(--color-border); }
+.notif__btn {
+  width: 100%; display: flex; align-items: flex-start; gap: var(--space-lg);
+  padding: var(--space-lg) var(--space-xl); border: 0; background: transparent;
+  text-align: left; font: inherit; color: inherit; cursor: pointer;
+}
+.notif__btn:hover { background: var(--color-surface-alt); }
+.notif__ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; background: #f5f5f5; color: #262626; }
+.notif__ic svg { width: 18px; height: 18px; }
+.notif.is-nueva .notif__ic { background: #171717; color: #fafafa; }
+.notif__txt { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.notif__txt strong { font-size: 14px; font-weight: 600; }
+.notif.is-nueva .notif__txt strong { font-weight: 700; }
+.notif__cuerpo { font-size: 13px; color: var(--color-muted-foreground); overflow-wrap: anywhere; }
+.notif__at { font-size: 10px; color: var(--color-muted-foreground); }
+.notif__punto { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; flex-shrink: 0; background: #dc2626; }
+@media (max-width: 767px) {
+  .topbar__notif { width: 34px; height: 34px; }
+  .notif-grupo .promo-grupo__titulo { padding: 0 var(--space-lg); }
+  .notif-lista { margin: 0 calc(-1 * var(--space-xl)); }
+  .notif__btn { padding: var(--space-lg); }
+}

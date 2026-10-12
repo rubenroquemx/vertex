@@ -28,6 +28,7 @@ import { viewResponsables, mountResponsables, viewResponsable, mountResponsable 
 import { viewConfiguracionCPV, mountConfiguracionCPV } from './configuracion-cpv.js';
 import { viewConfiguracionSA, mountConfiguracionSA } from './configuracion-sa.js';
 import { viewPanelSeccion } from './panel-seccion.js';
+import { viewNotificaciones, mountNotificaciones, iniciarCampana, actualizarContador } from './notificaciones.js';
 import { viewNuevoPromovido, mountNuevoPromovido, viewPromovidos, viewPromovido, mountPromovido } from './promovidos.js';
 
 const state = { me: null, routes: new Map() };
@@ -1427,7 +1428,8 @@ async function render() {
   route = route || NOT_AVAILABLE;
   $('#pageTitle').textContent = route.title;
   document.title = `${route.title} · VERTEX`;
-  const links = [...document.querySelectorAll('.nav__link, .user, .dock__link, .dock__fab, #topUser')];
+  if (location.pathname !== '/notificaciones') actualizarContador();
+  const links = [...document.querySelectorAll('.nav__link, .user, .dock__link, .dock__fab, #topUser, #topNotif')];
   // Si un enlace coincide exacto (p. ej. /promovidos/nuevo), su sección padre no se marca
   const exacto = new Set(links.filter((a) => a.getAttribute('href') === location.pathname).map((a) => a.getAttribute('href')));
   links.forEach((a) => {
@@ -1850,6 +1852,8 @@ async function boot() {
   state.routes = new Map(menu.flatMap((g) => g.items).map((r) => [r.path, r]));
   // Perfil personal: disponible para todos los niveles desde la sección de usuario
   state.routes.set('/perfil', { path: '/perfil', title: 'Mi perfil', view: viewPerfil, mount: mountPerfil });
+  // Notificaciones: todos los niveles, desde la campana de la barra superior
+  state.routes.set('/notificaciones', { path: '/notificaciones', title: 'Notificaciones', view: viewNotificaciones, mount: mountNotificaciones });
   // Rutas con parámetros
   state.patternRoutes = [];
   if (state.me.role.key === 'coord_zona') {
@@ -1885,6 +1889,10 @@ async function boot() {
   }
   renderNav(menu);
   renderDock(menu);
+  if (!state.campana) {
+    state.campana = true;
+    iniciarCampana();
+  }
   renderUser(state.me);
   renderGodBanner(state.me);
   render();
@@ -1897,6 +1905,9 @@ boot();
 // Cuenta regresiva a la jornada electoral (apertura de casillas, hora del centro)
 // ---------------------------------------------------------------------------
 const ELECCION = { fecha: new Date('2027-06-06T08:00:00-06:00'), texto: '6 de junio de 2027' };
+// Reloj minimalista: el minutero gira lento y el horario apenas avanza
+const RELOJ = `<svg class="reloj" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+  <circle cx="12" cy="12" r="9"/><line class="reloj__hora" x1="12" y1="12" x2="12" y2="8.5"/><line class="reloj__min" x1="12" y1="12" x2="12" y2="6"/></svg>`;
 
 function renderCountdown() {
   const el = $('#countdown');
@@ -1914,13 +1925,13 @@ function renderCountdown() {
   const min = Math.floor((ms % 3600000) / 60000);
   el.innerHTML = `
     <span class="countdown__label">Faltan para la elección</span>
-    <span class="countdown__main"><span class="countdown__days">${fmtNum(dias)}</span><span class="countdown__unit">${dias === 1 ? 'día' : 'días'}</span></span>
+    <span class="countdown__main">${RELOJ}<span class="countdown__days">${fmtNum(dias)}</span><span class="countdown__unit">${dias === 1 ? 'día' : 'días'}</span></span>
     <span class="countdown__time">${String(horas).padStart(2, '0')} h ${String(min).padStart(2, '0')} min</span>
     <span class="countdown__date">${ELECCION.texto}</span>`;
   el.title = `Faltan ${fmtNum(dias)} días para la elección del ${ELECCION.texto}`;
   el.setAttribute('aria-label', el.title);
   const mini = $('#countdownMini');
-  mini.innerHTML = `<strong>${fmtNum(dias)}</strong> ${dias === 1 ? 'día' : 'días'}`;
+  mini.innerHTML = `${RELOJ}<strong>${fmtNum(dias)}</strong> ${dias === 1 ? 'día' : 'días'}`;
   mini.title = el.title;
   mini.setAttribute('aria-label', el.title);
 }

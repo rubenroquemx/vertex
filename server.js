@@ -21,6 +21,7 @@ const metas = require('./src/metas');
 const panelSeccion = require('./src/panel-seccion');
 const promovidos = require('./src/promovidos');
 const promovidoPdf = require('./src/promovido-pdf');
+const notificaciones = require('./src/notificaciones');
 const { fmtSeccion } = require('./src/formato');
 const padron = require('./src/padron');
 const territory = require('./src/territory');
@@ -417,6 +418,25 @@ app.put('/api/configuracion/cpv', requireUser, requireCPV, async (req, res) => {
 // --- Promovidos: captura del Promotor Territorial --------------------------
 const requirePromotor = (req, res, next) =>
   req.user.role === 'promotor' ? next() : res.status(403).json({ error: 'Solo los Promotores Territoriales capturan promovidos' });
+// --- Notificaciones (campana): las de la cuenta en uso --------------------------
+app.get('/api/notificaciones', requireUser, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await notificaciones.lista(req.user.id));
+});
+app.get('/api/notificaciones/conteo', requireUser, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ noLeidas: await notificaciones.conteo(req.user.id) });
+});
+// En modo dios no se marcan como leídas: siguen pendientes para el titular de la cuenta
+app.post('/api/notificaciones/leidas', requireUser, async (req, res) => {
+  if (!inGodMode(req)) await notificaciones.marcarTodas(req.user.id);
+  res.json({ noLeidas: await notificaciones.conteo(req.user.id) });
+});
+app.post('/api/notificaciones/:id/leida', requireUser, async (req, res) => {
+  if (!inGodMode(req)) await notificaciones.marcarLeida(req.user.id, req.params.id);
+  res.json({ noLeidas: await notificaciones.conteo(req.user.id) });
+});
+
 const promovidoError = (res, err) => {
   if (!(err instanceof promovidos.PromovidoError)) throw err;
   res.status(err.status).json(err.fields ? { error: err.message, fields: err.fields } : { error: err.message });

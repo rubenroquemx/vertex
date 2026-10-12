@@ -4,7 +4,9 @@ const { users, promovidos } = require('./store');
 const zonas = require('./zonas');
 
 const TZ = 'America/Mexico_City';
-const dayKey = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+// Un solo formateador (crearlo por cada promovido es muy lento con miles de registros)
+const FMT_DIA = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+const dayKey = (d) => FMT_DIA.format(d);
 
 // Últimos 7 días (hoy incluido), en hora de la Ciudad de México
 function ultimos7() {
@@ -57,13 +59,15 @@ function cpv(cpvUser) {
   const total = dias.map(() => 0);
   let totalPromovidos = 0;
   let promovidosHoy = 0;
+  const desde = Date.now() - 8 * 86400000;
   for (const p of promovidos.all()) {
     const zid = zonaDePromotor.get(p.promotorId);
     if (zid === undefined) continue;
     const z = porZona[idx.get(zid)];
     z.promovidos += 1;
     totalPromovidos += 1;
-    const d = dias.indexOf(dayKey(new Date(p.createdAt)));
+    // Solo los de la última semana necesitan su día (evita formatear todos)
+    const d = Date.parse(p.createdAt) >= desde ? dias.indexOf(dayKey(new Date(p.createdAt))) : -1;
     if (d >= 0) {
       z.serie[d] += 1;
       z.promovidos7d += 1;

@@ -1663,5 +1663,3 @@ a.promo-item:hover { border-color: #a3a3a3; }
 .ine-view figcaption { margin-top: 6px; font-size: 12px; color: var(--color-muted-foreground); }
 @media (max-width: 479px) { .ine-views { grid-template-columns: minmax(0, 1fr); } }
 
-.cfg-narrow { max-width: 720px; }
-.cfg-narrow .notice { margin-bottom: var(--space-xl); }

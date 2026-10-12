@@ -219,6 +219,7 @@ async function listaDe(promotor) {
     estatus: r.estatus,
     conObservaciones: r.con_obs,
     iniciales: `${(r.data.nombres || '?')[0]}${(r.data.paterno || '')[0] || ''}`,
+    telefono: r.data.telefono || '',
     modificado: r.modificado.toISOString(),
     createdAt: r.created_at.toISOString(),
   }));

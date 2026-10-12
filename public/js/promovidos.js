@@ -581,14 +581,21 @@ export async function viewPromovidos() {
               <h3 class="promo-grupo__titulo" id="g-${g.clave}"><span class="promo-dot ${g.clase}" aria-hidden="true"></span>${g.titulo}<span class="promo-grupo__n">${fmtNum(del.length)}</span></h3>
               <ul class="promo-list">${del
                 .map(
-                  (p) => `<li><a class="promo-item" href="/promovidos/${p.id}" data-link>
+                  (p) => `<li class="promo-fila"><a class="promo-item" href="/promovidos/${p.id}" data-link>
                     <span class="promo-ini ${g.clase}" aria-hidden="true">${esc(p.iniciales)}</span>
                     <span class="promo-item__txt">
                       <strong>${esc(p.nombre)}</strong>
                       <span class="promo-item__mod">Última modificación: ${esc(fmtDateTime(p.modificado))}</span>
                     </span>
                     <span class="sr-only">${g.titulo}</span>
-                  </a></li>`
+                  </a>
+                  <span class="promo-contacto">${
+                    p.telefono
+                      ? `<a class="icon-btn promo-contacto__btn" href="tel:+52${esc(p.telefono)}" title="Llamar" aria-label="Llamar a ${esc(p.nombre)}">${I.phone}</a>
+                         <a class="icon-btn promo-contacto__btn" href="https://wa.me/52${esc(p.telefono)}" target="_blank" rel="noopener" title="WhatsApp" aria-label="WhatsApp con ${esc(p.nombre)}">${I.whatsapp}</a>`
+                      : `<span class="icon-btn promo-contacto__btn is-off" title="Sin teléfono" aria-label="Sin teléfono">${I.phone}</span>
+                         <span class="icon-btn promo-contacto__btn is-off" title="Sin teléfono" aria-label="Sin teléfono">${I.whatsapp}</span>`
+                  }</span></li>`
                 )
                 .join('')}</ul>
             </section>`;

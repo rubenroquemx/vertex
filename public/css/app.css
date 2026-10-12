@@ -1859,3 +1859,14 @@ a.promo-item:hover { background: var(--color-surface-alt); }
   .promo-grupo:first-of-type { margin-top: calc(-1 * var(--space-sm)); }
   .promo-list { margin: 0 calc(-1 * var(--space-xl)); border-top: 1px solid var(--color-border); }
 }
+
+/* Lista de promovidos: botones de llamar y WhatsApp (solo íconos) */
+.promo-fila { display: flex; align-items: center; }
+.promo-fila .promo-item { flex: 1; min-width: 0; }
+.promo-contacto { display: flex; gap: 6px; padding-right: var(--space-lg); flex-shrink: 0; }
+.promo-contacto__btn { width: 40px; height: 40px; border-radius: 50%; background: var(--color-muted); color: var(--color-foreground); display: grid; place-items: center; }
+.promo-contacto__btn svg { width: 18px; height: 18px; }
+.promo-contacto__btn:hover { background: var(--color-muted-hover); }
+.promo-contacto__btn.is-off { opacity: .35; pointer-events: none; }
+.promo-fila:hover { background: var(--color-surface-alt); }
+.promo-fila a.promo-item:hover { background: transparent; }

@@ -102,6 +102,9 @@ function buildMenu(me) {
         },
       ],
     });
+  } else if (key === 'resp_seccion') {
+    // Sin separador de sección: va junto al Panel
+    groups[0].items.push({ path: '/estructura', title: 'Mis promovidos', icon: 'tree', view: viewEstructura, mount: mountEstructura });
   } else if (me.childRole) {
     groups.push({
       label: 'Estructura',

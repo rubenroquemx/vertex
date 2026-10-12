@@ -19,6 +19,7 @@ const escritorio = require('./src/escritorio');
 const responsables = require('./src/responsables');
 const metas = require('./src/metas');
 const panelSeccion = require('./src/panel-seccion');
+const promovidos = require('./src/promovidos');
 const padron = require('./src/padron');
 const territory = require('./src/territory');
 const { PARTIDOS } = require('./src/partidos');
@@ -57,7 +58,9 @@ app.set('trust proxy', process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY)
 app.use(compression());
 // La foto de perfil usa su propio parser con un límite mayor
 const jsonBody = express.json();
-app.use((req, res, next) => (req.path === '/api/me/avatar' ? next() : jsonBody(req, res, next)));
+// Rutas con fotos: su propio límite de tamaño
+const CON_FOTOS = new Set(['/api/me/avatar', '/api/promovidos']);
+app.use((req, res, next) => (CON_FOTOS.has(req.path) ? next() : jsonBody(req, res, next)));
 
 
 const publicUser = (u, all) => {
@@ -406,6 +409,42 @@ app.put('/api/configuracion/cpv', requireUser, requireCPV, async (req, res) => {
   }
   const cpv = users.get(req.user.id);
   res.json({ cambio, config: metas.configDe(cpv), metas: metas.resumen(cpv), historial: await historialConfig(cpv.id) });
+});
+
+// --- Promovidos: captura del Promotor Territorial --------------------------
+const requirePromotor = (req, res, next) =>
+  req.user.role === 'promotor' ? next() : res.status(403).json({ error: 'Solo los Promotores Territoriales capturan promovidos' });
+const promovidoError = (res, err) => {
+  if (!(err instanceof promovidos.PromovidoError)) throw err;
+  res.status(err.status).json(err.fields ? { error: err.message, fields: err.fields } : { error: err.message });
+};
+
+// Código postal → estado, municipio y localidades (catálogo SEPOMEX local, sin servicios externos)
+app.get('/api/cp/:cp', requireUser, async (req, res) => {
+  const r = await promovidos.buscaCP(req.params.cp);
+  if (!r) return res.status(404).json({ error: 'No encontramos ese código postal.' });
+  res.json(r);
+});
+
+app.get('/api/promovidos/contexto', requireUser, requirePromotor, (req, res) => {
+  const ctx = promovidos.contexto(req.user);
+  if (!ctx) return res.status(409).json({ error: 'Tu Responsable de Sección aún no tiene sección asignada; no puedes capturar promovidos.' });
+  res.json(ctx);
+});
+
+app.get('/api/promovidos', requireUser, requirePromotor, async (req, res) => {
+  res.json(await promovidos.listaDe(req.user));
+});
+
+app.post('/api/promovidos', requireUser, requirePromotor, express.json({ limit: '8mb' }), async (req, res) => {
+  try {
+    const p = await promovidos.crear(req.user, req.body || {});
+    // En bitácora no se guardan datos personales del promovido
+    await audit.add({ action: 'promovido.create', by: req.realUser.id, as: req.user.id, promovido: p.id, seccion: p.seccion });
+    res.status(201).json(p);
+  } catch (err) {
+    promovidoError(res, err);
+  }
 });
 
 // Panel del Responsable de Sección: promotores que debe tener según el cálculo de su CPV

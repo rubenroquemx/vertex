@@ -3,6 +3,7 @@
 const { users } = require('./store');
 const metas = require('./metas');
 const responsables = require('./responsables');
+const promovidos = require('./promovidos');
 
 function resumen(resp) {
   const zona = users.get(resp.parentId);
@@ -30,7 +31,7 @@ function resumen(resp) {
     meta: sum('meta'),
     promotores: sum('promotores'),
     registrados,
-    promovidos: 0, // se contará cuando exista la captura de promovidos
+    promovidos: promovidos.contarDeResponsable(resp.id),
   };
 }
 

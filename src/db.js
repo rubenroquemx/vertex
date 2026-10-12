@@ -136,6 +136,26 @@ const MIGRATIONS = [
       CREATE INDEX password_resets_user_idx ON password_resets(user_id, created_at DESC);
     `,
   },
+  {
+    id: 3,
+    name: 'captura de promovidos (INE)',
+    sql: `
+      ALTER TABLE promovidos ADD COLUMN responsable_id uuid REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE promovidos ADD COLUMN clave_elector text;
+      ALTER TABLE promovidos ADD COLUMN curp text;
+      -- Una persona solo puede estar promovida una vez
+      CREATE UNIQUE INDEX promovidos_clave_elector_uq ON promovidos(clave_elector);
+      CREATE UNIQUE INDEX promovidos_curp_uq ON promovidos(curp);
+      CREATE INDEX promovidos_responsable_idx ON promovidos(responsable_id);
+
+      CREATE TABLE promovido_ine (
+        promovido_id  uuid NOT NULL REFERENCES promovidos(id) ON DELETE CASCADE,
+        lado          text NOT NULL CHECK (lado IN ('frente', 'reverso')),
+        image         bytea NOT NULL,
+        PRIMARY KEY (promovido_id, lado)
+      );
+    `,
+  },
 ];
 
 async function migrate() {

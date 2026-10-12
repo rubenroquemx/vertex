@@ -139,6 +139,8 @@ const sessions = {
 // Registro: { id, promotorId, seccion, createdAt, ... }. La captura se construirá en el módulo del Promotor.
 const promovidos = {
   all: () => cache.promovidos,
+  // Registra en caché un promovido recién guardado (ver src/promovidos.js)
+  remember: (p) => cache.promovidos.push(p),
 };
 
 // --- Bitácora de acciones sensibles ----------------------------------------
@@ -206,8 +208,9 @@ async function init({ seedIfEmpty = true } = {}) {
   cache.sessions = new Map(
     ses.rows.map((r) => [r.token_hash, { userId: r.user_id, godAs: r.god_as, createdAt: r.created_at.getTime(), expiresAt: r.expires_at.getTime() }])
   );
-  const prom = await query('SELECT id, promotor_id, seccion, data, created_at FROM promovidos');
-  cache.promovidos = prom.rows.map((r) => ({ ...r.data, id: r.id, promotorId: r.promotor_id, seccion: r.seccion, createdAt: r.created_at.toISOString() }));
+  // En memoria solo lo necesario para contar avance; los datos personales se quedan en la base
+  const prom = await query('SELECT id, promotor_id, responsable_id, seccion, created_at FROM promovidos');
+  cache.promovidos = prom.rows.map((r) => ({ id: r.id, promotorId: r.promotor_id, responsableId: r.responsable_id, seccion: r.seccion, createdAt: r.created_at.toISOString() }));
 }
 
 async function seed() {

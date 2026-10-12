@@ -1590,3 +1590,60 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .ps-heroes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xl); margin-bottom: var(--space-xl); }
 .ps-heroes .ps-hero { margin-bottom: 0; }
 @media (max-width: 767px) { .ps-heroes { grid-template-columns: minmax(0, 1fr); gap: var(--space-lg); } }
+
+/* ---------- Promotor: botón + al centro de la barra inferior ---------- */
+@media (max-width: 767px) {
+  .dock__fab {
+    flex-shrink: 0; display: grid; place-items: center;
+    width: 60px; height: 60px; margin: -22px 14px 0; border-radius: 50%;
+    background: #fafafa; color: #0a0a0a; text-decoration: none;
+    box-shadow: 0 0 0 4px #1c1c1e, 0 6px 16px rgba(0, 0, 0, .35);
+  }
+  .dock__fab svg { width: 28px; height: 28px; stroke-width: 2.5; }
+  .dock__fab[aria-current="page"] { background: #fff; box-shadow: 0 0 0 4px #1c1c1e, 0 0 0 6px #fafafa; }
+  .dock__fab:active { transform: scale(.96); }
+}
+
+/* ---------- Captura de promovido ---------- */
+.promo-page { max-width: 760px; }
+.field__label { font-size: 13px; font-weight: 700; }
+.input--upper { text-transform: uppercase; }
+.input--upper::placeholder { text-transform: none; }
+.field-row--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ine-shot {
+  position: relative; display: grid; place-items: center; overflow: hidden; cursor: pointer;
+  aspect-ratio: 1.586; border-radius: var(--radius);
+  border: 1px dashed #d4d4d4; background: var(--color-surface-alt); color: var(--color-muted-foreground);
+}
+.ine-shot:hover { border-color: #0a0a0a; color: #0a0a0a; }
+.ine-shot:focus-within { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+.ine-shot__empty { display: grid; justify-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.ine-shot__empty svg { width: 28px; height: 28px; }
+.ine-shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ine-shot.has-photo { border-style: solid; border-color: var(--color-border); }
+.ine-shot.has-photo .ine-shot__empty {
+  position: absolute; right: 8px; bottom: 8px; display: flex; gap: 6px; padding: 4px 10px;
+  border-radius: var(--radius-pill); background: rgba(10, 10, 10, .75); color: #fff; font-size: 12px;
+}
+.ine-shot.has-photo .ine-shot__empty span::after { content: " de nuevo"; }
+.ine-shot.has-photo .ine-shot__empty svg { width: 16px; height: 16px; }
+.ine-shot.is-busy { opacity: .6; pointer-events: none; }
+#pLocalidadOtra { margin-top: var(--space-md); }
+@media (max-width: 767px) {
+  .field-row--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .field-row--3 > :last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 767px) {
+  .field-row--fotos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--space-lg); }
+  .field-row--fotos .ine-shot__empty span { font-size: 12px; }
+  .promo-page .form-footer { flex-direction: row; }
+  .promo-page .form-footer .btn { width: auto; flex: 1; }
+  .promo-page .form-footer .btn[type="submit"] { flex: 2; }
+}
+
+/* Lista de promovidos del promotor */
+.promo-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-md); }
+.promo-item { display: grid; gap: 4px; padding: var(--space-lg) var(--space-xl); border-radius: 18px; background: var(--color-card); border: 1px solid var(--color-border); }
+.promo-item strong { font-size: 15px; }
+.promo-item__meta { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 13px; color: var(--color-muted-foreground); }
+@media (max-width: 767px) { .promo-new { display: none !important; } }

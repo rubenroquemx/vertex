@@ -27,6 +27,7 @@ import { viewResponsables, mountResponsables, viewResponsable, mountResponsable 
 import { viewConfiguracionCPV, mountConfiguracionCPV } from './configuracion-cpv.js';
 import { viewConfiguracionSA, mountConfiguracionSA } from './configuracion-sa.js';
 import { viewPanelSeccion } from './panel-seccion.js';
+import { viewNuevoPromovido, mountNuevoPromovido, viewPromovidos } from './promovidos.js';
 
 const state = { me: null, routes: new Map() };
 
@@ -117,7 +118,11 @@ function buildMenu(me) {
   if (key === 'promotor') {
     groups.push({
       label: 'Captura',
-      items: [{ path: '/promovidos', title: 'Promovidos', icon: 'users', view: placeholder('Captura y seguimiento de tus promovidos.') }],
+      items: [
+        // `fab`: en celulares va como botón + al centro de la barra inferior
+        { path: '/promovidos/nuevo', title: 'Nuevo promovido', icon: 'plus', fab: true, view: viewNuevoPromovido, mount: mountNuevoPromovido },
+        { path: '/promovidos', title: 'Promovidos', icon: 'users', view: viewPromovidos },
+      ],
     });
   }
 
@@ -1374,6 +1379,20 @@ function renderNav(menu) {
 
 // Celulares: barra fija inferior solo con los íconos de las funciones
 function renderDock(menu) {
+  const items = menu.flatMap((g) => g.items);
+  const fab = items.find((r) => r.fab);
+  if (fab) {
+    // Botón de acción principal al centro, con las demás funciones a los lados
+    const resto = items.filter((r) => r !== fab);
+    const mitad = Math.ceil(resto.length / 2);
+    const link = (r) => `<a class="dock__link" href="${r.path}" data-link title="${esc(r.title)}" aria-label="${esc(r.title)}">${ICONS[r.icon]}</a>`;
+    $('#dock').innerHTML = [
+      ...resto.slice(0, mitad).map(link),
+      `<a class="dock__fab" href="${fab.path}" data-link title="${esc(fab.title)}" aria-label="${esc(fab.title)}">${ICONS[fab.icon]}</a>`,
+      ...resto.slice(mitad).map(link),
+    ].join('');
+    return;
+  }
   $('#dock').innerHTML = menu
     .map(
       (g) => `<div class="dock__group" role="group" aria-label="${esc(g.label)}">${g.items
@@ -1405,9 +1424,12 @@ async function render() {
   route = route || NOT_AVAILABLE;
   $('#pageTitle').textContent = route.title;
   document.title = `${route.title} · VERTEX`;
-  document.querySelectorAll('.nav__link, .user, .dock__link, #topUser').forEach((a) => {
+  const links = [...document.querySelectorAll('.nav__link, .user, .dock__link, .dock__fab, #topUser')];
+  // Si un enlace coincide exacto (p. ej. /promovidos/nuevo), su sección padre no se marca
+  const exacto = new Set(links.filter((a) => a.getAttribute('href') === location.pathname).map((a) => a.getAttribute('href')));
+  links.forEach((a) => {
     const href = a.getAttribute('href');
-    const active = href === location.pathname || (href !== '/' && location.pathname.startsWith(`${href}/`));
+    const active = href === location.pathname || (!exacto.size && href !== '/' && location.pathname.startsWith(`${href}/`));
     if (active) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });

@@ -6,6 +6,9 @@ const ic = (d) =>
 const ICONO = {
   'promovido.nuevo': ic('<circle cx="9" cy="8" r="4"/><path d="M2 21v-1a6 6 0 0 1 12 0v1"/><path d="M19 8v6M16 11h6"/>'),
   'promovido.editado': ic('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+  'material.orden': ic('<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>'),
+  'material.recibida': ic('<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m9 12 2 2 4-4"/>'),
+  'material.comprobada': ic('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/>'),
   'promovido.observacion': ic('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>'),
 };
 const CAMPANA = ic('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>');

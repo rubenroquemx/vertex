@@ -217,6 +217,67 @@ const MIGRATIONS = [
       CREATE INDEX notificaciones_no_leidas_idx ON notificaciones(user_id) WHERE leida_at IS NULL;
     `,
   },
+  {
+    id: 7,
+    name: 'material electoral',
+    sql: `
+      -- Catálogo de artículos del CPV (gorras, banderas, volantes…)
+      CREATE TABLE material_articulos (
+        id          uuid PRIMARY KEY,
+        cpv_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        nombre      text NOT NULL,
+        unidad      text NOT NULL,
+        created_at  timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE UNIQUE INDEX material_articulos_nombre_uq ON material_articulos(cpv_id, lower(nombre));
+
+      -- Entradas de existencias al inventario del CPV
+      CREATE TABLE material_entradas (
+        id           bigserial PRIMARY KEY,
+        cpv_id       uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        articulo_id  uuid NOT NULL REFERENCES material_articulos(id) ON DELETE CASCADE,
+        cantidad     integer NOT NULL CHECK (cantidad > 0),
+        user_id      uuid REFERENCES users(id) ON DELETE SET NULL,
+        at           timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX material_entradas_idx ON material_entradas(cpv_id, articulo_id);
+
+      -- Órdenes de entrega de un nivel a su subordinado directo (varios artículos por orden)
+      CREATE TABLE material_ordenes (
+        id             uuid PRIMARY KEY,
+        numero         bigserial UNIQUE,
+        cpv_id         uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        de_id          uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        para_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        estado         text NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'recibida', 'comprobada')),
+        nota           text NOT NULL DEFAULT '',
+        created_at     timestamptz NOT NULL DEFAULT now(),
+        recibida_at    timestamptz,
+        comprobada_at  timestamptz
+      );
+      CREATE INDEX material_ordenes_de_idx ON material_ordenes(de_id);
+      CREATE INDEX material_ordenes_para_idx ON material_ordenes(para_id);
+      CREATE INDEX material_ordenes_cpv_idx ON material_ordenes(cpv_id);
+
+      CREATE TABLE material_orden_items (
+        orden_id     uuid NOT NULL REFERENCES material_ordenes(id) ON DELETE CASCADE,
+        articulo_id  uuid NOT NULL REFERENCES material_articulos(id) ON DELETE CASCADE,
+        cantidad     integer NOT NULL CHECK (cantidad > 0),
+        PRIMARY KEY (orden_id, articulo_id)
+      );
+      CREATE INDEX material_orden_items_art_idx ON material_orden_items(articulo_id);
+
+      -- Fotos de evidencia del Responsable de Sección (mínimo 5 por orden)
+      CREATE TABLE material_evidencias (
+        id        bigserial PRIMARY KEY,
+        orden_id  uuid NOT NULL REFERENCES material_ordenes(id) ON DELETE CASCADE,
+        user_id   uuid REFERENCES users(id) ON DELETE SET NULL,
+        image     bytea NOT NULL,
+        at        timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX material_evidencias_idx ON material_evidencias(orden_id, id);
+    `,
+  },
 ];
 
 async function migrate() {

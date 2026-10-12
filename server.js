@@ -22,6 +22,7 @@ const panelSeccion = require('./src/panel-seccion');
 const promovidos = require('./src/promovidos');
 const promovidoPdf = require('./src/promovido-pdf');
 const notificaciones = require('./src/notificaciones');
+const material = require('./src/material');
 const { fmtSeccion } = require('./src/formato');
 const padron = require('./src/padron');
 const territory = require('./src/territory');
@@ -64,7 +65,10 @@ const jsonBody = express.json();
 // Rutas con fotos: su propio límite de tamaño
 const CON_FOTOS = new Set(['/api/me/avatar', '/api/promovidos']);
 const PROMOVIDO_RE = /^\/api\/promovidos\/[0-9a-f-]{36}$/;
-app.use((req, res, next) => (CON_FOTOS.has(req.path) || (req.method === 'PUT' && PROMOVIDO_RE.test(req.path)) ? next() : jsonBody(req, res, next)));
+const EVIDENCIA_RE = /^\/api\/material\/ordenes\/[0-9a-f-]{36}\/evidencias$/;
+app.use((req, res, next) =>
+  CON_FOTOS.has(req.path) || (req.method === 'PUT' && PROMOVIDO_RE.test(req.path)) || EVIDENCIA_RE.test(req.path) ? next() : jsonBody(req, res, next)
+);
 
 
 const publicUser = (u, all) => {
@@ -436,6 +440,49 @@ app.post('/api/notificaciones/:id/leida', requireUser, async (req, res) => {
   if (!inGodMode(req)) await notificaciones.marcarLeida(req.user.id, req.params.id);
   res.json({ noLeidas: await notificaciones.conteo(req.user.id) });
 });
+
+// --- Material electoral: inventario del CPV y órdenes de entrega en cascada ---------
+const materialError = (res, err) => {
+  if (!(err instanceof material.MaterialError)) throw err;
+  res.status(err.status).json(err.fields ? { error: err.message, fields: err.fields } : { error: err.message });
+};
+const conMaterial = (fn) => async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (err) {
+    materialError(res, err);
+  }
+};
+app.get('/api/material', requireUser, conMaterial(async (req, res) => res.json(await material.resumen(req.user))));
+app.post('/api/material/articulos', requireUser, conMaterial(async (req, res) => {
+  const r = await material.crearArticulo(req.user, req.body || {});
+  await audit.add({ action: 'material.articulo', by: req.realUser.id, as: req.user.id, articulo: r.id });
+  res.status(201).json(r);
+}));
+app.post('/api/material/entradas', requireUser, conMaterial(async (req, res) => {
+  res.status(201).json(await material.registrarEntrada(req.user, req.body || {}));
+}));
+app.post('/api/material/ordenes', requireUser, conMaterial(async (req, res) => {
+  const r = await material.crearOrden(req.user, req.body || {});
+  await audit.add({ action: 'material.orden', by: req.realUser.id, as: req.user.id, orden: r.id });
+  res.status(201).json(r);
+}));
+app.get('/api/material/ordenes/:id', requireUser, conMaterial(async (req, res) => {
+  const o = await material.detalle(req.user, req.params.id);
+  if (!o) return res.status(404).json({ error: 'Orden no encontrada' });
+  res.json(o);
+}));
+app.post('/api/material/ordenes/:id/recibir', requireUser, conMaterial(async (req, res) => res.json(await material.recibir(req.user, req.params.id))));
+app.delete('/api/material/ordenes/:id', requireUser, conMaterial(async (req, res) => res.json(await material.cancelar(req.user, req.params.id))));
+app.post('/api/material/ordenes/:id/evidencias', requireUser, express.json({ limit: '40mb' }), conMaterial(async (req, res) => {
+  res.status(201).json(await material.subirEvidencia(req.user, req.params.id, req.body?.fotos));
+}));
+app.get('/api/material/evidencias/:id', requireUser, conMaterial(async (req, res) => {
+  const img = await material.evidencia(req.user, req.params.id);
+  if (!img) return res.status(404).end();
+  res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=86400' });
+  res.send(img);
+}));
 
 const promovidoError = (res, err) => {
   if (!(err instanceof promovidos.PromovidoError)) throw err;

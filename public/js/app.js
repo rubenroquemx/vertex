@@ -28,6 +28,7 @@ import { viewResponsables, mountResponsables, viewResponsable, mountResponsable 
 import { viewConfiguracionCPV, mountConfiguracionCPV } from './configuracion-cpv.js';
 import { viewConfiguracionSA, mountConfiguracionSA } from './configuracion-sa.js';
 import { viewPanelSeccion } from './panel-seccion.js';
+import { viewMaterial, mountMaterial, viewEntregar, mountEntregar, viewOrden, mountOrden } from './material.js';
 import { viewNotificaciones, mountNotificaciones, iniciarCampana, actualizarContador } from './notificaciones.js';
 import { viewNuevoPromovido, mountNuevoPromovido, viewPromovidos, viewPromovido, mountPromovido } from './promovidos.js';
 
@@ -59,6 +60,9 @@ const DASHBOARDS = {
 // ---------------------------------------------------------------------------
 // Menú por nivel
 // ---------------------------------------------------------------------------
+// Material electoral: CPV, Coordinador de Zona y Responsable de Sección (el Promotor no participa)
+const MATERIAL = { path: '/material', title: 'Material electoral', icon: 'box', view: (r, p) => viewMaterial(r, p, state), mount: mountMaterial };
+
 function buildMenu(me) {
   const key = me.role.key;
   // El CPV tiene su propio escritorio; los demás niveles conservan su panel (en definición)
@@ -85,6 +89,7 @@ function buildMenu(me) {
         },
       ],
     });
+    groups.push({ label: 'Operación', items: [MATERIAL] });
     groups.push({
       label: 'Sistema',
       items: [{ path: '/configuracion', title: 'Configuración', icon: 'settings', view: viewConfiguracionCPV, mount: mountConfiguracionCPV }],
@@ -102,12 +107,14 @@ function buildMenu(me) {
         },
       ],
     });
+    groups.push({ label: 'Operación', items: [MATERIAL] });
   } else if (key === 'resp_seccion') {
     // Sin separador de sección: va junto al Panel
     groups[0].items.push(
       { path: '/estructura', title: 'Promotores territoriales', icon: 'tree', view: viewEstructura, mount: mountEstructura },
       // `fab`: en celulares va como botón + al centro de la barra inferior
-      { path: '/estructura/nuevo', title: 'Nuevo promotor', icon: 'plus', fab: true, view: viewEstructura, mount: mountEstructura }
+      { path: '/estructura/nuevo', title: 'Nuevo promotor', icon: 'plus', fab: true, view: viewEstructura, mount: mountEstructura },
+      MATERIAL
     );
   } else if (me.childRole) {
     groups.push({
@@ -1968,6 +1975,10 @@ async function boot() {
     // Ficha del promovido (la rama del promotor hasta el CPV) y su edición (promotor y responsable)
     state.patternRoutes.push({ pattern: /^\/promovidos\/([0-9a-f-]{36})$/, title: 'Promovido', view: (r, p) => viewPromovido(r, p, state), mount: mountPromovido });
     state.patternRoutes.push({ pattern: /^\/promovidos\/([0-9a-f-]{36})\/editar$/, title: 'Editar promovido', view: viewNuevoPromovido, mount: mountNuevoPromovido });
+  }
+  if (['coord_promocion', 'coord_zona', 'resp_seccion'].includes(state.me.role.key)) {
+    state.routes.set('/material/entregar', { path: '/material/entregar', title: 'Nueva orden de entrega', view: (r, p) => viewEntregar(r, p, state), mount: mountEntregar });
+    state.patternRoutes.push({ pattern: /^\/material\/ordenes\/([0-9a-f-]{36})$/, title: 'Orden de entrega', view: viewOrden, mount: mountOrden });
   }
   if (state.me.role.key === 'coord_promocion') {
     state.routes.set('/zonas/nueva', { path: '/zonas/nueva', title: 'Nueva zona', view: viewZona, mount: mountZona });

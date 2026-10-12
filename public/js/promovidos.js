@@ -35,24 +35,25 @@ const campo = (id, name, label, { req = false, help = '', attrs = '', cls = '' }
   </div>`;
 
 // Asistente de captura: un paso por pantalla
-const PASOS = ['Fotografía', 'Datos generales', 'Domicilio', 'Verificación'];
+const PASOS = ['Frente de la INE', 'Reverso de la INE', 'Datos generales', 'Domicilio', 'Verificación'];
+const ULTIMO = PASOS.length;
 const PASO_DE = {
   ineFrente: 1,
-  ineReverso: 1,
-  vigencia: 2,
-  seccion: 2,
-  paterno: 2,
-  materno: 2,
-  nombres: 2,
-  claveElector: 2,
-  curp: 2,
-  telefono: 2,
-  cp: 3,
-  localidad: 3,
-  calle: 3,
-  numExt: 3,
-  numInt: 3,
-  fracc: 3,
+  ineReverso: 2,
+  vigencia: 3,
+  seccion: 3,
+  paterno: 3,
+  materno: 3,
+  nombres: 3,
+  claveElector: 3,
+  curp: 3,
+  telefono: 3,
+  cp: 4,
+  localidad: 4,
+  calle: 4,
+  numExt: 4,
+  numInt: 4,
+  fracc: 4,
 };
 const CLAVE_RE = /^[A-Z]{6}\d{8}[HMX]\d{3}$/;
 const CURP_RE = /^[A-Z]{4}\d{6}[HMX][A-Z]{5}[A-Z\d]\d$/;
@@ -61,7 +62,7 @@ const CURP_RE = /^[A-Z]{4}\d{6}[HMX][A-Z]{5}[A-Z\d]\d$/;
 const acciones = (paso, editando = null) => `
   <div class="wiz-actions">
     ${paso === 1 ? `<a class="btn btn--secondary" href="/promovidos${editando ? `/${editando}` : ''}" data-link>Cancelar</a>` : '<button type="button" class="btn btn--secondary" data-wiz="atras">Atrás</button>'}
-    ${paso === 4 ? `<button class="btn" type="submit">${editando ? 'Guardar cambios' : 'Guardar promovido'}</button>` : '<button type="button" class="btn" data-wiz="sig">Siguiente</button>'}
+    ${paso === ULTIMO ? `<button class="btn" type="submit">${editando ? 'Guardar cambios' : 'Guardar promovido'}</button>` : '<button type="button" class="btn" data-wiz="sig">Siguiente</button>'}
   </div>`;
 
 // ===========================================================================
@@ -89,22 +90,26 @@ export async function viewNuevoPromovido(route, params = []) {
   return `
     <div class="wiz">
       <div class="wiz-bar" role="progressbar" aria-label="Avance de la captura" aria-valuemin="1" aria-valuemax="${PASOS.length}" aria-valuenow="1">
-        <div class="wiz-bar__track" aria-hidden="true">${PASOS.map(() => '<span></span>').join('')}</div>
+        <div class="wiz-bar__track" style="--pasos: ${PASOS.length}" aria-hidden="true">${PASOS.map(() => '<span></span>').join('')}</div>
         <p class="wiz-bar__label" id="wizLabel">Paso 1 de ${PASOS.length} · ${PASOS[0]}</p>
       </div>
 
       <form id="promoForm" novalidate>
         <section class="card wiz-step" data-paso="1" aria-label="Paso 1: ${PASOS[0]}">
-          <p class="wiz-step__help">${editando ? 'Las fotos guardadas se conservan; tómalas o cárgalas de nuevo solo si quieres reemplazarlas.' : 'Toma o carga la foto del frente y del reverso de la INE y encuádrala en la guía: se guarda solo lo que queda dentro del marco.'}</p>
-          <div class="ine-fotos">
-            ${campoFoto('pFrente', 'Frente de la INE')}
-            ${campoFoto('pReverso', 'Reverso de la INE')}
-          </div>
-          <div class="ine-cam" id="ineCam" hidden></div>
+          <p class="wiz-step__help">${editando ? 'La foto guardada se conserva; tómala o cárgala de nuevo solo si quieres reemplazarla.' : 'Toma o carga la foto del frente de la INE y encuádrala en la guía: se guarda solo lo que queda dentro del marco.'}</p>
+          ${campoFoto('pFrente', 'Frente de la INE')}
+          <div class="ine-cam" id="pFrenteGuia" hidden></div>
           ${acciones(1, editando)}
         </section>
 
         <section class="card wiz-step" data-paso="2" aria-label="Paso 2: ${PASOS[1]}" hidden>
+          <p class="wiz-step__help">${editando ? 'La foto guardada se conserva; tómala o cárgala de nuevo solo si quieres reemplazarla.' : 'Ahora la foto del reverso de la INE, también encuadrada en la guía.'}</p>
+          ${campoFoto('pReverso', 'Reverso de la INE')}
+          <div class="ine-cam" id="pReversoGuia" hidden></div>
+          ${acciones(2, editando)}
+        </section>
+
+        <section class="card wiz-step" data-paso="3" aria-label="Paso 3: ${PASOS[2]}" hidden>
           <div class="field-row field-row--fotos">
             ${campo('pVigencia', 'vigencia', 'Vigencia', { req: true, help: `Año final de la INE: ${ctx.vigenciaMin} o posterior.`, attrs: 'inputmode="numeric" maxlength="4"' })}
             ${campo('pSeccion', 'seccion', 'Sección', { req: true, help: `Debe ser la ${fmtSeccion(ctx.seccion)}.`, attrs: 'inputmode="numeric" maxlength="4"' })}
@@ -119,10 +124,10 @@ export async function viewNuevoPromovido(route, params = []) {
             ${campo('pCurp', 'curp', 'CURP', { req: true, help: '18 caracteres.', cls: 'input--upper mono', attrs: 'maxlength="18" autocapitalize="characters" spellcheck="false"' })}
           </div>
           ${campo('pTelefono', 'telefono', 'Teléfono (WhatsApp)', { req: true, help: '10 dígitos.', attrs: 'type="tel" inputmode="numeric" maxlength="14" autocomplete="off"' })}
-          ${acciones(2, editando)}
+          ${acciones(3, editando)}
         </section>
 
-        <section class="card wiz-step" data-paso="3" aria-label="Paso 3: ${PASOS[2]}" hidden>
+        <section class="card wiz-step" data-paso="4" aria-label="Paso 4: ${PASOS[3]}" hidden>
           <div class="field-row">
             ${campo('pCp', 'cp', 'Código postal', { req: true, help: 'Al escribirlo se llenan localidad, municipio y estado.', attrs: 'inputmode="numeric" maxlength="5"' })}
             <div class="field">
@@ -142,14 +147,14 @@ export async function viewNuevoPromovido(route, params = []) {
             ${campo('pNumInt', 'numInt', 'No. Int.', { cls: 'input--upper', attrs: 'maxlength="12"' })}
             ${campo('pFracc', 'fracc', 'Fracc.', { cls: 'input--upper', attrs: 'maxlength="80"' })}
           </div>
-          ${acciones(3, editando)}
+          ${acciones(4, editando)}
         </section>
 
-        <section class="card wiz-step" data-paso="4" aria-label="Paso 4: ${PASOS[3]}" hidden>
+        <section class="card wiz-step" data-paso="5" aria-label="Paso 5: ${PASOS[4]}" hidden>
           <p class="wiz-step__help">Revisa que los datos coincidan con la credencial antes de guardar.</p>
           <div id="wizResumen"></div>
           <p class="form-error" id="pFormErr" role="alert"></p>
-          ${acciones(4, editando)}
+          ${acciones(5, editando)}
         </section>
       </form>
     </div>`;
@@ -185,7 +190,8 @@ export function mountNuevoPromovido(root, route) {
 
   // ---------- Fotos: cámara con guía o imagen cargada ----------
   const LADOS = { pFrente: { key: 'ineFrente', titulo: 'Frente de la INE' }, pReverso: { key: 'ineReverso', titulo: 'Reverso de la INE' } };
-  const camBox = $('#ineCam', root);
+  // Cada paso de foto tiene su propia guía (cámara en vivo o ajuste de la imagen)
+  const guia = (id) => $(`#${id}Guia`, root);
   let cerrarCamara = null;
 
   const ponerFoto = (id, dataUrl) => {
@@ -213,7 +219,7 @@ export function mountNuevoPromovido(root, route) {
     if (!file) return;
     cerrarCamara?.();
     try {
-      cerrarCamara = await ajustarEnGuia(camBox, {
+      cerrarCamara = await ajustarEnGuia(guia(id), {
         titulo: LADOS[id].titulo,
         fuente: file,
         onListo: (dataUrl) => {
@@ -240,7 +246,7 @@ export function mountNuevoPromovido(root, route) {
     // (dentro del mismo toque del usuario, si no el navegador lo bloquea)
     if (!camaraDisponible()) return $(`#${id}Cam`, root).click();
     try {
-      cerrarCamara = await abrirCamara(camBox, {
+      cerrarCamara = await abrirCamara(guia(id), {
         titulo: LADOS[id].titulo,
         onCaptura: (dataUrl) => {
           cerrarCamara = null;
@@ -252,6 +258,7 @@ export function mountNuevoPromovido(root, route) {
     } catch {
       // Permiso negado o cámara ocupada: se ofrece la cámara del teléfono con un botón
       // (abrirla aquí directamente lo bloquearía el navegador)
+      const camBox = guia(id);
       camBox.hidden = false;
       camBox.innerHTML = `
         <div class="notice">${ICONS.alert}<div>
@@ -364,12 +371,10 @@ export function mountNuevoPromovido(root, route) {
   // Revisión de cada paso antes de avanzar (el servidor vuelve a validar todo al guardar)
   function revisar(n) {
     const e = {};
-    if (n === 1) {
-      // Al editar, las fotos guardadas cuentan
-      if (!fotos.ineFrente && !route.actual) e.ineFrente = 'Toma o carga la foto del frente.';
-      if (!fotos.ineReverso && !route.actual) e.ineReverso = 'Toma o carga la foto del reverso.';
-    }
-    if (n === 2) {
+    // Al editar, las fotos guardadas cuentan
+    if (n === 1 && !fotos.ineFrente && !route.actual) e.ineFrente = 'Toma o carga la foto del frente.';
+    if (n === 2 && !fotos.ineReverso && !route.actual) e.ineReverso = 'Toma o carga la foto del reverso.';
+    if (n === 3) {
       const vig = Number(val('pVigencia'));
       if (!/^\d{4}$/.test(val('pVigencia'))) e.vigencia = 'Escribe el año de vigencia (4 dígitos).';
       else if (vig < ctx.vigenciaMin) e.vigencia = msgVigencia(vig);
@@ -381,7 +386,7 @@ export function mountNuevoPromovido(root, route) {
       if (!CURP_RE.test(val('pCurp'))) e.curp = 'La CURP tiene 18 caracteres.';
       if (val('pTelefono').length !== 10) e.telefono = 'Escribe el teléfono (WhatsApp) de 10 dígitos.';
     }
-    if (n === 3) {
+    if (n === 4) {
       if (!cpInfo) e.cp = 'Escribe un código postal válido de 5 dígitos.';
       else if (localidad().length < 2) e.localidad = 'Elige o escribe la localidad.';
       if (val('pCalle').length < 2) e.calle = 'Escribe la calle.';
@@ -398,8 +403,8 @@ export function mountNuevoPromovido(root, route) {
     </section>`;
   function resumen() {
     $('#wizResumen', root).innerHTML = [
-      bloque('Credencial', 2, [fila('Vigencia', val('pVigencia')), fila('Sección', fmtSeccion(val('pSeccion')))]),
-      bloque('Datos personales', 2, [
+      bloque('Credencial', 3, [fila('Vigencia', val('pVigencia')), fila('Sección', fmtSeccion(val('pSeccion')))]),
+      bloque('Datos personales', 3, [
         fila('Apellido paterno', val('pPaterno')),
         fila('Apellido materno', val('pMaterno')),
         fila('Nombre(s)', val('pNombres')),
@@ -407,7 +412,7 @@ export function mountNuevoPromovido(root, route) {
         fila('CURP', val('pCurp')),
         fila('Teléfono (WhatsApp)', fmtPhone(val('pTelefono'))),
       ]),
-      bloque('Domicilio', 3, [
+      bloque('Domicilio', 4, [
         fila('Calle', val('pCalle')),
         fila('No. Ext.', val('pNumExt')),
         fila('No. Int.', val('pNumInt')),
@@ -426,8 +431,10 @@ export function mountNuevoPromovido(root, route) {
     barra.setAttribute('aria-valuenow', String(n));
     barra.querySelectorAll('.wiz-bar__track span').forEach((s, i) => s.classList.toggle('is-on', i < n));
     $('#wizLabel', root).textContent = `Paso ${n} de ${PASOS.length} · ${PASOS[n - 1]}`;
-    if (n !== 1) cerrarCamara?.();
-    if (n === 4) resumen();
+    // Al cambiar de paso se apaga la cámara
+    cerrarCamara?.();
+    cerrarCamara = null;
+    if (n === ULTIMO) resumen();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -483,7 +490,7 @@ export function mountNuevoPromovido(root, route) {
   // ---------- Guardar ----------
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (paso !== 4) return;
+    if (paso !== ULTIMO) return;
     const btn = form.querySelector('[type="submit"]');
     const body = {
       ...Object.fromEntries(new FormData(form)),
@@ -505,7 +512,7 @@ export function mountNuevoPromovido(root, route) {
       const f = err.data?.fields;
       if (f && Object.keys(f).length) {
         // Regresa al primer paso con error y lo marca
-        ir(Math.min(...Object.keys(f).map((k) => PASO_DE[k] || 4)));
+        ir(Math.min(...Object.keys(f).map((k) => PASO_DE[k] || ULTIMO)));
         setErrors(f);
       } else formErr.textContent = navigator.onLine ? err.message : 'Sin conexión. Intenta de nuevo cuando estés en línea.';
     } finally {

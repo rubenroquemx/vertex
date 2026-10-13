@@ -27,6 +27,8 @@ const promovidoPdf = require('./src/promovido-pdf');
 const notificaciones = require('./src/notificaciones');
 const fotos = require('./src/fotos');
 const privacidad = require('./src/privacidad');
+const ELECCION = require('./src/eleccion');
+const { memo } = require('./src/memo');
 const ejemplo = require('./src/ejemplo');
 const material = require('./src/material');
 const { fmtSeccion } = require('./src/formato');
@@ -188,6 +190,8 @@ app.get('/api/me', requireUser, async (req, res) => {
         }
       : null,
     dev: !isProd,
+    // Fecha de la jornada electoral (única fuente: src/eleccion.js)
+    eleccion: { fecha: ELECCION.fecha.toISOString(), texto: ELECCION.texto },
   });
 });
 
@@ -712,12 +716,12 @@ app.post('/api/promovidos', requireUser, requirePromotor, express.json({ limit: 
 // Panel del Super administrador: cifras agregadas de todo el sistema
 app.get('/api/panel/sa', requireUser, requireRole('superadmin'), async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json(await panelSA.resumen());
+  res.json(await memo('panel-sa', 30000, () => panelSA.resumen()));
 });
 
 app.get('/api/escritorio/seccion', requireUser, requireRole('resp_seccion'), async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json(await panelSeccion.escritorio(req.user));
+  res.json(await memo(`seccion:${req.user.id}`, 8000, () => panelSeccion.escritorio(req.user)));
 });
 app.get('/api/panel/seccion/promotores', requireUser, (req, res) => {
   if (req.user.role !== 'resp_seccion') return res.status(403).json({ error: 'Solo para Responsables de Sección' });
@@ -734,8 +738,8 @@ app.get('/api/escritorio/promotor', requireUser, requirePromotor, async (req, re
   res.set('Cache-Control', 'no-store');
   res.json(await escritorioPromotor.promotor(req.user));
 });
-app.get('/api/escritorio/zona', requireUser, requireRole('coord_zona'), async (req, res) => res.json(await escritorioZona.zona(req.user)));
-app.get('/api/escritorio/cpv', requireUser, requireCPV, async (req, res) => res.json(await escritorio.cpv(req.user)));
+app.get('/api/escritorio/zona', requireUser, requireRole('coord_zona'), async (req, res) => res.json(await memo(`zona:${req.user.id}`, 20000, () => escritorioZona.zona(req.user))));
+app.get('/api/escritorio/cpv', requireUser, requireCPV, async (req, res) => res.json(await memo(`cpv:${req.user.id}`, 20000, () => escritorio.cpv(req.user))));
 
 app.get('/api/zonas', requireUser, requireCPV, (req, res) => res.json(zonas.resumen(req.user)));
 

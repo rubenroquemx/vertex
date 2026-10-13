@@ -54,7 +54,7 @@ function avancePromotores(resp) {
 const { query } = require('./db');
 const TZ = 'America/Mexico_City';
 const DIAS_SERIE = 30;
-const ELECCION = new Date('2027-06-06T08:00:00-06:00');
+const ELECCION = require('./eleccion').fecha;
 const FMT_DIA = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
 
 async function escritorio(resp) {
@@ -75,7 +75,7 @@ async function escritorio(resp) {
   const [prom, serie, mat, siguiente] = await Promise.all([
     query(
       `SELECT p.promotor_id AS pr, p.estatus,
-              (p.estatus = 'en_revision' AND EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id)) AS obs,
+              (p.estatus = 'en_revision' AND EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id AND o.at > COALESCE((SELECT max(h.at) FROM promovido_historial h WHERE h.promovido_id = p.id AND h.user_id = p.promotor_id AND h.accion = 'editado'), '-infinity'::timestamptz))) AS obs,
               count(*)::int AS n,
               count(*) FILTER (WHERE p.estatus = 'en_revision' AND p.created_at < now() - interval '3 days')::int AS viejos,
               max(p.created_at) AS ultima

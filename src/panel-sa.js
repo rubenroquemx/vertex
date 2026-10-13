@@ -48,7 +48,7 @@ async function resumen() {
   const [porEstatus, serie, material, actividad, sesiones] = await Promise.all([
     query(
       `SELECT z.parent_id AS cpv, p.estatus,
-              (p.estatus = 'en_revision' AND EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id)) AS obs,
+              (p.estatus = 'en_revision' AND EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id AND o.at > COALESCE((SELECT max(h.at) FROM promovido_historial h WHERE h.promovido_id = p.id AND h.user_id = p.promotor_id AND h.accion = 'editado'), '-infinity'::timestamptz))) AS obs,
               count(*)::int AS n, max(p.created_at) AS ultimo
        FROM promovidos p
        JOIN users pr ON pr.id = p.promotor_id JOIN users rs ON rs.id = pr.parent_id JOIN users z ON z.id = rs.parent_id

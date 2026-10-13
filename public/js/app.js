@@ -1865,7 +1865,16 @@ function mostrarRecuperacion(usuarioInicial = '') {
   paso1();
 }
 
-async function showLogin() {
+// Sesión vencida mientras se usa la app: al inicio de sesión, con aviso (una sola vez)
+let sesionVencida = false;
+window.addEventListener('vx:sesion-vencida', async () => {
+  if (sesionVencida || !state.me || state.sinConexion) return;
+  sesionVencida = true;
+  localStorage.removeItem(ME_LOCAL);
+  await showLogin('Tu sesión venció. Vuelve a iniciar sesión para continuar.');
+});
+
+async function showLogin(aviso = '') {
   const [devUsers, recup] = await Promise.all([
     api('/api/dev/users').catch(() => null),
     api('/api/auth/recuperar/disponible').catch(() => ({ disponible: false })),
@@ -1878,6 +1887,7 @@ async function showLogin() {
       <img src="/brand/logo-claro.svg" alt="VERTEX" class="login__logo" width="220" height="50">
       <h1 class="login__title">Inicia sesión</h1>
       <p class="login__sub">Sistema de estructura territorial electoral</p>
+      ${aviso ? `<p class="login__aviso" role="alert">${esc(aviso)}</p>` : ''}
       <form id="loginForm" novalidate>
         <div class="field">
           <label for="lgUser">Usuario</label>
@@ -1998,6 +2008,10 @@ async function boot() {
     }
     if (!state.sinConexion) return;
   }
+  if (state.me.eleccion) {
+    ELECCION = { fecha: new Date(state.me.eleccion.fecha), texto: state.me.eleccion.texto };
+    renderCountdown();
+  }
   // Sesión válida: ahora sí se muestra el panel
   $('#boot').hidden = true;
   $('.layout').hidden = false;
@@ -2081,12 +2095,14 @@ boot();
 // ---------------------------------------------------------------------------
 // Cuenta regresiva a la jornada electoral (apertura de casillas, hora del centro)
 // ---------------------------------------------------------------------------
-const ELECCION = { fecha: new Date('2027-06-06T08:00:00-06:00'), texto: '6 de junio de 2027' };
+// La fecha llega del servidor en /api/me (única fuente: src/eleccion.js)
+let ELECCION = null;
 // Reloj minimalista: el minutero gira lento y el horario apenas avanza
 const RELOJ = `<svg class="reloj" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
   <circle cx="12" cy="12" r="9"/><line class="reloj__hora" x1="12" y1="12" x2="12" y2="8.5"/><line class="reloj__min" x1="12" y1="12" x2="12" y2="6"/></svg>`;
 
 function renderCountdown() {
+  if (!ELECCION) return;
   const el = $('#countdown');
   const ms = ELECCION.fecha - Date.now();
   if (ms <= 0) {

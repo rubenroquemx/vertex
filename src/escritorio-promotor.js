@@ -6,7 +6,7 @@ const metas = require('./metas');
 
 const TZ = 'America/Mexico_City';
 const DIAS_SERIE = 14;
-const ELECCION = new Date('2027-06-06T08:00:00-06:00');
+const ELECCION = require('./eleccion').fecha;
 const FMT_DIA = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
 const nombre = (d) => [d.nombres, d.paterno, d.materno].filter(Boolean).join(' ');
 
@@ -19,7 +19,7 @@ async function promotor(pr) {
   const [est, corregir, serie, recientes] = await Promise.all([
     query(
       `SELECT p.estatus,
-              (p.estatus = 'en_revision' AND EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id)) AS obs,
+              (p.estatus = 'en_revision' AND EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id AND o.at > COALESCE((SELECT max(h.at) FROM promovido_historial h WHERE h.promovido_id = p.id AND h.user_id = p.promotor_id AND h.accion = 'editado'), '-infinity'::timestamptz))) AS obs,
               count(*)::int AS n
        FROM promovidos p WHERE p.promotor_id = $1 GROUP BY 1, 2`,
       [pr.id]
@@ -30,7 +30,8 @@ async function promotor(pr) {
        FROM promovidos p
        JOIN LATERAL (SELECT o.texto, o.at, o.user_id FROM promovido_observaciones o WHERE o.promovido_id = p.id ORDER BY o.at DESC, o.id DESC LIMIT 1) u ON true
        WHERE p.promotor_id = $1 AND p.estatus <> 'validado'
-         AND (p.estatus = 'rechazado' OR u.user_id IS DISTINCT FROM p.promotor_id)
+         AND (p.estatus = 'rechazado' OR (u.user_id IS DISTINCT FROM p.promotor_id
+              AND u.at > COALESCE((SELECT max(h.at) FROM promovido_historial h WHERE h.promovido_id = p.id AND h.user_id = p.promotor_id AND h.accion = 'editado'), '-infinity'::timestamptz)))
        ORDER BY (p.estatus = 'rechazado') DESC, u.at DESC LIMIT 20`,
       [pr.id]
     ),

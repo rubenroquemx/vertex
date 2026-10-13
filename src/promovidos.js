@@ -20,7 +20,7 @@ const { comprimir } = require('./fotos');
 const privacidad = require('./privacidad');
 
 // Jornada electoral: la INE debe estar vigente ese año para poder votar
-const ELECCION = { anio: 2027, texto: '6 de junio de 2027' };
+const ELECCION = require('./eleccion');
 
 class PromovidoError extends Error {
   constructor(message, status = 422, fields) {
@@ -257,7 +257,7 @@ async function listaDe(promotor) {
   // Observaciones del Responsable de Sección (las del propio promotor no cuentan)
   const { rows } = await query(
     `SELECT p.id, p.seccion, p.data, p.clave_elector, p.estatus, p.created_at,
-            EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id) AS con_obs,
+            EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id AND o.at > COALESCE((SELECT max(h.at) FROM promovido_historial h WHERE h.promovido_id = p.id AND h.user_id = p.promotor_id AND h.accion = 'editado'), '-infinity'::timestamptz)) AS con_obs,
             GREATEST(p.created_at, (SELECT max(h.at) FROM promovido_historial h WHERE h.promovido_id = p.id)) AS modificado
      FROM promovidos p WHERE p.promotor_id = $1 ORDER BY p.created_at DESC`,
     [promotor.id]
@@ -292,7 +292,7 @@ function puedeVer(viewer, promotorId) {
 async function detalle(viewer, id) {
   const { rows } = await query(
     `SELECT p.id, p.promotor_id, p.responsable_id, p.seccion, p.data, p.clave_elector, p.curp, p.estatus, p.revisado_por, p.revisado_at, p.created_at,
-            EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id) AS con_obs
+            EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id AND o.at > COALESCE((SELECT max(h.at) FROM promovido_historial h WHERE h.promovido_id = p.id AND h.user_id = p.promotor_id AND h.accion = 'editado'), '-infinity'::timestamptz)) AS con_obs
      FROM promovidos p WHERE p.id = $1`,
     [id]
   );
@@ -530,7 +530,7 @@ async function revisar(viewer, id, body = {}) {
 async function bandeja(rs) {
   const { rows } = await query(
     `SELECT p.id, p.promotor_id, p.data, p.estatus, p.created_at,
-            EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id) AS con_obs,
+            EXISTS (SELECT 1 FROM promovido_observaciones o WHERE o.promovido_id = p.id AND o.user_id IS DISTINCT FROM p.promotor_id AND o.at > COALESCE((SELECT max(h.at) FROM promovido_historial h WHERE h.promovido_id = p.id AND h.user_id = p.promotor_id AND h.accion = 'editado'), '-infinity'::timestamptz)) AS con_obs,
             GREATEST(p.created_at, (SELECT max(h.at) FROM promovido_historial h WHERE h.promovido_id = p.id)) AS modificado
      FROM promovidos p WHERE p.responsable_id = $1 ORDER BY p.created_at`,
     [rs.id]

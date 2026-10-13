@@ -2444,3 +2444,4 @@ a.ec-kpi:hover { box-shadow: var(--shadow-card), inset 0 0 0 1px var(--color-bor
 .bit-fecha { white-space: nowrap; }
 .bit-mas { display: flex; justify-content: center; }
 .bit-mas [hidden] { display: none; }
+.login__aviso { margin: 0 0 var(--space-lg); padding: 10px 14px; border-radius: 12px; background: #fef3c7; color: #78350f; font-size: 14px; font-weight: 700; }

@@ -278,6 +278,16 @@ const MIGRATIONS = [
       CREATE INDEX material_evidencias_idx ON material_evidencias(orden_id, id);
     `,
   },
+  {
+    id: 8,
+    name: 'historial: «Validado» pasa a «Aprobado»',
+    sql: `
+      UPDATE promovido_historial SET cambios = replace(cambios::text, '"Validado"', '"Aprobado"')::jsonb
+        WHERE cambios::text LIKE '%"Validado"%';
+      -- Consultas del historial por autor (corrección de observaciones)
+      CREATE INDEX IF NOT EXISTS promovido_historial_autor_idx ON promovido_historial(promovido_id, user_id, at);
+    `,
+  },
 ];
 
 async function migrate() {

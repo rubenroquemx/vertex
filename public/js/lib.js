@@ -55,6 +55,10 @@ async function api(path, { method = 'GET', body } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  // Sesión vencida a media navegación: la app regresa al inicio de sesión (ver app.js)
+  if (res.status === 401 && !path.startsWith('/api/auth/') && path !== '/api/me') {
+    window.dispatchEvent(new CustomEvent('vx:sesion-vencida'));
+  }
   if (!res.ok) throw Object.assign(new Error(data.error || 'Error de comunicación'), { status: res.status, data });
   return data;
 }

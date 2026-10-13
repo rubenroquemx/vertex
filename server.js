@@ -242,15 +242,29 @@ function deletableTarget(req, res) {
   return target;
 }
 
-app.get('/api/users/:id/branch', requireUser, async (req, res) => {
-  if (!deletableTarget(req, res)) return;
-  res.json(branch.summary(req.params.id));
-});
+// Respaldos descargados: eliminar una rama (o borrar dependientes) exige haber descargado su
+// respaldo en los últimos 30 minutos
+const respaldos = new Map();
+const VIGENCIA_RESPALDO = 30 * 60 * 1000;
+const claveRespaldo = (req, id) => `${req.realUser.id}:${id}`;
+const respaldoVigente = (req, id) => Date.now() - (respaldos.get(claveRespaldo(req, id)) || 0) < VIGENCIA_RESPALDO;
 
-app.get('/api/users/:id/backup', requireUser, async (req, res) => {
+app.get('/api/users/:id/branch', requireUser, async (req, res) => {
   const target = deletableTarget(req, res);
   if (!target) return;
+  const s = branch.summary(req.params.id);
+  const prom = await branch.promovidosDeRama(branch.branchOf(target.id).map((u) => u.id));
+  res.json({ ...s, promovidos: prom.length, destinos: branch.destinosTransferencia(target) });
+});
+
+// Respaldo de una rama: quien puede eliminarla, o su superior directo (p. ej. el Coordinador de
+// Zona antes de cambiar de sección a un Responsable)
+app.get('/api/users/:id/backup', requireUser, async (req, res) => {
+  const t = users.get(req.params.id);
+  const target = t && t.parentId === req.user.id && !canDeleteAccounts(req) ? t : deletableTarget(req, res);
+  if (!target) return;
   const b = await branch.backupZip(target.id, { by: req.realUser.name });
+  respaldos.set(claveRespaldo(req, target.id), Date.now());
   const slug = (target.username || target.name)
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -274,17 +288,23 @@ app.delete('/api/users/:id', requireUser, async (req, res) => {
   if (!check.ok) {
     return res.status(check.status).json(check.field ? { error: check.error, fields: { password: check.error } } : { error: check.error });
   }
-  const removed = await branch.removeBranch(target.id);
-  await audit.add({
-    action: 'user.delete',
-    by: req.realUser.id,
-    as: req.user.id,
-    user: target.id,
-    name: target.name,
-    accounts: removed,
-    backup: Boolean(req.body?.backupDone),
-  });
-  res.json({ ok: true, removed });
+  // Dos caminos: transferir los dependientes a otra cuenta del mismo nivel, o respaldo
+  // obligatorio y borrado de toda la rama (con sus promovidos)
+  if (req.body?.modo === 'transferir') {
+    const destino = branch.destinosTransferencia(target).find((d) => d.id === req.body?.destinoId);
+    if (!destino) return res.status(422).json({ error: 'Elige a quién se transfieren sus dependientes.', fields: { destinoId: 'Elige una cuenta.' } });
+    const r = await branch.transferirDependientes(target, users.get(destino.id));
+    await users.removeMany(new Set([target.id]));
+    await audit.add({ action: 'user.transfer', by: req.realUser.id, as: req.user.id, user: destino.id, name: target.name, ...r });
+    return res.json({ ok: true, removed: 1, transferidos: r });
+  }
+  if (!respaldoVigente(req, target.id)) {
+    return res.status(409).json({ error: 'Primero descarga el respaldo de esta rama (es obligatorio para eliminarla).' });
+  }
+  const r = await branch.removeBranch(target.id);
+  respaldos.delete(claveRespaldo(req, target.id));
+  await audit.add({ action: 'user.delete', by: req.realUser.id, as: req.user.id, user: target.id, name: target.name, accounts: r.cuentas, promovidos: r.promovidos, backup: true });
+  res.json({ ok: true, removed: r.cuentas, promovidos: r.promovidos });
 });
 
 // --- Nombres de usuario -----------------------------------------------------
@@ -827,6 +847,37 @@ app.put('/api/responsables/:id', requireUser, requireCZ, async (req, res) => {
   const t = responsables.validar(req.user, req.body, current.id);
   const errors = { ...cuenta.errors, ...t.errors };
   if (Object.keys(errors).length) return invalid(res, errors);
+
+  // Cambio de sección con promotores o promovidos: se transfieren a otro Responsable de la zona
+  // o se borran con respaldo obligatorio (misma política que al eliminar una rama)
+  const antes = current.territorio?.secciones?.[0];
+  const despues = t.territorio?.secciones?.[0];
+  if (antes !== undefined && antes !== despues) {
+    const promotores = users.all().filter((u) => u.parentId === current.id).length;
+    const prom = await branch.promovidosDeRama(branch.branchOf(current.id).map((u) => u.id));
+    if (promotores || prom.length) {
+      const decision = req.body?.dependientes;
+      if (decision === 'transferir') {
+        const destino = branch.destinosTransferencia(current).find((d) => d.id === req.body?.destinoId);
+        if (!destino) return res.status(422).json({ error: 'Elige al Responsable que recibirá a sus promotores y promovidos.', fields: { destinoId: 'Elige un responsable.' } });
+        const r = await branch.transferirDependientes(current, users.get(destino.id));
+        await audit.add({ action: 'user.transfer', by: req.realUser.id, as: req.user.id, user: destino.id, name: current.name, motivo: 'cambio de sección', ...r });
+      } else if (decision === 'borrar') {
+        if (!respaldoVigente(req, current.id)) return res.status(409).json({ error: 'Primero descarga el respaldo de sus promotores y promovidos.' });
+        const r = await branch.borrarDependientes(current);
+        respaldos.delete(claveRespaldo(req, current.id));
+        await audit.add({ action: 'user.delete', by: req.realUser.id, as: req.user.id, user: current.id, name: current.name, motivo: 'cambio de sección', accounts: r.subordinados, promovidos: r.promovidos, backup: true });
+      } else {
+        return res.status(409).json({
+          error: 'Este responsable ya tiene promotores o promovidos en su sección actual.',
+          requiereDecision: true,
+          promotores,
+          promovidos: prom.length,
+          destinos: branch.destinosTransferencia(current),
+        });
+      }
+    }
+  }
   const patch = { ...cuenta.data, territorio: t.territorio };
   if (cuenta.password) {
     patch.passwordHash = await passwords.hashAsync(cuenta.password);

@@ -1,6 +1,7 @@
 // Rama de una cuenta (ella y todos sus subordinados, en cualquier nivel): resumen, respaldo y eliminación.
 const AdmZip = require('adm-zip');
-const { users, avatars } = require('./store');
+const { users, avatars, promovidos: cachePromovidos } = require('./store');
+const { query } = require('./db');
 const { getRole, ROLES } = require('./roles');
 const territory = require('./territory');
 const { PARTIDOS } = require('./partidos');
@@ -20,6 +21,27 @@ function branchOf(rootId) {
   const result = [root];
   for (let i = 0; i < result.length; i++) result.push(...(children.get(result[i].id) || []));
   return result;
+}
+
+// Promovidos que pertenecen a la rama (capturados por sus promotores o asignados a sus responsables)
+async function promovidosDeRama(ids) {
+  const { rows } = await query(
+    `SELECT p.id, p.promotor_id, p.responsable_id, p.seccion, p.data, p.clave_elector, p.curp, p.estatus, p.created_at
+     FROM promovidos p WHERE p.promotor_id = ANY($1::uuid[]) OR p.responsable_id = ANY($1::uuid[]) ORDER BY p.created_at`,
+    [ids]
+  );
+  return rows;
+}
+
+// Cuentas del mismo nivel y del mismo superior que pueden recibir a los dependientes.
+// El CPV no se transfiere: cada uno tiene su propio territorio y candidato.
+function destinosTransferencia(target) {
+  if (!target || target.role === 'coord_promocion' || target.role === 'superadmin') return [];
+  return users
+    .all()
+    .filter((u) => u.id !== target.id && u.role === target.role && u.parentId === target.parentId && !u.disabled)
+    .map((u) => ({ id: u.id, name: u.name, zona: u.zona?.nombre || null, secciones: u.territorio?.secciones || [] }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
 }
 
 function summary(rootId) {
@@ -85,6 +107,29 @@ async function backupZip(rootId, { by }) {
   const csv = [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
   zip.addFile('cuentas.csv', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(csv, 'utf8')]));
 
+  // Promovidos de la rama: datos completos y, si no son demasiados, las fotos de su INE
+  const prom = await promovidosDeRama(branch.map((u) => u.id));
+  const nombreDe = (id) => byId.get(id)?.name || users.get(id)?.name || '';
+  const pHeader = ['Nombre(s)', 'Apellido paterno', 'Apellido materno', 'Clave de elector', 'CURP', 'Sección', 'Vigencia', 'Teléfono', 'Calle', 'No. Ext.', 'No. Int.', 'Fracc.', 'Localidad', 'CP', 'Municipio', 'Estado', 'Estatus', 'Promotor', 'Responsable', 'Alta', 'ID'];
+  const pRows = prom.map((p) => {
+    const d = p.data || {};
+    const dom = d.domicilio || {};
+    return [d.nombres, d.paterno, d.materno, p.clave_elector, p.curp, p.seccion, d.vigencia, d.telefono, dom.calle, dom.numExt, dom.numInt, dom.fracc, dom.localidad, dom.cp, dom.municipio, dom.estado, p.estatus, nombreDe(p.promotor_id), nombreDe(p.responsable_id), p.created_at.toISOString().slice(0, 10), p.id];
+  });
+  zip.addFile('promovidos.csv', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from([pHeader, ...pRows].map((r) => r.map(csvCell).join(',')).join('\r\n'), 'utf8')]));
+  zip.addFile('promovidos.json', Buffer.from(JSON.stringify(prom.map((p) => ({ ...p, created_at: p.created_at.toISOString() })), null, 2), 'utf8'));
+  const CON_FOTOS = 500;
+  if (prom.length && prom.length <= CON_FOTOS) {
+    for (let i = 0; i < prom.length; i += 100) {
+      const ids = prom.slice(i, i + 100).map((p) => p.id);
+      const { rows: fotos } = await query('SELECT promovido_id, lado, image FROM promovido_ine WHERE promovido_id = ANY($1::uuid[])', [ids]);
+      for (const f of fotos) {
+        const ext = f.image.toString('ascii', 0, 4) === 'RIFF' ? 'webp' : 'jpg';
+        zip.addFile(`ine/${f.promovido_id}-${f.lado}.${ext}`, f.image);
+      }
+    }
+  }
+
   for (const u of branch) {
     if (!u.avatarAt) continue;
     const img = await avatars.get(u.id);
@@ -99,9 +144,16 @@ async function backupZip(rootId, { by }) {
         `Generado: ${createdAt} por ${by}.`,
         `Cuentas incluidas: ${branch.length} (1 titular + ${branch.length - 1} subordinados).`,
         '',
-        'cuentas.csv   Lista de cuentas para abrir en Excel.',
-        'respaldo.json Datos completos para restaurar en VERTEX.',
-        'fotos/        Fotos de perfil (nombre = ID de la cuenta).',
+        'cuentas.csv     Lista de cuentas para abrir en Excel.',
+        'respaldo.json   Datos completos para restaurar en VERTEX.',
+        'fotos/          Fotos de perfil (nombre = ID de la cuenta).',
+        `promovidos.csv  Promovidos de la rama (${prom.length}) para abrir en Excel.`,
+        'promovidos.json Datos completos de los promovidos.',
+        prom.length > CON_FOTOS
+          ? `ine/            No incluida: son más de ${CON_FOTOS} promovidos; las fotos de la INE se pierden al eliminar.`
+          : 'ine/            Fotos de la INE (nombre = ID del promovido y lado).',
+        '',
+        'Contiene datos personales: guárdalo en un lugar seguro y bórralo cuando ya no se necesite.',
         '',
         'Por seguridad, las contraseñas no se incluyen.',
       ].join('\r\n'),
@@ -115,8 +167,40 @@ async function backupZip(rootId, { by }) {
 // Las sesiones y fotos de las cuentas se borran en cascada en la base
 async function removeBranch(rootId) {
   const branch = branchOf(rootId);
-  await users.removeMany(new Set(branch.map((u) => u.id)));
-  return branch.length;
+  const ids = branch.map((u) => u.id);
+  // Primero sus promovidos (con sus fotos, historial y observaciones), para no dejar huérfanos
+  const { rows } = await query('DELETE FROM promovidos WHERE promotor_id = ANY($1::uuid[]) OR responsable_id = ANY($1::uuid[]) RETURNING id', [ids]);
+  cachePromovidos.olvidar(new Set(rows.map((r) => r.id)));
+  await query('DELETE FROM notificaciones WHERE url = ANY($1)', [rows.map((r) => `/promovidos/${r.id}`)]);
+  await users.removeMany(new Set(ids));
+  return { cuentas: branch.length, promovidos: rows.length };
 }
 
-module.exports = { branchOf, summary, backupZip, removeBranch };
+// Pasa los dependientes directos de `target` a `destino` (mismo nivel y mismo superior):
+// subordinados, promovidos asignados, material y —en las zonas— su territorio.
+async function transferirDependientes(target, destino) {
+  const hijos = users.all().filter((u) => u.parentId === target.id);
+  for (const h of hijos) await users.update(h.id, { parentId: destino.id });
+  if (target.role === 'coord_zona') {
+    const secciones = [...new Set([...(destino.territorio?.secciones || []), ...(target.territorio?.secciones || [])])].sort((a, b) => a - b);
+    await users.update(destino.id, { territorio: { ...(destino.territorio || {}), tipo: 'secciones', metodo: 'manual', secciones } });
+  }
+  const { rowCount } = await query('UPDATE promovidos SET responsable_id = $2 WHERE responsable_id = $1', [target.id, destino.id]);
+  for (const p of cachePromovidos.all()) if (p.responsableId === target.id) p.responsableId = destino.id;
+  await query('UPDATE material_ordenes SET para_id = $2 WHERE para_id = $1', [target.id, destino.id]);
+  await query('UPDATE material_ordenes SET de_id = $2 WHERE de_id = $1', [target.id, destino.id]);
+  return { subordinados: hijos.length, promovidos: rowCount };
+}
+
+// Borra a los dependientes de una cuenta (sus subordinados y sus promovidos), conservando la cuenta
+async function borrarDependientes(target) {
+  const ids = branchOf(target.id).map((u) => u.id);
+  const { rows } = await query('DELETE FROM promovidos WHERE promotor_id = ANY($1::uuid[]) OR responsable_id = ANY($1::uuid[]) RETURNING id', [ids]);
+  cachePromovidos.olvidar(new Set(rows.map((r) => r.id)));
+  await query('DELETE FROM notificaciones WHERE url = ANY($1)', [rows.map((r) => `/promovidos/${r.id}`)]);
+  const subs = ids.filter((id) => id !== target.id);
+  await users.removeMany(new Set(subs));
+  return { subordinados: subs.length, promovidos: rows.length };
+}
+
+module.exports = { branchOf, summary, backupZip, removeBranch, promovidosDeRama, destinosTransferencia, transferirDependientes, borrarDependientes };

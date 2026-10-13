@@ -1,7 +1,6 @@
-// Eliminación de una cuenta y toda su rama, con respaldo previo recomendado.
-// Pasos: 1) recomendar respaldo → 2a) respaldo descargado: eliminar con seguridad
-//                              → 2b) sin respaldo: advertencia de pérdida irreversible
-// En ambos casos se confirma con la contraseña de quien inició sesión.
+// Eliminación de una cuenta. Dos caminos (en ambos se confirma con la contraseña):
+//  · Transferir sus dependientes a otra cuenta del mismo nivel y superior, y eliminar solo esa cuenta.
+//  · Respaldo obligatorio y borrado de toda la rama, incluidos sus promovidos.
 import { icon, ICONS, $, esc, fmtNum, api, toast, abrirEnArea } from './lib.js';
 
 const I = {
@@ -11,7 +10,7 @@ const I = {
 };
 
 // Descarga el respaldo (.zip) respetando el nombre de archivo que propone el servidor
-async function downloadBackup(userId) {
+export async function downloadBackup(userId) {
   const res = await fetch(`/api/users/${userId}/backup`, { credentials: 'same-origin' });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -60,15 +59,19 @@ export async function openDeleteFlow(user, me, onDeleted) {
   }
   const total = summary.subordinados;
   const who = esc(summary.user.name);
+  const destinos = summary.destinos || [];
+  const rol = esc(summary.user.roleName);
   let backupFile = null;
+  let modo = null;
 
-  const passwordBlock = (btnLabel) => {
+  const passwordBlock = (btnLabel, extra = '') => {
     if (!me.confirm.hasPassword) {
       return `<div class="notice">${ICONS.alert}<div>Para eliminar cuentas necesitas una contraseña. Créala en <a href="/perfil" data-link data-del="close">Mi perfil</a> y vuelve a intentarlo.</div></div>
         <div class="dialog__actions"><button class="btn btn--secondary" type="button" data-del="close">Cerrar</button></div>`;
     }
     return `
       <form class="del__form" id="delForm" novalidate>
+        ${extra}
         <div class="field">
           <label for="delPass">Escribe tu contraseña para confirmar${me.godMode ? ` <span class="legend-help">(la de ${esc(me.confirm.name)})</span>` : ''}</label>
           <input class="input" id="delPass" name="password" type="password" autocomplete="current-password" required>
@@ -82,45 +85,59 @@ export async function openDeleteFlow(user, me, onDeleted) {
       </form>`;
   };
 
+  const promTxt = summary.promovidos ? ` y <strong>${fmtNum(summary.promovidos)} ${summary.promovidos === 1 ? 'promovido' : 'promovidos'}</strong>` : '';
+  const cerrar = `<button class="icon-btn icon-btn--always" type="button" data-del="close" aria-label="Cerrar">${ICONS.close}</button>`;
   const steps = {
-    // 1) Recomendación de respaldo
+    // 1) Qué pasa con sus dependientes
     intro: () => `
       <div class="dialog__body">
-        <div class="dialog__head"><h3 id="delTitle">Eliminar a ${who}</h3>
-          <button class="icon-btn icon-btn--always" type="button" data-del="close" aria-label="Cerrar">${ICONS.close}</button></div>
-        <p class="del__role">${esc(summary.user.roleName)}</p>
-        <p>Se eliminará esta cuenta y <strong>toda su rama</strong>${total ? ` (${fmtNum(total)} cuenta${total === 1 ? '' : 's'} subordinada${total === 1 ? '' : 's'})` : ''}:</p>
+        <div class="dialog__head"><h3 id="delTitle">Eliminar a ${who}</h3>${cerrar}</div>
+        <p class="del__role">${rol}</p>
+        <p>Depende${total === 1 ? '' : 'n'} de esta cuenta:</p>
         ${nivelesText(summary)}
-        <div class="notice notice--info">${I.shield}<div><strong>Te recomendamos descargar un respaldo antes de eliminar.</strong><br>
-          Incluye los datos de ${who} y de todos sus subordinados (lista en Excel, datos completos y fotos de perfil).</div></div>
-        <p class="form-error" id="delErr" role="alert"></p>
-        <div class="del__choices">
-          <button class="btn" type="button" data-del="backup">${I.download}<span>Descargar respaldo</span></button>
-          <button class="btn btn--secondary" type="button" data-del="skip">No respaldar</button>
+        ${summary.promovidos ? `<p class="del__prom">Su rama tiene <strong>${fmtNum(summary.promovidos)} ${summary.promovidos === 1 ? 'promovido' : 'promovidos'}</strong>.</p>` : ''}
+        <p><strong>¿Qué hacemos con sus dependientes?</strong></p>
+        <div class="del__opciones">
+          ${
+            destinos.length && total
+              ? `<button class="del__op" type="button" data-del="transferir">${I.shield}<span><strong>Transferirlos a otro ${rol}</strong><small>Sus dependientes${promTxt.replace(/<[^>]+>/g, '')} pasan a quien elijas. Solo se elimina ${who}.</small></span></button>`
+              : ''
+          }
+          <button class="del__op del__op--danger" type="button" data-del="borrar">${ICONS.trash}<span><strong>Respaldar y eliminar toda la rama</strong><small>Se descarga un respaldo (obligatorio) y después se borran la cuenta, sus dependientes y sus promovidos.</small></span></button>
         </div>
         <div class="dialog__actions"><button class="btn btn--secondary" type="button" data-del="close">Cancelar</button></div>
       </div>`,
 
-    // 2a) Respaldo descargado: puede eliminar con seguridad
-    safe: () => `
+    // 2a) Transferir a otra cuenta del mismo nivel
+    transferir: () => `
       <div class="dialog__body">
-        <div class="dialog__head"><h3 id="delTitle">Eliminar a ${who}</h3>
-          <button class="icon-btn icon-btn--always" type="button" data-del="close" aria-label="Cerrar">${ICONS.close}</button></div>
-        <div class="notice notice--ok">${I.check}<div><strong>Respaldo descargado.</strong> Ya puedes eliminar con seguridad.<br>
-          <span class="mono">${esc(backupFile)}</span></div></div>
-        <p>Se eliminarán ${who}${total ? ` y sus ${fmtNum(total)} cuenta${total === 1 ? '' : 's'} subordinada${total === 1 ? '' : 's'}` : ''}.</p>
-        ${passwordBlock('Eliminar')}
+        <div class="dialog__head"><h3 id="delTitle">Transferir y eliminar a ${who}</h3>${cerrar}</div>
+        <p>Sus ${fmtNum(total)} cuenta${total === 1 ? '' : 's'} dependiente${total === 1 ? '' : 's'}${promTxt}${summary.user.role === 'coord_zona' ? ', sus secciones y su material' : ''} pasarán a:</p>
+        ${passwordBlock(
+          'Transferir y eliminar',
+          `<div class="field"><label for="delDestino">${rol} que los recibe</label>
+            <select class="input" id="delDestino" required><option value="">Elige…</option>${destinos
+              .map((d) => `<option value="${d.id}">${esc(d.name)}${d.zona ? ` · ${esc(d.zona)}` : ''}</option>`)
+              .join('')}</select><p class="field__error" id="delDestino-err"></p></div>`
+        )}
+        <p class="del__back"><button type="button" class="link-btn" data-del="volver">Volver</button></p>
       </div>`,
 
-    // 2b) Sin respaldo: advertencia irreversible
-    danger: () => `
+    // 2b) Respaldo obligatorio y borrado de toda la rama
+    borrar: () => `
       <div class="dialog__body">
-        <div class="dialog__head"><h3 id="delTitle">Eliminar sin respaldo</h3>
-          <button class="icon-btn icon-btn--always" type="button" data-del="close" aria-label="Cerrar">${ICONS.close}</button></div>
+        <div class="dialog__head"><h3 id="delTitle">Eliminar a ${who} y toda su rama</h3>${cerrar}</div>
         <div class="notice notice--danger">${ICONS.alert}<div><strong>Esta acción no se podrá deshacer.</strong><br>
-          Se perderá toda la información de ${who}${total ? ` y los datos de sus ${fmtNum(total)} subordinado${total === 1 ? '' : 's'}` : ''}.</div></div>
-        <p class="del__back">¿Prefieres conservar sus datos? <button type="button" class="link-btn" data-del="backup">Descargar respaldo</button></p>
-        ${passwordBlock('Eliminar sin respaldo')}
+          Se borrarán ${who}${total ? `, sus ${fmtNum(total)} cuenta${total === 1 ? '' : 's'} dependiente${total === 1 ? '' : 's'}` : ''}${promTxt}.</div></div>
+        ${
+          backupFile
+            ? `<div class="notice notice--ok">${I.check}<div><strong>Respaldo descargado.</strong><br><span class="mono">${esc(backupFile)}</span></div></div>
+               ${passwordBlock('Eliminar todo')}`
+            : `<p><strong>Paso 1:</strong> descarga el respaldo (obligatorio). Incluye las cuentas y los promovidos de la rama.</p>
+               <p class="form-error" id="delErr" role="alert"></p>
+               <div class="del__choices"><button class="btn" type="button" data-del="backup">${I.download}<span>Descargar respaldo</span></button></div>`
+        }
+        <p class="del__back"><button type="button" class="link-btn" data-del="volver">Volver</button></p>
       </div>`,
   };
 
@@ -147,9 +164,23 @@ export async function openDeleteFlow(user, me, onDeleted) {
     btn.disabled = true;
     btn.textContent = 'Eliminando…';
     try {
-      const res = await api(`/api/users/${user.id}`, { method: 'DELETE', body: { password: pass.value, backupDone: Boolean(backupFile) } });
+      const body = { password: pass.value, modo };
+      if (modo === 'transferir') {
+        body.destinoId = $('#delDestino', dlg).value;
+        if (!body.destinoId) {
+          $('#delDestino-err', dlg).textContent = 'Elige a quién se transfieren.';
+          btn.disabled = false;
+          btn.textContent = label;
+          return;
+        }
+      }
+      const res = await api(`/api/users/${user.id}`, { method: 'DELETE', body });
       dlg.close();
-      toast(`Se eliminó ${summary.user.name}${res.removed > 1 ? ` y ${fmtNum(res.removed - 1)} cuenta${res.removed - 1 === 1 ? '' : 's'} subordinada${res.removed - 1 === 1 ? '' : 's'}` : ''}`);
+      toast(
+        modo === 'transferir'
+          ? `Se transfirieron los dependientes y se eliminó ${summary.user.name}`
+          : `Se eliminó ${summary.user.name}${res.removed > 1 ? ` y ${fmtNum(res.removed - 1)} cuenta${res.removed - 1 === 1 ? '' : 's'}` : ''}${res.promovidos ? ` y ${fmtNum(res.promovidos)} promovidos` : ''}`
+      );
       onDeleted(res.removed);
     } catch (err) {
       if (err.data?.fields?.password) {
@@ -167,7 +198,11 @@ export async function openDeleteFlow(user, me, onDeleted) {
     const action = e.target.closest('[data-del]')?.dataset.del;
     if (!action) return;
     if (action === 'close') dlg.close();
-    if (action === 'skip') show('danger');
+    if (action === 'volver') show('intro');
+    if (action === 'transferir' || action === 'borrar') {
+      modo = action === 'transferir' ? 'transferir' : 'eliminar';
+      show(action);
+    }
     if (action === 'backup') {
       const btn = e.target.closest('[data-del]');
       const original = btn.innerHTML;
@@ -175,7 +210,7 @@ export async function openDeleteFlow(user, me, onDeleted) {
       btn.textContent = 'Preparando respaldo…';
       try {
         backupFile = await downloadBackup(user.id);
-        show('safe');
+        show('borrar');
       } catch (err) {
         btn.disabled = false;
         btn.innerHTML = original;

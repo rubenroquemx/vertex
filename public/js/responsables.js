@@ -1,5 +1,6 @@
 // Responsables de Sección del Coordinador de Zona: resumen + alta/edición con mapa.
 // Se asigna una sola sección de la zona; cada sección admite un solo responsable.
+import { downloadBackup } from './eliminar.js';
 import { ICONS, $, esc, fmtNum, fmtSeccion, api, fieldErrorSetter, submitWith, toast, homeControl, navigate } from './lib.js';
 import { I, generatePassword, debounce, showAccessDialog } from './coordinador.js';
 import { baseMap, seccionesGeo } from './zonas.js';
@@ -439,13 +440,70 @@ export function mountResponsable(root, route) {
     baseSetErrors(errs);
     if (errs.territorio && Object.keys(errs).length === 1) $('#rTerr-err', root).scrollIntoView({ block: 'center', behavior: 'smooth' });
   };
+  // Cambio de sección con promotores o promovidos: transferirlos o respaldarlos y borrarlos
+  let decision = null;
+  const pedirDecision = (d) => {
+    let box = $('#rDecision', root);
+    if (!box) {
+      box = document.createElement('section');
+      box.id = 'rDecision';
+      box.className = 'card dep-decision';
+      $('#rFormErr', root).before(box);
+    }
+    box.innerHTML = `
+      <h3>Antes de cambiarlo de sección</h3>
+      <p>Tiene <strong>${fmtNum(d.promotores)} ${d.promotores === 1 ? 'promotor' : 'promotores'}</strong> y <strong>${fmtNum(d.promovidos)} ${d.promovidos === 1 ? 'promovido' : 'promovidos'}</strong> en su sección actual. Elige qué pasa con ellos:</p>
+      ${
+        d.destinos.length
+          ? `<label class="dep-op"><input type="radio" name="depModo" value="transferir"><span><strong>Transferirlos a otro Responsable de tu zona</strong><small>Sus promotores y promovidos pasan a quien elijas.</small></span></label>
+        <div class="field dep-destino" hidden><label for="depDestino">Responsable que los recibe</label>
+          <select class="input" id="depDestino"><option value="">Elige…</option>${d.destinos
+            .map((x) => `<option value="${x.id}">${esc(x.name)}${x.secciones.length ? ` · Sección ${x.secciones.map(fmtSeccion).join(', ')}` : ''}</option>`)
+            .join('')}</select><p class="field__error" id="depDestino-err"></p></div>`
+          : ''
+      }
+      <label class="dep-op"><input type="radio" name="depModo" value="borrar"><span><strong>Respaldar y borrarlos</strong><small>Primero se descarga un respaldo (obligatorio); después se borran sus promotores y promovidos.</small></span></label>
+      <div class="dep-respaldo" hidden><button class="btn btn--secondary" type="button" id="depRespaldo">Descargar respaldo</button><span class="muted" id="depRespaldoOk"></span></div>
+      <p class="muted">Después pulsa «Guardar cambios».</p>`;
+    box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    box.addEventListener('change', (e) => {
+      if (e.target.name !== 'depModo') return;
+      decision = { dependientes: e.target.value };
+      $('.dep-destino', box) && ($('.dep-destino', box).hidden = e.target.value !== 'transferir');
+      $('.dep-respaldo', box).hidden = e.target.value !== 'borrar';
+    });
+    $('#depRespaldo', box).addEventListener('click', async (e) => {
+      e.currentTarget.disabled = true;
+      try {
+        const nombre = await downloadBackup(id);
+        $('#depRespaldoOk', box).textContent = `Descargado: ${nombre}`;
+      } catch (err) {
+        $('#depRespaldoOk', box).textContent = err.message;
+        e.currentTarget.disabled = false;
+      }
+    });
+  };
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = { ...Object.fromEntries(new FormData(form)), secciones: [...sel] };
+    if (decision) {
+      Object.assign(body, decision);
+      if (decision.dependientes === 'transferir') body.destinoId = $('#depDestino', root)?.value || '';
+    }
     const label = editing ? 'Guardar cambios' : 'Guardar y crear cuenta';
-    const saved = await submitWith(form, label, 'Guardando…', setErrors, $('#rFormErr', root), () =>
-      api(editing ? `/api/responsables/${id}` : '/api/responsables', { method: editing ? 'PUT' : 'POST', body })
-    );
+    const saved = await submitWith(form, label, 'Guardando…', setErrors, $('#rFormErr', root), async () => {
+      try {
+        return await api(editing ? `/api/responsables/${id}` : '/api/responsables', { method: editing ? 'PUT' : 'POST', body });
+      } catch (err) {
+        if (err.data?.requiereDecision) {
+          pedirDecision(err.data);
+          return null;
+        }
+        if (err.data?.fields?.destinoId) $('#depDestino-err', root).textContent = err.data.fields.destinoId;
+        throw err;
+      }
+    });
     if (!saved) return;
     if (body.password) {
       const n = saved.territorio.secciones.length;

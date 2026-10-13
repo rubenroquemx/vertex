@@ -33,6 +33,8 @@ import { viewEscritorioZona, mountEscritorioZona } from './escritorio-zona.js';
 import { viewEscritorioSeccion, mountEscritorioSeccion } from './escritorio-seccion.js';
 import { viewRevision, mountRevision } from './revision.js';
 import { viewEscritorioPromotor } from './escritorio-promotor.js';
+import { viewPendientes, mountPendientes } from './pendientes.js';
+import { sesion, pendientes as pendientesLocales, iniciarSincronizacion, prepararSinConexion, borrarDatosLocales, esErrorDeRed } from './offline.js';
 import { viewNotificaciones, mountNotificaciones, iniciarCampana, actualizarContador } from './notificaciones.js';
 import { viewNuevoPromovido, mountNuevoPromovido, viewPromovidos, viewPromovido, mountPromovido } from './promovidos.js';
 
@@ -1945,16 +1947,42 @@ logoutBtn.innerHTML = `${ICONS.logout}<span>Cerrar sesión</span>`;
 $('#topLogout').innerHTML = ICONS.logout;
 $('#topLogout').addEventListener('click', () => logoutBtn.click());
 logoutBtn.addEventListener('click', async () => {
+  // Con promovidos guardados en el teléfono sin enviar, primero se avisa (se borrarían)
+  if (state.me?.role?.key === 'promotor' && (await pendientesLocales.todos(sesion.userId)).length) {
+    navigate('/pendientes?salir');
+    return;
+  }
   logoutBtn.disabled = true;
+  await borrarDatosLocales();
+  localStorage.removeItem(ME_LOCAL);
   await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
   location.href = '/';
 });
 
+// Última sesión conocida: permite abrir la app sin internet (solo para capturar)
+const ME_LOCAL = 'vx:me';
+const leerMe = () => {
+  try {
+    return JSON.parse(localStorage.getItem(ME_LOCAL) || 'null');
+  } catch {
+    return null;
+  }
+};
+
 async function boot() {
   try {
     state.me = await api('/api/me');
+    try {
+      localStorage.setItem(ME_LOCAL, JSON.stringify(state.me));
+    } catch {}
   } catch (err) {
-    if (err.status === 401) {
+    // Sin internet: el Promotor Territorial entra con su última sesión para capturar sin conexión
+    const guardado = esErrorDeRed(err) ? leerMe() : null;
+    if (guardado?.role?.key === 'promotor') {
+      state.me = guardado;
+      state.sinConexion = true;
+    } else if (err.status === 401) {
+      localStorage.removeItem(ME_LOCAL);
       await showLogin();
       $('#boot').hidden = true;
     } else {
@@ -1963,7 +1991,7 @@ async function boot() {
       $('#bootMsg').innerHTML = `<strong>No se pudo conectar</strong><br>${esc(navigator.onLine ? err.message : 'Sin conexión. Revisa tu internet.')}
         <br><button class="btn btn--sm" type="button" onclick="location.reload()">Reintentar</button>`;
     }
-    return;
+    if (!state.sinConexion) return;
   }
   // Sesión válida: ahora sí se muestra el panel
   $('#boot').hidden = true;
@@ -2017,6 +2045,25 @@ async function boot() {
   if (!state.campana) {
     state.campana = true;
     iniciarCampana();
+  }
+  // Promotor Territorial: captura sin internet (pendientes en el teléfono y envío automático)
+  if (state.me.role.key === 'promotor') {
+    sesion.userId = state.me.user.id;
+    state.routes.set('/pendientes', { path: '/pendientes', title: 'Por enviar', view: viewPendientes, mount: mountPendientes });
+    const chip = $('#topPend');
+    const pintarPendientes = async () => {
+      const n = (await pendientesLocales.todos(sesion.userId)).length;
+      chip.hidden = !n;
+      chip.innerHTML = `${ICONS.upload}<span>${fmtNum(n)}</span>`;
+      chip.title = chip.ariaLabel = `${fmtNum(n)} ${n === 1 ? 'promovido por enviar' : 'promovidos por enviar'}`;
+    };
+    window.addEventListener('vx:pendientes', pintarPendientes);
+    pintarPendientes();
+    iniciarSincronizacion(sesion.userId, (r) => {
+      if (r.enviados) toast(`${fmtNum(r.enviados)} ${r.enviados === 1 ? 'promovido capturado sin internet se envió' : 'promovidos capturados sin internet se enviaron'}`);
+      if (r.errores) toast(`${fmtNum(r.errores)} ${r.errores === 1 ? 'promovido no se pudo enviar' : 'promovidos no se pudieron enviar'}: revísalos en «Por enviar»`);
+    });
+    if (!state.sinConexion) prepararSinConexion(api);
   }
   renderUser(state.me);
   renderGodBanner(state.me);

@@ -3,6 +3,7 @@
 import { ICONS, $, esc, fmtNum, fmtSeccion, fmtDate, fmtDateTime, fmtPhone, api, fieldErrorSetter, toast, navigate } from './lib.js';
 import { I, debounce } from './coordinador.js';
 import { camaraDisponible, abrirCamara, ajustarEnGuia } from './ine-camara.js';
+import { kv, pendientes, sesion, buscarCPLocal, esErrorDeRed, sincronizar, pedirEnvioEnSegundoPlano } from './offline.js';
 
 const sinSeccion = (msg, titulo = 'Aún no puedes capturar promovidos') => `
   <div class="empty">
@@ -88,10 +89,19 @@ export async function viewNuevoPromovido(route, params = []) {
   } else {
     try {
       ctx = await api('/api/promovidos/contexto');
+      kv.set('contexto', ctx);
     } catch (err) {
       if (err.status === 409) return sinSeccion(err.message);
-      throw err;
+      // Sin internet: se captura con el contexto guardado la última vez que hubo señal
+      ctx = esErrorDeRed(err) ? await kv.get('contexto') : null;
+      if (!ctx) {
+        if (esErrorDeRed(err)) return sinSeccion('Para capturar sin internet, primero abre la app una vez con conexión.', 'Sin conexión');
+        throw err;
+      }
     }
+    // Corrección de un promovido guardado en el teléfono que el servidor rechazó
+    const idPendiente = new URLSearchParams(location.search).get('pendiente');
+    route.pendiente = idPendiente ? (await pendientes.get(idPendiente)) || null : null;
   }
   route.ctx = ctx;
   return `
@@ -101,6 +111,7 @@ export async function viewNuevoPromovido(route, params = []) {
         <p class="wiz-bar__label" id="wizLabel">Paso 1 de ${PASOS.length} · ${PASOS[0]}</p>
       </div>
 
+      <div class="wiz-aviso" id="wizAviso" hidden></div>
       <form id="promoForm" novalidate>
         <section class="card wiz-step" data-paso="1" aria-label="Paso 1: ${PASOS[0]}">
           <p class="wiz-step__help">${editando ? 'La foto guardada se conserva; tómala o cárgala de nuevo solo si quieres reemplazarla.' : 'Toma o carga la foto del frente de la INE y encuádrala en la guía: se guarda solo lo que queda dentro del marco.'}</p>
@@ -332,7 +343,8 @@ export function mountNuevoPromovido(root, route) {
     if (v.length !== 5) return limpiarCP();
     sel.innerHTML = '<option value="">Buscando…</option>';
     try {
-      const r = await api(`/api/cp/${v}`);
+      // Primero el catálogo guardado en el teléfono (funciona sin internet); si no está, el servidor
+      const r = (await buscarCPLocal(v)) || (await api(`/api/cp/${v}`));
       if (cp.value !== v) return;
       cpInfo = r;
       err('pCp', '');
@@ -355,8 +367,8 @@ export function mountNuevoPromovido(root, route) {
       }
     } catch (e) {
       if (cp.value !== v) return;
-      limpiarCP('Código postal no encontrado');
-      err('pCp', e.status === 404 ? 'No encontramos ese código postal.' : e.message);
+      limpiarCP(esErrorDeRed(e) ? 'Sin internet' : 'Código postal no encontrado');
+      err('pCp', e.status === 404 ? 'No encontramos ese código postal.' : esErrorDeRed(e) ? 'Sin internet no se puede buscar este código postal; revisa que sea de tu estado.' : e.message);
     }
   }, 250);
   cp.addEventListener('input', buscar);
@@ -494,46 +506,53 @@ export function mountNuevoPromovido(root, route) {
     }
   }
 
-  // ---------- Guardar ----------
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (paso !== ULTIMO) return;
-    const btn = form.querySelector('[type="submit"]');
-    const body = {
-      ...Object.fromEntries(new FormData(form)),
-      // Al editar solo se envían las fotos reemplazadas
-      ineFrente: fotos.ineFrente,
-      ineReverso: fotos.ineReverso,
-      localidad: localidad(),
-    };
-    const etiqueta = actual ? 'Guardar cambios' : 'Guardar promovido';
-    formErr.textContent = '';
-    btn.disabled = true;
-    btn.textContent = 'Guardando…';
-    let saved = null;
-    try {
-      saved = actual
-        ? await api(`/api/promovidos/${actual.id}`, { method: 'PUT', body })
-        : await api('/api/promovidos', { method: 'POST', body });
-    } catch (err) {
-      const f = err.data?.fields;
-      if (f && Object.keys(f).length) {
-        // Regresa al primer paso con error y lo marca
-        ir(Math.min(...Object.keys(f).map((k) => PASO_DE[k] || ULTIMO)));
-        setErrors(f);
-      } else formErr.textContent = navigator.onLine ? err.message : 'Sin conexión. Intenta de nuevo cuando estés en línea.';
-    } finally {
-      btn.disabled = false;
-      btn.textContent = etiqueta;
+  // ---------- Captura sin internet: borrador automático y corrección de pendientes ----------
+  // Lo escrito (y las fotos) se guarda en el teléfono mientras se captura: si la app se cierra,
+  // al volver se recupera.
+  const nueva = !actual;
+  const pendiente = route.pendiente || null;
+  const campos = () => Object.fromEntries([...new FormData(form)].filter(([, v]) => typeof v === 'string'));
+  const instantanea = () => ({ campos: campos(), fotos: { ...fotos }, localidad: localidad(), paso });
+  const restaurar = (snap) => {
+    for (const [k, v] of Object.entries(snap.campos || {})) {
+      const el = form.elements.namedItem(k);
+      if (el && 'value' in el && el.type !== 'file') el.value = v;
     }
-    if (!saved) return;
-    if (actual) {
-      toast(saved.cambios ? 'Cambios guardados' : 'No hubo cambios que guardar');
-      navigate(`/promovidos/${actual.id}`);
-      return;
+    if (snap.fotos?.ineFrente) ponerFoto('pFrente', snap.fotos.ineFrente);
+    if (snap.fotos?.ineReverso) ponerFoto('pReverso', snap.fotos.ineReverso);
+    localidadInicial = snap.localidad || '';
+    if (cp.value) cp.dispatchEvent(new Event('input'));
+  };
+  let guardarBorrador = () => {};
+  const aviso = $('#wizAviso', root);
+  if (nueva && pendiente) {
+    restaurar(pendiente.snapshot);
+    aviso.innerHTML = `<div class="notice notice--error">${ICONS.alert}<div><strong>Corrige este promovido guardado en tu teléfono.</strong> ${esc(pendiente.error || '')}</div></div>`;
+    aviso.hidden = false;
+    if (pendiente.fields) {
+      setErrors(pendiente.fields);
+      ir(Math.min(...Object.keys(pendiente.fields).map((k) => PASO_DE[k] || ULTIMO)));
     }
-    toast(`Promovido registrado (en revisión): ${saved.nombre}`);
-    // Listo para la siguiente captura
+  } else if (nueva) {
+    guardarBorrador = debounce(() => kv.set('borrador', { ...instantanea(), ownerId: sesion.userId, guardado: new Date().toISOString() }), 500);
+    form.addEventListener('input', guardarBorrador);
+    form.addEventListener('change', guardarBorrador);
+    form.addEventListener('click', () => setTimeout(guardarBorrador, 0));
+    kv.get('borrador').then((b) => {
+      if (!b || b.ownerId !== sesion.userId) return;
+      restaurar(b);
+      if (b.paso) ir(Math.min(b.paso, ULTIMO));
+      aviso.innerHTML = `<div class="notice">${ICONS.alert}<div><strong>Recuperamos la captura que no terminaste.</strong>
+        <button type="button" class="link-btn" id="wizDescartar">Empezar de nuevo</button></div></div>`;
+      aviso.hidden = false;
+      $('#wizDescartar', root).addEventListener('click', () => {
+        kv.del('borrador');
+        aviso.hidden = true;
+        limpiarTodo();
+      });
+    });
+  }
+  function limpiarTodo() {
     form.reset();
     fotos.ineFrente = fotos.ineReverso = null;
     root.querySelectorAll('.ine-preview').forEach((b) => {
@@ -544,6 +563,102 @@ export function mountNuevoPromovido(root, route) {
     limpiarCP();
     setErrors();
     ir(1);
+  }
+
+  // Guarda la captura en el teléfono para enviarla cuando haya internet
+  async function guardarEnTelefono(body) {
+    // Una persona no puede estar dos veces entre los pendientes
+    const dup = (await pendientes.todos(sesion.userId)).find(
+      (p) => p.clientId !== body.clientId && (p.body.claveElector === body.claveElector || p.body.curp === body.curp)
+    );
+    if (dup) {
+      formErr.textContent = `Esta persona ya está guardada en tu teléfono para enviarse (${dup.nombre}).`;
+      return false;
+    }
+    await pendientes.poner({
+      clientId: body.clientId,
+      ownerId: sesion.userId,
+      nombre: [body.nombres, body.paterno, body.materno].filter(Boolean).join(' ').toUpperCase(),
+      creado: pendiente?.creado || body.capturadoAt,
+      estado: 'pendiente',
+      error: null,
+      fields: null,
+      body,
+      snapshot: instantanea(),
+    });
+    pedirEnvioEnSegundoPlano();
+    return true;
+  }
+
+  // ---------- Guardar ----------
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (paso !== ULTIMO) return;
+    const btn = form.querySelector('[type="submit"]');
+    const body = {
+      ...campos(),
+      // Al editar solo se envían las fotos reemplazadas
+      ineFrente: fotos.ineFrente,
+      ineReverso: fotos.ineReverso,
+      localidad: localidad(),
+    };
+    if (nueva) {
+      // Identificador propio de la captura: si el envío se repite, el servidor no la duplica
+      body.clientId = pendiente?.clientId || route.clientId || (route.clientId = crypto.randomUUID());
+      body.capturadoAt = pendiente?.body?.capturadoAt || new Date().toISOString();
+    }
+    const etiqueta = actual ? 'Guardar cambios' : 'Guardar promovido';
+    formErr.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+    let saved = null;
+    let enTelefono = false;
+    try {
+      if (nueva && !navigator.onLine) throw Object.assign(new Error('Sin conexión'), { status: 0 });
+      saved = actual
+        ? await api(`/api/promovidos/${actual.id}`, { method: 'PUT', body })
+        : await api('/api/promovidos', { method: 'POST', body });
+    } catch (err) {
+      const f = err.data?.fields;
+      if (nueva && esErrorDeRed(err)) {
+        // Sin internet: se guarda en el teléfono y se envía solo al recuperar la señal
+        enTelefono = await guardarEnTelefono(body);
+      } else if (f && Object.keys(f).length) {
+        // Regresa al primer paso con error y lo marca
+        ir(Math.min(...Object.keys(f).map((k) => PASO_DE[k] || ULTIMO)));
+        setErrors(f);
+      } else formErr.textContent = esErrorDeRed(err) ? 'Sin conexión: para editar necesitas internet.' : err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = etiqueta;
+    }
+    if (enTelefono) {
+      kv.del('borrador');
+      route.clientId = null;
+      toast('Sin internet: guardado en tu teléfono. Se enviará solo al recuperar la señal.');
+      if (pendiente) return navigate('/pendientes');
+      limpiarTodo();
+      return;
+    }
+    if (!saved) return;
+    if (pendiente) {
+      // El pendiente corregido ya se envió
+      await pendientes.quitar(pendiente.clientId);
+      kv.del('borrador');
+      toast(`Promovido enviado: ${saved.nombre}`);
+      sincronizar(sesion.userId);
+      return navigate('/pendientes');
+    }
+    if (actual) {
+      toast(saved.cambios ? 'Cambios guardados' : 'No hubo cambios que guardar');
+      navigate(`/promovidos/${actual.id}`);
+      return;
+    }
+    toast(`Promovido registrado (en revisión): ${saved.nombre}`);
+    // Listo para la siguiente captura
+    kv.del('borrador');
+    route.clientId = null;
+    limpiarTodo();
   });
 
   // Al salir de la pantalla se apaga la cámara
@@ -573,9 +688,27 @@ const GRUPOS = [
   { clave: 'aprobado', titulo: 'Aprobados', clase: 'is-aprobado' },
 ];
 const grupoDe = (p) => (p.estatus === 'validado' ? 'aprobado' : p.estatus === 'rechazado' || p.conObservaciones ? 'observaciones' : 'revision');
+// Aviso de promovidos guardados en el teléfono sin enviar
+async function avisoPendientes() {
+  const n = (await pendientes.todos(sesion.userId)).length;
+  return n
+    ? `<a class="pend-aviso" href="/pendientes" data-link>${ICONS.upload}<span><strong>${fmtNum(n)}</strong> ${n === 1 ? 'promovido guardado' : 'promovidos guardados'} en tu teléfono por enviar</span><span aria-hidden="true">›</span></a>`
+    : '';
+}
+
 export async function viewPromovidos() {
-  const lista = await api('/api/promovidos');
+  let lista;
+  try {
+    lista = await api('/api/promovidos');
+  } catch (err) {
+    if (!esErrorDeRed(err)) throw err;
+    return `${await avisoPendientes()}
+      <div class="empty"><span aria-hidden="true">${ICONS.alert}</span><strong>Sin internet</strong>
+        <span>La lista se verá cuando recuperes la señal. Mientras tanto puedes seguir capturando: se guarda en tu teléfono.</span>
+        <a class="btn btn--sm" href="/promovidos/nuevo" data-link>${ICONS.plus}<span>Capturar promovido</span></a></div>`;
+  }
   return `
+    ${await avisoPendientes()}
     <div class="promo-lista__acciones">
       <a class="btn promo-new" href="/promovidos/nuevo" data-link>${ICONS.plus}<span>Nuevo promovido</span></a>
     </div>

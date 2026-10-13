@@ -2,6 +2,7 @@
 // su actividad de 14 días, su lugar en la sección, su Responsable y sus capturas recientes.
 import { ICONS, esc, fmtNum, fmtSeccion, fmtDateTime, api } from './lib.js';
 import { I } from './coordinador.js';
+import { pendientes, sesion, esErrorDeRed } from './offline.js';
 
 const ESTADO = {
   validado: { t: 'Aprobado', c: '#16a34a' },
@@ -62,7 +63,26 @@ const contacto = (nombre, phone) => {
 };
 
 export async function viewEscritorioPromotor() {
-  const d = await api('/api/escritorio/promotor');
+  const n = (await pendientes.todos(sesion.userId)).length;
+  const porEnviar = n
+    ? `<a class="pend-aviso" href="/pendientes" data-link>${ICONS.upload}<span><strong>${fmtNum(n)}</strong> ${n === 1 ? 'promovido guardado' : 'promovidos guardados'} en tu teléfono por enviar</span><span aria-hidden="true">›</span></a>`
+    : '';
+  let d;
+  try {
+    d = await api('/api/escritorio/promotor');
+  } catch (err) {
+    if (!esErrorDeRed(err)) throw err;
+    // Sin internet: lo esencial para seguir capturando
+    return `<div class="ep">
+      <section class="ep-hero ep-hero--sin"><div class="ep-hero__txt">
+        <p class="ep-hero__label">Sin internet</p>
+        <p class="ep-hero__titulo">Puedes seguir capturando</p>
+        <p class="ep-hero__sub">Lo que captures se guarda en tu teléfono y se envía solo cuando recuperes la señal.</p>
+      </div></section>
+      <a class="btn ep-capturar" href="/promovidos/nuevo" data-link>${ICONS.plus}<span>Capturar promovido</span></a>
+      ${porEnviar}
+    </div>`;
+  }
   const e = d.estatus;
   const cumplida = d.total >= d.meta;
   const delta = d.serie.semana - d.serie.semanaAnterior;
@@ -146,6 +166,7 @@ export async function viewEscritorioPromotor() {
   return `
     <div class="ep">
       ${hero}
+      ${porEnviar}
       ${corregir}
       ${resumen}
       <div class="ep-cols">${act}<div class="ep-col">${responsable}${recientes}</div></div>

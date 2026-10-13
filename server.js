@@ -493,6 +493,14 @@ const promovidoError = (res, err) => {
 };
 
 // Código postal → estado, municipio y localidades (catálogo SEPOMEX local, sin servicios externos)
+// Catálogo de CP del estado de la sección del promotor (autollenado sin internet)
+app.get('/api/cp/estado/:entidad', requireUser, async (req, res) => {
+  const c = await promovidos.catalogoCP(req.params.entidad);
+  if (!c || !c.total) return res.status(404).json({ error: 'Estado no encontrado' });
+  res.set('Cache-Control', 'private, max-age=86400');
+  res.json(c);
+});
+
 app.get('/api/cp/:cp', requireUser, async (req, res) => {
   const r = await promovidos.buscaCP(req.params.cp);
   if (!r) return res.status(404).json({ error: 'No encontramos ese código postal.' });

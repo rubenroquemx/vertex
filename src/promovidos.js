@@ -32,6 +32,25 @@ class PromovidoError extends Error {
 let mxcp = null;
 const cpLib = async () => (mxcp ||= await import('@webrek/mx-cp'));
 
+// Catálogo de códigos postales de un estado, para capturar sin internet (se arma una sola vez)
+const catalogos = new Map();
+async function catalogoCP(entidad) {
+  const clave = String(Number(entidad)).padStart(2, '0');
+  if (!/^\d{2}$/.test(clave) || clave === '00') return null;
+  if (catalogos.has(clave)) return catalogos.get(clave);
+  const lib = await cpLib();
+  const cps = {};
+  for (let m = 1; m <= 600; m++) {
+    for (const cp of await lib.cpsDeMunicipio(`${clave}${String(m).padStart(3, '0')}`)) {
+      const r = await lib.buscaCP(cp);
+      if (r) cps[cp] = [r.municipio, r.estado, r.ciudad || '', r.asentamientos.map((a) => [a.nombre, a.tipo])];
+    }
+  }
+  const out = { entidad: Number(clave), total: Object.keys(cps).length, cps };
+  catalogos.set(clave, out);
+  return out;
+}
+
 async function buscaCP(cp) {
   const c = String(cp || '').trim();
   if (!/^\d{5}$/.test(c)) return null;
@@ -164,8 +183,27 @@ async function validar(promotor, body, { excluirId = null } = {}) {
   };
 }
 
+// Capturas hechas sin internet: cada una trae un identificador del teléfono (clientId). Si el envío
+// se repite (p. ej. se cortó la señal después de guardarse), se responde con el registro ya creado.
+const CLIENT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function crear(promotor, body) {
+  const clientId = CLIENT_ID_RE.test(String(body.clientId || '')) ? String(body.clientId).toLowerCase() : null;
+  if (clientId) {
+    const { rows } = await query(
+      "SELECT id, data, seccion, estatus, created_at FROM promovidos WHERE promotor_id = $1 AND data->>'clientId' = $2",
+      [promotor.id, clientId]
+    );
+    if (rows[0]) {
+      const r = rows[0];
+      return { id: r.id, nombre: nombreCompleto(r.data), seccion: r.seccion, estatus: r.estatus, createdAt: r.created_at.toISOString(), repetido: true };
+    }
+  }
   const v = await validar(promotor, body);
+  if (clientId) v.data.clientId = clientId;
+  // Fecha real de la captura en el teléfono (si fue sin internet), sin aceptar fechas futuras ni muy viejas
+  const capturado = Date.parse(body.capturadoAt || '');
+  if (clientId && capturado && capturado <= Date.now() && Date.now() - capturado < 60 * 86400000) v.data.capturadoAt = new Date(capturado).toISOString();
   const id = crypto.randomUUID();
   let createdAt;
   try {
@@ -504,6 +542,7 @@ async function bandeja(rs) {
 }
 
 module.exports = {
+  catalogoCP,
   revisar,
   bandeja,
   siguientePendiente,

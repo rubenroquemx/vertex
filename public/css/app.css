@@ -2387,3 +2387,35 @@ a.ec-kpi:hover { box-shadow: var(--shadow-card), inset 0 0 0 1px var(--color-bor
 .ep-lista > li, .ep-item > * { min-width: 0; }
 .ep-item__top .estatus { flex-shrink: 0; }
 .ep-corregir .dash-card__head { flex-wrap: nowrap; }
+
+/* ---------- Captura sin internet ---------- */
+.topbar__pend { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; text-decoration: none; flex-shrink: 0; }
+.topbar__pend[hidden] { display: none; }
+.topbar__pend svg { width: 16px; height: 16px; }
+.pend-aviso { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-md) var(--space-lg); margin-bottom: var(--space-lg); border-radius: 14px; background: #fef3c7; color: #78350f; text-decoration: none; font-size: 14px; }
+.ep .pend-aviso { margin: 0; }
+.pend-aviso svg { width: 20px; height: 20px; flex-shrink: 0; }
+.pend-aviso span:nth-child(2) { flex: 1; }
+.pend-aviso span:last-child { font-size: 22px; }
+.ep-hero--sin { grid-template-columns: minmax(0, 1fr); background: #44403c; }
+.wiz-aviso { margin-bottom: var(--space-lg); }
+.wiz-aviso[hidden] { display: none; }
+.wiz-aviso .notice { margin: 0; }
+.notice--error { background: #fef2f2; color: #7f1d1d; }
+.pend { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-lg); }
+.pend > * { min-width: 0; margin: 0; }
+.pend-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-lg); }
+.pend-head__n { margin: 0 0 4px; font-size: 16px; }
+.pend-head__n strong { font-size: 22px; }
+.pend-head .muted { margin: 0; font-size: 13px; }
+.pend-err { margin: 6px 0 0; font-size: 13px; font-weight: 700; color: #b91c1c; }
+.pend-lista .promo-item { flex: 1; min-width: 0; }
+.pend-msg { font-size: 12px; color: #b91c1c; }
+.pend-acc { display: flex; gap: 6px; padding-right: var(--space-lg); flex-shrink: 0; }
+.pend__salir { margin-top: var(--space-md); }
+@media (max-width: 767px) {
+  .pend-lista { margin: 0 calc(-1 * var(--space-xl)); }
+  .pend-lista .promo-fila { flex-wrap: wrap; }
+  .pend-acc { width: 100%; padding: 0 var(--space-lg) var(--space-md) 66px; }
+  .pend-head .btn { width: 100%; }
+}

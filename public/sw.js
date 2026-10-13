@@ -1,6 +1,6 @@
 // Service worker de VERTEX
 // Incrementa la versión al cambiar archivos del "app shell".
-const VERSION = 'v79';
+const VERSION = 'v81';
 const CACHE = `vertex-${VERSION}`;
 const APP_SHELL = [
   '/',
@@ -24,6 +24,8 @@ const APP_SHELL = [
   '/js/escritorio-seccion.js',
   '/js/revision.js',
   '/js/escritorio-promotor.js',
+  '/js/offline.js',
+  '/js/pendientes.js',
   '/manifest.webmanifest',
   '/icons/icon.svg',
   '/icons/icon-192.png',
@@ -59,22 +61,111 @@ self.addEventListener('fetch', (event) => {
   // API: siempre red (los datos no se cachean aquí)
   if (url.pathname.startsWith('/api/')) return;
 
-  // Navegación: red primero, con respaldo al shell en caché (SPA offline)
+  // Navegación: red primero, con respaldo al shell en caché (SPA offline). Con señal débil no
+  // se espera más de 4 s: se abre la versión guardada para poder capturar.
   if (request.mode === 'navigate') {
-    event.respondWith(fetch(request, { cache: 'no-cache' }).catch(() => caches.match('/index.html')));
+    event.respondWith(redOCache(request, '/index.html'));
     return;
   }
 
   // Estáticos: red primero (siempre la versión más reciente en línea), caché si no hay conexión
-  event.respondWith(
-    fetch(request, { cache: 'no-cache' })
-      .then((res) => {
-        if (res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(request, copy));
-        }
-        return res;
-      })
-      .catch(() => caches.match(request))
-  );
+  event.respondWith(redOCache(request));
 });
+
+// Red primero; si no hay red, o tarda más de 4 s y ya hay copia guardada, se usa la caché.
+// La respuesta de la red, cuando llega, actualiza la caché de los estáticos.
+function redOCache(request, respaldo = null) {
+  const red = fetch(request, { cache: 'no-cache' }).then((res) => {
+    if (res.ok && !respaldo) {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(request, copy));
+    }
+    return res;
+  });
+  return new Promise((ok, fail) => {
+    let listo = false;
+    const usar = (r) => {
+      if (!listo) {
+        listo = true;
+        ok(r);
+      }
+    };
+    const t = setTimeout(async () => {
+      const c = await caches.match(respaldo || request);
+      if (c) usar(c);
+    }, 4000);
+    red.then(
+      (r) => {
+        clearTimeout(t);
+        usar(r);
+      },
+      async (e) => {
+        clearTimeout(t);
+        const c = await caches.match(respaldo || request);
+        if (c) usar(c);
+        else if (!listo) {
+          listo = true;
+          fail(e);
+        }
+      }
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Envío en segundo plano de los promovidos capturados sin internet (Android/Chrome).
+// Misma base que public/js/offline.js (vertex-offline · pendientes).
+// ---------------------------------------------------------------------------
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'vx-pendientes') event.waitUntil(enviarPendientes());
+});
+
+function idb() {
+  return new Promise((ok, fail) => {
+    const req = indexedDB.open('vertex-offline', 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('pendientes')) db.createObjectStore('pendientes', { keyPath: 'clientId' });
+      if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+    };
+    req.onsuccess = () => ok(req.result);
+    req.onerror = () => fail(req.error);
+  });
+}
+function operar(db, modo, fn) {
+  return new Promise((ok, fail) => {
+    const t = db.transaction('pendientes', modo);
+    const r = fn(t.objectStore('pendientes'));
+    t.oncomplete = () => ok(r && r.result);
+    t.onerror = () => fail(t.error);
+  });
+}
+
+async function enviarPendientes() {
+  const db = await idb();
+  const lista = ((await operar(db, 'readonly', (s) => s.getAll())) || []).filter((p) => p.estado !== 'error').sort((a, b) => a.creado.localeCompare(b.creado));
+  let cambios = false;
+  for (const p of lista) {
+    let r;
+    try {
+      r = await fetch('/api/promovidos', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p.body) });
+    } catch (err) {
+      // Sin señal todavía: el navegador reintentará
+      throw err;
+    }
+    if (r.ok) {
+      await operar(db, 'readwrite', (s) => s.delete(p.clientId));
+      cambios = true;
+    } else if (r.status === 401 || r.status >= 500) {
+      break; // se envía al abrir la app (sesión) o en el siguiente intento
+    } else {
+      const data = await r.json().catch(() => ({}));
+      const detalle = data.fields ? Object.values(data.fields)[0] : null;
+      await operar(db, 'readwrite', (s) => s.put({ ...p, estado: 'error', error: detalle || data.error || 'No se pudo guardar', fields: data.fields || null }));
+      cambios = true;
+    }
+  }
+  if (cambios) {
+    for (const c of await self.clients.matchAll({ type: 'window' })) c.postMessage({ tipo: 'pendientes' });
+  }
+}

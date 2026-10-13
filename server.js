@@ -17,6 +17,7 @@ const branch = require('./src/branch');
 const zonas = require('./src/zonas');
 const escritorio = require('./src/escritorio');
 const escritorioZona = require('./src/escritorio-zona');
+const escritorioPromotor = require('./src/escritorio-promotor');
 const responsables = require('./src/responsables');
 const metas = require('./src/metas');
 const panelSeccion = require('./src/panel-seccion');
@@ -619,6 +620,10 @@ app.get('/api/panel/seccion', requireUser, (req, res) => {
 });
 
 // Escritorio del CPV: cifras agregadas de su estructura
+app.get('/api/escritorio/promotor', requireUser, requirePromotor, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await escritorioPromotor.promotor(req.user));
+});
 app.get('/api/escritorio/zona', requireUser, requireRole('coord_zona'), async (req, res) => res.json(await escritorioZona.zona(req.user)));
 app.get('/api/escritorio/cpv', requireUser, requireCPV, async (req, res) => res.json(await escritorio.cpv(req.user)));
 

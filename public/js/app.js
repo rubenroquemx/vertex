@@ -32,6 +32,7 @@ import { viewPanelSA, mountPanelSA } from './panel-sa.js';
 import { viewEscritorioZona, mountEscritorioZona } from './escritorio-zona.js';
 import { viewEscritorioSeccion, mountEscritorioSeccion } from './escritorio-seccion.js';
 import { viewRevision, mountRevision } from './revision.js';
+import { viewEscritorioPromotor } from './escritorio-promotor.js';
 import { viewNotificaciones, mountNotificaciones, iniciarCampana, actualizarContador } from './notificaciones.js';
 import { viewNuevoPromovido, mountNuevoPromovido, viewPromovidos, viewPromovido, mountPromovido } from './promovidos.js';
 
@@ -78,6 +79,8 @@ function buildMenu(me) {
           ? { path: '/', title: 'Panel', icon: 'dashboard', view: viewPanelSA, mount: mountPanelSA }
           : key === 'coord_zona'
             ? { path: '/', title: 'Panel', icon: 'dashboard', view: viewEscritorioZona, mount: mountEscritorioZona }
+            : key === 'promotor'
+              ? { path: '/', title: 'Panel', icon: 'dashboard', view: viewEscritorioPromotor }
         : { path: '/', title: 'Panel', icon: 'dashboard', view: () => DASHBOARDS[key](me) };
   const groups = [{ label: 'General', items: [inicio] }];
 

@@ -17,6 +17,7 @@ const { chainOf } = require('./access');
 const { fmtSeccion } = require('./formato');
 const { notificar } = require('./notificaciones');
 const { comprimir } = require('./fotos');
+const privacidad = require('./privacidad');
 
 // Jornada electoral: la INE debe estar vigente ese año para poder votar
 const ELECCION = { anio: 2027, texto: '6 de junio de 2027' };
@@ -144,6 +145,9 @@ async function validar(promotor, body, { excluirId = null } = {}) {
   if (calle.length < 2) errors.calle = 'Escribe la calle.';
   if (!numExt) errors.numExt = 'Escribe el número exterior (o S/N).';
 
+  // Aviso de privacidad: al capturar, la persona debe conocerlo y consentir el tratamiento de sus datos
+  if (!excluirId && body.consentimiento !== true) errors.consentimiento = 'Confirma que la persona conoce el aviso de privacidad y da su consentimiento.';
+
   if (Object.keys(errors).length) throw new PromovidoError('Revisa los datos marcados', 422, errors);
 
   // Duplicados: una persona solo una vez en todo el sistema
@@ -163,6 +167,7 @@ async function validar(promotor, body, { excluirId = null } = {}) {
     // Se guardan en WebP de 1100 px (≈3 veces menos espacio que el JPEG que envía el teléfono)
     fotos: { frente: await comprimir(frente.buf), reverso: await comprimir(reverso.buf) },
     data: {
+      ...(excluirId ? {} : { consentimiento: { version: privacidad.aviso().version, at: new Date().toISOString() } }),
       vigencia,
       paterno,
       materno,

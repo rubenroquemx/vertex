@@ -39,6 +39,7 @@ const campo = (id, name, label, { req = false, help = '', attrs = '', cls = '' }
 const PASOS = ['Frente de la INE', 'Reverso de la INE', 'Datos generales', 'Domicilio', 'Verificación'];
 const ULTIMO = PASOS.length;
 const PASO_DE = {
+  consentimiento: 5,
   ineFrente: 1,
   ineReverso: 2,
   vigencia: 3,
@@ -171,6 +172,16 @@ export async function viewNuevoPromovido(route, params = []) {
         <section class="card wiz-step" data-paso="5" aria-label="Paso 5: ${PASOS[4]}" hidden>
           <p class="wiz-step__help">Revisa que los datos coincidan con la credencial antes de guardar.</p>
           <div id="wizResumen"></div>
+          ${
+            editando
+              ? ''
+              : `<div class="consent">
+            <label class="consent__check"><input type="checkbox" id="pConsent" name="consentimiento" value="1">
+              <span>La persona conoce el <a href="/aviso-de-privacidad" target="_blank" rel="noopener">aviso de privacidad</a> y da su consentimiento para el tratamiento de sus datos.</span></label>
+            <p class="field__error" id="pConsent-err"></p>
+            <button type="button" class="link-btn consent__wa" id="pAvisoWa">Enviarle el aviso por WhatsApp</button>
+          </div>`
+          }
           <p class="form-error" id="pFormErr" role="alert"></p>
           ${acciones(5, editando)}
         </section>
@@ -201,6 +212,8 @@ export function mountNuevoPromovido(root, route) {
     numInt: 'pNumInt',
     fracc: 'pFracc',
   };
+  // El consentimiento solo se pide al capturar (no al editar)
+  if ($('#pConsent', root)) fields.consentimiento = 'pConsent';
   const setErrors = fieldErrorSetter(root, fields);
   const err = (id, msg) => ($(`#${id}-err`, root).textContent = msg || '');
   const val = (id) => $(`#${id}`, root).value.trim();
@@ -516,7 +529,8 @@ export function mountNuevoPromovido(root, route) {
   const restaurar = (snap) => {
     for (const [k, v] of Object.entries(snap.campos || {})) {
       const el = form.elements.namedItem(k);
-      if (el && 'value' in el && el.type !== 'file') el.value = v;
+      if (el?.type === 'checkbox') el.checked = true;
+      else if (el && 'value' in el && el.type !== 'file') el.value = v;
     }
     if (snap.fotos?.ineFrente) ponerFoto('pFrente', snap.fotos.ineFrente);
     if (snap.fotos?.ineReverso) ponerFoto('pReverso', snap.fotos.ineReverso);
@@ -565,6 +579,14 @@ export function mountNuevoPromovido(root, route) {
     ir(1);
   }
 
+  // Aviso de privacidad por WhatsApp al teléfono de la persona
+  $('#pAvisoWa', root)?.addEventListener('click', () => {
+    const tel = val('pTelefono');
+    const texto = `Hola ${val('pNombres')}, este es el aviso de privacidad sobre el uso de tus datos: ${location.origin}/aviso-de-privacidad`;
+    window.open(`https://wa.me/${tel.length === 10 ? `52${tel}` : ''}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+  });
+  $('#pConsent', root)?.addEventListener('change', () => err('pConsent', ''));
+
   // Guarda la captura en el teléfono para enviarla cuando haya internet
   async function guardarEnTelefono(body) {
     // Una persona no puede estar dos veces entre los pendientes
@@ -603,6 +625,11 @@ export function mountNuevoPromovido(root, route) {
       localidad: localidad(),
     };
     if (nueva) {
+      body.consentimiento = Boolean($('#pConsent', root)?.checked);
+      if (!body.consentimiento) {
+        setErrors({ consentimiento: 'Confirma que la persona conoce el aviso de privacidad y da su consentimiento.' });
+        return;
+      }
       // Identificador propio de la captura: si el envío se repite, el servidor no la duplica
       body.clientId = pendiente?.clientId || route.clientId || (route.clientId = crypto.randomUUID());
       body.capturadoAt = pendiente?.body?.capturadoAt || new Date().toISOString();

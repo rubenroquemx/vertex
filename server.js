@@ -26,6 +26,8 @@ const promovidos = require('./src/promovidos');
 const promovidoPdf = require('./src/promovido-pdf');
 const notificaciones = require('./src/notificaciones');
 const fotos = require('./src/fotos');
+const privacidad = require('./src/privacidad');
+const ejemplo = require('./src/ejemplo');
 const material = require('./src/material');
 const { fmtSeccion } = require('./src/formato');
 const padron = require('./src/padron');
@@ -456,6 +458,61 @@ app.put('/api/configuracion/cpv', requireUser, requireCPV, async (req, res) => {
 // --- Promovidos: captura del Promotor Territorial --------------------------
 const requirePromotor = (req, res, next) =>
   req.user.role === 'promotor' ? next() : res.status(403).json({ error: 'Solo los Promotores Territoriales capturan promovidos' });
+// --- Aviso de privacidad ---------------------------------------------------------
+// Página pública (sin sesión) para compartirla con las personas que se promueven
+app.get('/aviso-de-privacidad', (req, res) => {
+  res.set('Cache-Control', 'no-cache');
+  res.type('html').send(privacidad.pagina());
+});
+app.get('/api/privacidad', requireUser, (req, res) => res.json(privacidad.aviso()));
+app.put('/api/privacidad', requireUser, requireRole('superadmin'), async (req, res) => {
+  const r = await privacidad.guardar(req.body?.texto, req.realUser.id);
+  if (r.error) return res.status(422).json({ error: r.error, fields: { texto: r.error } });
+  await audit.add({ action: 'privacidad.update', by: req.realUser.id, version: r.aviso.version });
+  res.json(r.aviso);
+});
+
+// --- Datos de ejemplo: el super administrador los borra antes de operar con datos reales ---
+app.get('/api/configuracion/ejemplo', requireUser, requireRole('superadmin'), async (req, res) => res.json(await ejemplo.contar()));
+app.post('/api/configuracion/ejemplo/borrar', requireUser, requireRole('superadmin'), async (req, res) => {
+  const check = await auth.confirmPassword(req.realUser, req.body?.password);
+  if (!check.ok) return res.status(check.status).json(check.field ? { error: check.error, fields: { password: check.error } } : { error: check.error });
+  const r = await ejemplo.borrar();
+  await audit.add({ action: 'ejemplo.borrar', by: req.realUser.id, ...r });
+  res.json({ ok: true, borrados: r });
+});
+
+// --- Bitácora (super administrador): quién hizo qué y cuándo ------------------------------
+app.get('/api/bitacora', requireUser, requireRole('superadmin'), async (req, res) => {
+  const accion = String(req.query.accion || '');
+  const antes = /^\d+$/.test(String(req.query.antes || '')) ? req.query.antes : null;
+  const q = String(req.query.q || '').trim().toLowerCase();
+  const ids = q ? users.all().filter((u) => u.name.toLowerCase().includes(q) || (u.username || '').includes(q)).map((u) => u.id).slice(0, 1000) : null;
+  const { rows } = await db.query(
+    `SELECT id, at, action, by_user, as_user, data FROM audit
+     WHERE ($1 = '' OR action = $1) AND ($2::bigint IS NULL OR id < $2::bigint)
+       AND ($3::uuid[] IS NULL OR by_user = ANY($3::uuid[]) OR as_user = ANY($3::uuid[]))
+     ORDER BY id DESC LIMIT 100`,
+    [accion, antes, ids]
+  );
+  const acciones = accion || antes ? null : (await db.query('SELECT DISTINCT action FROM audit ORDER BY 1')).rows.map((r) => r.action);
+  const nombre = (id) => (id ? users.get(id)?.name || 'Cuenta eliminada' : null);
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    acciones,
+    registros: rows.map((r) => ({
+      id: String(r.id),
+      at: r.at.toISOString(),
+      accion: r.action,
+      quien: nombre(r.by_user),
+      como: r.as_user && r.as_user !== r.by_user ? nombre(r.as_user) : null,
+      cuenta: r.data?.user ? nombre(r.data.user) || r.data.name || null : r.data?.name || null,
+      ip: r.data?.ip || null,
+    })),
+    mas: rows.length === 100,
+  });
+});
+
 // --- Notificaciones (campana): las de la cuenta en uso --------------------------
 app.get('/api/notificaciones', requireUser, async (req, res) => {
   res.set('Cache-Control', 'no-store');

@@ -1,5 +1,5 @@
 // Configuración del Super administrador: pestañas "General" y "WhatsApp (Evolution API)".
-import { icon, ICONS, $, esc, fmtDateTime, api, fieldErrorSetter, toast, abrirEnArea } from './lib.js';
+import { icon, ICONS, $, esc, fmtNum, fmtDateTime, api, fieldErrorSetter, toast, abrirEnArea, navigate } from './lib.js';
 
 const TABS = [
   { key: 'whatsapp', name: 'WhatsApp (Evolution API)' },
@@ -11,7 +11,8 @@ const I = {
 };
 
 export async function viewConfiguracionSA(route) {
-  route.data = await api('/api/configuracion/whatsapp');
+  const [wa, aviso, ejemplo] = await Promise.all([api('/api/configuracion/whatsapp'), api('/api/privacidad'), api('/api/configuracion/ejemplo')]);
+  route.data = wa;
   const tab = new URLSearchParams(location.search).get('tab') || 'whatsapp';
   route.tab = TABS.some((t) => t.key === tab) ? tab : 'whatsapp';
   return `
@@ -25,10 +26,89 @@ export async function viewConfiguracionSA(route) {
       ).join('')}
     </div>
     <section class="tabs__panel" role="tabpanel" id="panel-whatsapp" aria-labelledby="tab-whatsapp" ${route.tab === 'whatsapp' ? '' : 'hidden'}>${panelWhatsapp(route.data)}</section>
-    <section class="tabs__panel" role="tabpanel" id="panel-general" aria-labelledby="tab-general" ${route.tab === 'general' ? '' : 'hidden'}>
-      <div class="empty"><span aria-hidden="true">${ICONS.settings}</span><strong>Ajustes generales</strong><span>Aquí se agregarán roles, permisos y catálogos.</span></div>
-    </section>
+    <section class="tabs__panel" role="tabpanel" id="panel-general" aria-labelledby="tab-general" ${route.tab === 'general' ? '' : 'hidden'}>${panelGeneral(aviso, ejemplo)}</section>
     <dialog class="dialog" id="waDialog" aria-labelledby="waDlgT"></dialog>`;
+}
+
+// ---------- General: aviso de privacidad y datos de ejemplo ----------
+function panelGeneral(aviso, ej) {
+  const hayEjemplo = ej.cuentas + ej.promovidos + ej.articulos + ej.ordenes > 0;
+  return `
+    <div class="cfg-general">
+      <form class="card form-card" id="avisoForm" novalidate aria-labelledby="avT">
+        <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.alert}</span><h3 id="avT">Aviso de privacidad</h3></header>
+        <p class="muted">${
+          aviso.version
+            ? `Versión ${fmtNum(aviso.version)} · publicada el ${esc(fmtDateTime(aviso.actualizado))}.`
+            : '<strong>Aún no se publica:</strong> el texto de abajo es una plantilla. Pide a tu área jurídica que lo revise antes de capturar datos reales.'
+        } Se muestra en <a href="/aviso-de-privacidad" target="_blank" rel="noopener">/aviso-de-privacidad</a> y cada captura guarda la versión que se le dio a conocer a la persona.</p>
+        <div class="field">
+          <label for="avTexto">Texto del aviso</label>
+          <textarea class="input aviso-texto" id="avTexto" name="texto" rows="16">${esc(aviso.texto)}</textarea>
+          <p class="field__error" id="avTexto-err"></p>
+        </div>
+        <div class="mat-form__acc"><button class="btn" type="submit">Publicar nueva versión</button></div>
+      </form>
+
+      <section class="card form-card" aria-labelledby="ejT">
+        <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.trash}</span><h3 id="ejT">Datos de ejemplo</h3></header>
+        ${
+          hayEjemplo
+            ? `<p>Hay datos de prueba cargados con el script de ejemplo. Bórralos antes de operar con personas reales; lo capturado a mano no se toca.</p>
+          <dl class="sa-lista">
+            <div><dt>Cuentas de ejemplo</dt><dd>${fmtNum(ej.cuentas)}</dd></div>
+            <div><dt>Promovidos de ejemplo</dt><dd>${fmtNum(ej.promovidos)}</dd></div>
+            <div><dt>Artículos y órdenes de material</dt><dd>${fmtNum(ej.articulos)} · ${fmtNum(ej.ordenes)}</dd></div>
+          </dl>
+          <form id="ejForm" novalidate class="ej-form">
+            <div class="field"><label for="ejPass">Tu contraseña para confirmar</label>
+              <input class="input" id="ejPass" type="password" autocomplete="current-password"><p class="field__error" id="ejPass-err"></p></div>
+            <button class="btn btn--destructive" type="submit">Borrar datos de ejemplo</button>
+          </form>`
+            : '<p class="muted">No hay datos de ejemplo en el sistema.</p>'
+        }
+      </section>
+    </div>`;
+}
+
+function mountGeneral(root) {
+  const form = $('#avisoForm', root);
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('#avTexto-err', root).textContent = '';
+    const btn = form.querySelector('[type="submit"]');
+    btn.disabled = true;
+    try {
+      const a = await api('/api/privacidad', { method: 'PUT', body: { texto: $('#avTexto', root).value } });
+      toast(`Aviso de privacidad publicado (versión ${a.version})`);
+      navigate('/configuracion?tab=general');
+    } catch (err) {
+      $('#avTexto-err', root).textContent = err.data?.fields?.texto || err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  const ej = $('#ejForm', root);
+  ej?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = ej.querySelector('[type="submit"]');
+    // Dos toques: el primero pide confirmar
+    if (!btn.dataset.confirmar) {
+      btn.dataset.confirmar = '1';
+      btn.textContent = '¿Seguro? Toca de nuevo para borrar';
+      return;
+    }
+    btn.disabled = true;
+    $('#ejPass-err', root).textContent = '';
+    try {
+      await api('/api/configuracion/ejemplo/borrar', { method: 'POST', body: { password: $('#ejPass', root).value } });
+      toast('Datos de ejemplo borrados');
+      navigate('/configuracion?tab=general');
+    } catch (err) {
+      $('#ejPass-err', root).textContent = err.data?.fields?.password || err.message;
+      btn.disabled = false;
+    }
+  });
 }
 
 function panelWhatsapp(c) {
@@ -139,6 +219,7 @@ export function mountConfiguracionSA(root, route) {
   });
 
   mountWhatsapp(root, route);
+  mountGeneral(root);
   return undefined;
 }
 

@@ -150,6 +150,7 @@ async function medir(fn, concurrencia, segundos) {
   const base = {
     ineFrente: foto,
     ineReverso: foto,
+    consentimiento: true,
     vigencia: '2031',
     seccion: String(ctx.seccion),
     materno: 'PRUEBA',

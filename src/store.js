@@ -141,6 +141,10 @@ const promovidos = {
   all: () => cache.promovidos,
   // Registra en caché un promovido recién guardado (ver src/promovidos.js)
   remember: (p) => cache.promovidos.push(p),
+  // Quita de la copia en memoria los promovidos borrados (ids: Set)
+  olvidar: (ids) => {
+    if (ids.size) cache.promovidos = cache.promovidos.filter((p) => !ids.has(p.id));
+  },
 };
 
 // --- Bitácora de acciones sensibles ----------------------------------------

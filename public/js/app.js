@@ -29,6 +29,7 @@ import { viewConfiguracionCPV, mountConfiguracionCPV } from './configuracion-cpv
 import { viewConfiguracionSA, mountConfiguracionSA } from './configuracion-sa.js';
 import { viewMaterial, mountMaterial, viewEntregar, mountEntregar, viewOrden, mountOrden } from './material.js';
 import { viewPanelSA, mountPanelSA } from './panel-sa.js';
+import { viewBitacora, mountBitacora } from './bitacora.js';
 import { viewEscritorioZona, mountEscritorioZona } from './escritorio-zona.js';
 import { viewEscritorioSeccion, mountEscritorioSeccion } from './escritorio-seccion.js';
 import { viewRevision, mountRevision } from './revision.js';
@@ -164,7 +165,10 @@ function buildMenu(me) {
       },
       {
         label: 'Sistema',
-        items: [{ path: '/configuracion', title: 'Configuración', icon: 'settings', view: viewConfiguracionSA, mount: mountConfiguracionSA }],
+        items: [
+          { path: '/configuracion', title: 'Configuración', icon: 'settings', view: viewConfiguracionSA, mount: mountConfiguracionSA },
+          { path: '/bitacora', title: 'Bitácora', icon: 'bitacora', view: viewBitacora, mount: mountBitacora },
+        ],
       }
     );
   }

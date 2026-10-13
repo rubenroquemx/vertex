@@ -183,7 +183,7 @@ export async function viewEscritorioCPV(route) {
       <header class="dash-card__head"><h3 id="ecZT">Zonas</h3><a class="link-btn" href="/zonas" data-link>Administrar zonas</a></header>
       ${
         zonasOrden.length
-          ? `<div class="table-wrap"><table class="table ec-zonas">
+          ? `<div class="table-wrap"><table class="table ec-zonas table--cards">
           <thead><tr><th scope="col">Zona</th><th scope="col">Promovidos</th><th scope="col">Promotores</th><th scope="col">Secciones cubiertas</th><th scope="col" class="num">Por revisar</th><th scope="col" class="num">Material</th><th scope="col">30 días</th></tr></thead>
           <tbody>${zonasOrden
             .map(

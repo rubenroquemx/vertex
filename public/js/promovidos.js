@@ -830,6 +830,7 @@ export async function viewPromovido(route, params, state) {
         <div class="rev-card__txt">
           <h3 id="revT">${p.estatus === 'rechazado' ? 'Rechazado: ¿ya está corregido?' : '¿Los datos coinciden con la INE?'}</h3>
           <p>Compara las fotos con la clave de elector, la CURP, la vigencia y el domicilio. Al aprobarlo, el promotor ya no podrá modificarlo.</p>
+          <p class="rev-atajos">Atajos: <kbd>A</kbd> aprobar · <kbd>R</kbd> rechazar</p>
         </div>
         <div class="rev-card__acc" id="revAcc">
           <button class="btn btn--aprobar" type="button" id="revAprobar">${ICONO_OK}<span>Aprobar</span></button>
@@ -1018,7 +1019,23 @@ function montarRevision(root, p) {
     if (mini.hidden) cerrarMenu();
   });
   io.observe(card);
-  return () => io.disconnect();
+  // Atajos en computadora: A aprueba, R abre el motivo del rechazo
+  const atajos = (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || /input|textarea|select/i.test(document.activeElement?.tagName || '')) return;
+    if (e.key === 'a' || e.key === 'A') {
+      e.preventDefault();
+      $('#revAprobar', root)?.click();
+    } else if ((e.key === 'r' || e.key === 'R') && $('#revRechazar', root)) {
+      e.preventDefault();
+      card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      $('#revRechazar', root).click();
+    }
+  };
+  document.addEventListener('keydown', atajos);
+  return () => {
+    io.disconnect();
+    document.removeEventListener('keydown', atajos);
+  };
 }
 
 // Lupa sobre las fotos de la INE: con el mouse sigue al puntero; en el celular se activa

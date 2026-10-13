@@ -38,7 +38,7 @@ export async function viewMaterial(route, params, state) {
   const hayInventario = r.inventario.length > 0;
 
   const inventario = hayInventario
-    ? `<div class="table-wrap"><table class="table mat-inv">
+    ? `<div class="table-wrap"><table class="table mat-inv table--cards">
         <thead><tr><th scope="col">Artículo</th><th scope="col">Unidad</th>
           ${r.esCPV ? '<th scope="col" class="num">Inventario</th>' : '<th scope="col" class="num">Recibido</th>'}
           ${r.puedeEntregar ? '<th scope="col" class="num">Entregado</th><th scope="col" class="num">Disponible</th>' : ''}
@@ -93,7 +93,7 @@ export async function viewMaterial(route, params, state) {
 
   // Avance de la rama (CPV: por zona · Coordinador de Zona: por responsable)
   const rama = r.rama.length
-    ? `<div class="table-wrap"><table class="table mat-rama">
+    ? `<div class="table-wrap"><table class="table mat-rama table--cards">
         <thead><tr><th scope="col">${r.esCPV ? 'Zona' : 'Responsable de Sección'}</th>
           <th scope="col" class="num">Unidades entregadas</th><th scope="col" class="num">Por recibir</th>
           ${r.esCPV ? '<th scope="col" class="num">Órdenes a sus responsables</th><th scope="col" class="num">Con evidencia</th>' : '<th scope="col" class="num">Falta evidencia</th><th scope="col" class="num">Con evidencia</th>'}

@@ -1,6 +1,7 @@
 // Notificaciones dentro de la app (campana de la barra superior), por cuenta.
 // Se generan desde los módulos (p. ej. promovidos) y nunca deben tumbar la operación que las origina.
 const { query } = require('./db');
+const push = require('./push');
 
 const MAX_LISTA = 60;
 
@@ -14,6 +15,8 @@ async function notificar(destinos, { tipo, titulo, cuerpo = '', url = null, auto
        SELECT unnest($1::uuid[]), $2, $3, $4, $5`,
       [ids, tipo, String(titulo).slice(0, 200), String(cuerpo).slice(0, 300), url]
     );
+    // También al celular (sin esperar: no frena la operación que la origina)
+    push.enviar(ids, { titulo: String(titulo).slice(0, 120), cuerpo: String(cuerpo).slice(0, 200), url: url || '/notificaciones' }).catch(() => {});
   } catch (err) {
     console.error('No se pudo crear la notificación:', err.message);
   }

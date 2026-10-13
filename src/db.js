@@ -288,6 +288,21 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS promovido_historial_autor_idx ON promovido_historial(promovido_id, user_id, at);
     `,
   },
+  {
+    id: 9,
+    name: 'notificaciones push',
+    sql: `
+      CREATE TABLE push_suscripciones (
+        id          bigserial PRIMARY KEY,
+        user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint    text NOT NULL UNIQUE,
+        keys        jsonb NOT NULL,
+        user_agent  text NOT NULL DEFAULT '',
+        created_at  timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX push_suscripciones_user_idx ON push_suscripciones(user_id);
+    `,
+  },
 ];
 
 async function migrate() {

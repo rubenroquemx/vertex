@@ -58,7 +58,7 @@ export async function viewBitacora(route) {
             .map(([a, n]) => `<option value="${esc(a)}">${esc(n)}</option>`)
             .join('')}</select></label>
       </div>
-      <div class="table-wrap"><table class="table bit-tabla">
+      <div class="table-wrap"><table class="table bit-tabla table--cards">
         <thead><tr><th scope="col">Fecha</th><th scope="col">Acción</th><th scope="col">Quién</th><th scope="col">Sobre</th></tr></thead>
         <tbody id="bitFilas">${d.registros.map(fila).join('')}</tbody>
       </table></div>

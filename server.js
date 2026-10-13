@@ -29,6 +29,7 @@ const fotos = require('./src/fotos');
 const privacidad = require('./src/privacidad');
 const ELECCION = require('./src/eleccion');
 const { memo } = require('./src/memo');
+const push = require('./src/push');
 const ejemplo = require('./src/ejemplo');
 const material = require('./src/material');
 const { fmtSeccion } = require('./src/formato');
@@ -542,6 +543,19 @@ app.get('/api/notificaciones', requireUser, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await notificaciones.lista(req.user.id));
 });
+// Notificaciones push: este dispositivo se suscribe a las de la cuenta (no en modo dios)
+app.get('/api/push/clave', requireUser, (req, res) => res.json({ clave: push.clavePublica() }));
+app.post('/api/push/suscribir', requireUser, async (req, res) => {
+  if (inGodMode(req)) return res.status(409).json({ error: 'En modo dios no se activan notificaciones de otra cuenta.' });
+  const ok = await push.suscribir(req.user.id, req.body?.subscription, req.get('user-agent'));
+  if (!ok) return res.status(422).json({ error: 'Suscripción no válida.' });
+  res.status(201).json({ ok: true });
+});
+app.delete('/api/push/suscribir', requireUser, async (req, res) => {
+  await push.desuscribir(req.user.id, req.body?.endpoint);
+  res.json({ ok: true });
+});
+
 app.get('/api/notificaciones/conteo', requireUser, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ noLeidas: await notificaciones.conteo(req.user.id) });
@@ -1145,6 +1159,7 @@ async function start() {
   await importarSiHaceFalta();
   await store.init();
   await settings.init();
+  await push.init();
   await geo.init();
   await padron.init();
   await auth.ensureAdminCredentials();

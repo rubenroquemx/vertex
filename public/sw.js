@@ -1,6 +1,6 @@
 // Service worker de VERTEX
 // Incrementa la versión al cambiar archivos del "app shell".
-const VERSION = 'v83';
+const VERSION = 'v85';
 const CACHE = `vertex-${VERSION}`;
 const APP_SHELL = [
   '/',
@@ -170,3 +170,42 @@ async function enviarPendientes() {
     for (const c of await self.clients.matchAll({ type: 'window' })) c.postMessage({ tipo: 'pendientes' });
   }
 }
+
+// ---------------------------------------------------------------------------
+// Notificaciones push: se muestran aunque la app esté cerrada; al tocarlas se abre su pantalla
+// ---------------------------------------------------------------------------
+self.addEventListener('push', (event) => {
+  let d = {};
+  try {
+    d = event.data ? event.data.json() : {};
+  } catch {
+    d = { titulo: event.data ? event.data.text() : 'VERTEX' };
+  }
+  event.waitUntil(
+    self.registration.showNotification(d.titulo || 'VERTEX', {
+      body: d.cuerpo || '',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/favicon-32.png',
+      data: { url: d.url || '/notificaciones' },
+      tag: d.url || undefined,
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/';
+  event.waitUntil(
+    (async () => {
+      const ventanas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const c of ventanas) {
+        if (new URL(c.url).origin === self.location.origin) {
+          await c.focus();
+          c.postMessage({ tipo: 'abrir', url });
+          return;
+        }
+      }
+      await self.clients.openWindow(url);
+    })()
+  );
+});

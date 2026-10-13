@@ -188,7 +188,7 @@ export async function viewEscritorioZona(route) {
       </header>
       ${
         d.responsables.length
-          ? `<div class="table-wrap"><table class="table ec-zonas ez-tabla">
+          ? `<div class="table-wrap"><table class="table ec-zonas ez-tabla table--cards">
           <thead><tr><th scope="col">Responsable</th><th scope="col">Promovidos</th><th scope="col">Promotores</th><th scope="col" class="num">Por revisar</th><th scope="col">Material</th><th scope="col">30 días</th><th scope="col"><span class="sr-only">Contacto</span></th></tr></thead>
           <tbody id="ezFilas">${filasResponsables(d, 'menor')}</tbody></table></div>`
           : `<div class="empty empty--sm"><strong>Aún no tienes Responsables de Sección</strong><a class="btn btn--sm" href="/responsables/nuevo" data-link>${ICONS.plus}<span>Nuevo responsable</span></a></div>`

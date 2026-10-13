@@ -75,7 +75,7 @@ function buildMenu(me) {
   // El CPV tiene su propio escritorio; los demás niveles conservan su panel (en definición)
   const inicio =
     key === 'coord_promocion'
-      ? { path: '/', title: 'Escritorio', icon: 'dashboard', view: viewEscritorioCPV, mount: mountEscritorioCPV }
+      ? { path: '/', title: 'Panel', icon: 'dashboard', view: viewEscritorioCPV, mount: mountEscritorioCPV }
       : key === 'resp_seccion'
         ? { path: '/', title: 'Panel', icon: 'dashboard', view: viewEscritorioSeccion, mount: mountEscritorioSeccion }
         : key === 'superadmin'
@@ -554,8 +554,10 @@ function renderCpvCards(root, list, catalogo) {
 }
 
 // Color del avance hacia la meta: de rojo a verde conforme se acerca
+// Texto de las iniciales: oscuro sobre los tonos claros (contraste AA)
+const textoSobre = (bg) => (['#f59e0b', '#65a30d', '#ea580c'].includes(bg) ? '#1c1917' : '#ffffff');
 function colorAvance(pct) {
-  if (pct >= 1) return '#16a34a';
+  if (pct >= 1) return '#15803d';
   if (pct >= 0.75) return '#65a30d';
   if (pct >= 0.5) return '#f59e0b';
   if (pct >= 0.25) return '#ea580c';
@@ -580,7 +582,7 @@ function renderPromotoresAvance(root, list, avance) {
           const tel = String(u.phone || '').replace(/\D/g, '').slice(-10);
           return `<li class="promo-fila">
             <div class="promo-item">
-              <span class="promo-ini" style="background:${colorAvance(pct)}" aria-hidden="true">${esc(inicialesDe(u.name))}</span>
+              <span class="promo-ini" style="background:${colorAvance(pct)};color:${textoSobre(colorAvance(pct))}" aria-hidden="true">${esc(inicialesDe(u.name))}</span>
               <span class="promo-item__txt">
                 <strong>${esc(u.name)}</strong>
                 <span class="promo-item__mod">${fmtNum(a.capturados)} de ${fmtNum(meta)} promovidos · ${fmtNum(Math.min(999, Math.round(pct * 100)))}%${a.aprobados ? ` · ${fmtNum(a.aprobados)} ${a.aprobados === 1 ? 'aprobado' : 'aprobados'}` : ''}</span>
@@ -1379,6 +1381,23 @@ function viewPerfil() {
         </form>
       </section>`
       }
+      <section class="card pref" aria-labelledby="prefT">
+        <h3 class="card__title" id="prefT">Preferencias</h3>
+        <div class="field">
+          <label for="prefTema">Apariencia</label>
+          <select class="input" id="prefTema">
+            <option value="sistema">Igual que mi teléfono o computadora</option>
+            <option value="claro">Clara</option>
+            <option value="oscuro">Oscura</option>
+          </select>
+        </div>
+        <div class="field" id="prefPushBox">
+          <label>Notificaciones en este dispositivo</label>
+          <p class="field__help" id="prefPushTxt">Recibe avisos aunque la app esté cerrada.</p>
+          <button class="btn btn--secondary" type="button" id="prefPush" hidden>Activar notificaciones</button>
+        </div>
+        <div class="pref__salir"><button class="btn btn--destructive" type="button" id="prefSalir">${ICONS.logout}<span>Cerrar sesión</span></button></div>
+      </section>
     </div>`;
 }
 
@@ -1398,6 +1417,14 @@ async function prepareAvatar(file) {
 }
 
 function mountPerfil(root) {
+  // Preferencias: apariencia y cierre de sesión
+  const tema = $('#prefTema', root);
+  if (tema) {
+    tema.value = leerTema();
+    tema.addEventListener('change', () => aplicarTema(tema.value, true));
+  }
+  $('#prefSalir', root)?.addEventListener('click', () => logoutBtn.click());
+  montarPush(root);
   const setMe = (user) => {
     state.me.user = { ...state.me.user, ...user };
     renderUser(state.me);
@@ -1507,6 +1534,21 @@ function renderNav(menu) {
 }
 
 // Celulares: barra fija inferior solo con los íconos de las funciones
+// Etiquetas cortas de la barra inferior (celular)
+const CORTO = {
+  '/': 'Panel',
+  '/estructura': 'Promotores',
+  '/promovidos': 'Promovidos',
+  '/material': 'Material',
+  '/zonas': 'Zonas',
+  '/responsables': 'Responsables',
+  '/usuarios': 'Usuarios',
+  '/bases-de-datos': 'Bases',
+  '/configuracion': 'Ajustes',
+  '/bitacora': 'Bitácora',
+};
+const corto = (r) => CORTO[r.path] || r.title.split(' ')[0];
+
 function renderDock(menu) {
   const items = menu.flatMap((g) => g.items);
   const fab = items.find((r) => r.fab);
@@ -1514,7 +1556,7 @@ function renderDock(menu) {
     // Botón de acción principal al centro, con las demás funciones a los lados
     const resto = items.filter((r) => r !== fab);
     const mitad = Math.ceil(resto.length / 2);
-    const link = (r) => `<a class="dock__link" href="${r.path}" data-link title="${esc(r.title)}" aria-label="${esc(r.title)}">${ICONS[r.icon]}</a>`;
+    const link = (r) => `<a class="dock__link" href="${r.path}" data-link title="${esc(r.title)}" aria-label="${esc(r.title)}">${ICONS[r.icon]}<span class="dock__label" aria-hidden="true">${esc(corto(r))}</span></a>`;
     $('#dock').classList.add('has-fab');
     $('#dock').innerHTML = [
       ...resto.slice(0, mitad).map(link),
@@ -1527,7 +1569,7 @@ function renderDock(menu) {
   $('#dock').innerHTML = menu
     .map(
       (g) => `<div class="dock__group" role="group" aria-label="${esc(g.label)}">${g.items
-        .map((r) => `<a class="dock__link" href="${r.path}" data-link title="${esc(r.title)}" aria-label="${esc(r.title)}">${ICONS[r.icon]}</a>`)
+        .map((r) => `<a class="dock__link" href="${r.path}" data-link title="${esc(r.title)}" aria-label="${esc(r.title)}">${ICONS[r.icon]}<span class="dock__label" aria-hidden="true">${esc(corto(r))}</span></a>`)
         .join('')}</div>`
     )
     .join('<span class="dock__sep" aria-hidden="true"></span>');
@@ -1569,7 +1611,10 @@ async function render() {
   let out = route.view(route, params);
   let ok = true;
   if (out instanceof Promise) {
-    view.innerHTML = `<div class="loading" role="status"><span class="spinner" aria-hidden="true"></span>Cargando…</div>`;
+    view.innerHTML = `<div class="skel" role="status" aria-label="Cargando">
+        <div class="skel__b skel__hero"></div>
+        <div class="skel__fila"><div class="skel__b"></div><div class="skel__b"></div><div class="skel__b"></div></div>
+        <div class="skel__b skel__alto"></div><span class="sr-only">Cargando…</span></div>`;
     try {
       out = await out;
     } catch (err) {
@@ -1585,7 +1630,49 @@ async function render() {
   view.onclick = null;
   view.innerHTML = out;
   if (ok && route.mount) state.cleanup = route.mount(view, route, params) || null;
+  etiquetarTablas(view);
+  if (ok && location.pathname === '/') mostrarBienvenida();
   view.focus({ preventScroll: true });
+}
+
+// Tablas que en celular se muestran como tarjetas: cada celda lleva el nombre de su columna
+function etiquetarTablas(root) {
+  for (const t of root.querySelectorAll('table.table--cards')) {
+    const heads = [...t.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    for (const tr of t.querySelectorAll('tbody tr')) [...tr.children].forEach((td, i) => !td.dataset.label && heads[i] && (td.dataset.label = heads[i]));
+  }
+}
+
+// Bienvenida (primera vez por cuenta): lo esencial de cada nivel, en el área de trabajo
+const BIENVENIDA = {
+  promotor: ['Toca el botón + para capturar a una persona.', 'Encuadra la INE dentro del marco: se guarda solo lo que queda dentro.', 'Sin internet también puedes capturar: se guarda en tu teléfono y se envía solo.', 'Si tu Responsable deja observaciones, las verás en «Tienes que corregir».'],
+  resp_seccion: ['Da de alta a tus Promotores Territoriales con el botón +.', 'En «Promovidos» revisa que los datos coincidan con la INE y aprueba o rechaza (en computadora: teclas A y R).', 'Cuando recibas material, sube mínimo 5 fotos de evidencia por orden.', 'Llama o escribe por WhatsApp a los promotores con menor avance.'],
+  coord_zona: ['Da de alta a un Responsable de Sección por cada sección de tu zona.', 'Revisa «Requiere tu atención»: secciones sin responsable y revisiones atrasadas.', 'Reparte el material que recibas entre tus responsables.'],
+  coord_promocion: ['Divide tu territorio en zonas y asigna a sus coordinadores.', 'Ajusta tu factor de conversión en «Configuración».', 'Da de alta tu inventario de material y entrégalo a tus zonas.', 'Compara tu ritmo de captura contra el ritmo necesario para llegar a la meta.'],
+  superadmin: ['Da de alta a los Coordinadores de Promoción del Voto.', 'Publica el aviso de privacidad en «Configuración › General» antes de capturar datos reales.', 'Consulta quién hizo qué en la «Bitácora».'],
+};
+function mostrarBienvenida() {
+  const pasos = BIENVENIDA[state.me?.role?.key];
+  const clave = `vx:bienvenida:${state.me?.user?.id}`;
+  let vista = false;
+  try {
+    vista = localStorage.getItem(clave) === '1';
+  } catch {}
+  if (!pasos || vista || $('#bienvenida', view)) return;
+  view.insertAdjacentHTML(
+    'afterbegin',
+    `<section class="card bienvenida" id="bienvenida" aria-labelledby="bienT">
+      <div><h3 id="bienT">Bienvenido a VERTEX, ${esc(state.me.user.name.split(' ')[0])}</h3>
+      <ol>${pasos.map((p) => `<li>${esc(p)}</li>`).join('')}</ol></div>
+      <button class="btn btn--secondary btn--sm" type="button" id="bienOk">Entendido</button>
+    </section>`
+  );
+  $('#bienOk', view).addEventListener('click', () => {
+    try {
+      localStorage.setItem(clave, '1');
+    } catch {}
+    $('#bienvenida', view)?.remove();
+  });
 }
 
 // Escritorio: el sidebar se contrae a solo íconos (preferencia recordada).
@@ -1973,6 +2060,94 @@ logoutBtn.addEventListener('click', async () => {
   location.href = '/';
 });
 
+// ---------- Apariencia (clara / oscura / la del sistema) ----------
+const TEMA_KEY = 'vx:tema';
+function leerTema() {
+  try {
+    return localStorage.getItem(TEMA_KEY) || 'sistema';
+  } catch {
+    return 'sistema';
+  }
+}
+const oscuroMq = window.matchMedia('(prefers-color-scheme: dark)');
+function aplicarTema(t = leerTema(), guardar = false) {
+  if (guardar) {
+    try {
+      localStorage.setItem(TEMA_KEY, t);
+    } catch {}
+  }
+  const oscuro = t === 'oscuro' || (t === 'sistema' && oscuroMq.matches);
+  document.documentElement.dataset.theme = oscuro ? 'dark' : 'light';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', oscuro ? '#0d0d0d' : '#1c1c1e');
+}
+oscuroMq.addEventListener('change', () => leerTema() === 'sistema' && aplicarTema());
+aplicarTema();
+
+// ---------- Notificaciones push (en Mi perfil, por dispositivo) ----------
+const b64aBytes = (b64) => {
+  const s = atob((b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+};
+async function montarPush(root) {
+  const btn = $('#prefPush', root);
+  const txt = $('#prefPushTxt', root);
+  if (!btn) return;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    txt.textContent = /iphone|ipad/i.test(navigator.userAgent)
+      ? 'En iPhone, primero instala VERTEX en tu pantalla de inicio (Compartir › Agregar a inicio) y ábrela desde ahí.'
+      : 'Este navegador no permite notificaciones.';
+    return;
+  }
+  if (state.me?.godMode) {
+    txt.textContent = 'En modo dios no se activan notificaciones de otra cuenta.';
+    return;
+  }
+  const reg = await navigator.serviceWorker.ready;
+  const pintar = async () => {
+    const sub = await reg.pushManager.getSubscription();
+    btn.hidden = false;
+    if (Notification.permission === 'denied') {
+      txt.textContent = 'Las notificaciones están bloqueadas para esta app. Actívalas en la configuración del navegador.';
+      btn.hidden = true;
+    } else if (sub) {
+      txt.textContent = 'Activadas en este dispositivo.';
+      btn.textContent = 'Desactivar en este dispositivo';
+      btn.dataset.estado = 'on';
+    } else {
+      txt.textContent = 'Recibe avisos aunque la app esté cerrada (observaciones, aprobaciones, material…).';
+      btn.textContent = 'Activar notificaciones';
+      btn.dataset.estado = 'off';
+    }
+  };
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      if (btn.dataset.estado === 'on') {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await api('/api/push/suscribir', { method: 'DELETE', body: { endpoint: sub.endpoint } }).catch(() => {});
+          await sub.unsubscribe();
+        }
+        toast('Notificaciones desactivadas en este dispositivo');
+      } else {
+        if ((await Notification.requestPermission()) !== 'granted') throw new Error('No diste permiso para mostrar notificaciones.');
+        const { clave } = await api('/api/push/clave');
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64aBytes(clave) });
+        await api('/api/push/suscribir', { method: 'POST', body: { subscription: sub.toJSON() } });
+        toast('Notificaciones activadas en este dispositivo');
+      }
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      btn.disabled = false;
+      pintar();
+    }
+  });
+  pintar();
+}
+// Al tocar una notificación con la app abierta, se navega a su pantalla
+navigator.serviceWorker?.addEventListener('message', (e) => e.data?.tipo === 'abrir' && navigate(e.data.url));
+
 // Última sesión conocida: permite abrir la app sin internet (solo para capturar)
 const ME_LOCAL = 'vx:me';
 const leerMe = () => {
@@ -2138,6 +2313,19 @@ const netStatus = $('#netStatus');
 function updateNet() {
   netStatus.dataset.online = String(navigator.onLine);
   netStatus.textContent = navigator.onLine ? 'En línea' : 'Sin conexión';
+  let barra = $('#offlineBar');
+  if (!barra) {
+    barra = document.createElement('div');
+    barra.id = 'offlineBar';
+    barra.className = 'offline-bar';
+    barra.setAttribute('role', 'status');
+    document.body.prepend(barra);
+  }
+  barra.hidden = navigator.onLine;
+  barra.textContent =
+    state.me?.role?.key === 'promotor'
+      ? 'Sin conexión · lo que captures se guarda en tu teléfono y se envía solo al volver la señal'
+      : 'Sin conexión · los datos pueden no estar actualizados';
 }
 window.addEventListener('online', updateNet);
 window.addEventListener('offline', updateNet);

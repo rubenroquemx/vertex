@@ -16,6 +16,7 @@ const geo = require('./geo');
 const { chainOf } = require('./access');
 const { fmtSeccion } = require('./formato');
 const { notificar } = require('./notificaciones');
+const { comprimir } = require('./fotos');
 
 // Jornada electoral: la INE debe estar vigente ese año para poder votar
 const ELECCION = { anio: 2027, texto: '6 de junio de 2027' };
@@ -159,7 +160,8 @@ async function validar(promotor, body, { excluirId = null } = {}) {
 
   return {
     ctx,
-    fotos: { frente: frente.buf, reverso: reverso.buf },
+    // Se guardan en WebP de 1100 px (≈3 veces menos espacio que el JPEG que envía el teléfono)
+    fotos: { frente: await comprimir(frente.buf), reverso: await comprimir(reverso.buf) },
     data: {
       vigencia,
       paterno,

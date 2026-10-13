@@ -25,6 +25,7 @@ const panelSA = require('./src/panel-sa');
 const promovidos = require('./src/promovidos');
 const promovidoPdf = require('./src/promovido-pdf');
 const notificaciones = require('./src/notificaciones');
+const fotos = require('./src/fotos');
 const material = require('./src/material');
 const { fmtSeccion } = require('./src/formato');
 const padron = require('./src/padron');
@@ -483,7 +484,7 @@ app.post('/api/material/ordenes/:id/evidencias', requireUser, express.json({ lim
 app.get('/api/material/evidencias/:id', requireUser, conMaterial(async (req, res) => {
   const img = await material.evidencia(req.user, req.params.id);
   if (!img) return res.status(404).end();
-  res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=86400' });
+  res.set({ 'Content-Type': fotos.tipo(img), 'Cache-Control': 'private, max-age=86400' });
   res.send(img);
 }));
 
@@ -540,7 +541,13 @@ app.put('/api/promovidos/:id', requireUser, express.json({ limit: '8mb' }), asyn
 app.get('/api/promovidos/:id/pdf', requireUser, async (req, res) => {
   const p = await promovidos.detalle(req.user, req.params.id);
   if (!p) return res.status(404).json({ error: 'Promovido no encontrado' });
-  const [frente, reverso] = await Promise.all([promovidos.foto(req.user, p.id, 'frente'), promovidos.foto(req.user, p.id, 'reverso')]);
+  // El PDF necesita JPEG (las fotos se guardan en WebP)
+  const [frente, reverso] = await Promise.all(
+    ['frente', 'reverso'].map(async (lado) => {
+      const img = await promovidos.foto(req.user, p.id, lado);
+      return img ? fotos.aJpeg(img) : null;
+    })
+  );
   const pdf = await promovidoPdf.generar(p, { frente, reverso }, req.user.name);
   await audit.add({ action: 'promovido.pdf', by: req.realUser.id, as: req.user.id, promovido: p.id });
   // Nombre del archivo: clave de elector y sección a 4 dígitos (p. ej. GNCRIN85072827M600-0420.pdf)
@@ -592,7 +599,7 @@ app.get('/api/promovidos/:id/ine/:lado', requireUser, async (req, res) => {
   if (!img) return res.status(404).end();
   // Dato sensible: no se guarda en cachés compartidas
   res.set('Cache-Control', 'private, no-store');
-  res.type('image/jpeg').send(img);
+  res.type(fotos.tipo(img)).send(img);
 });
 
 app.post('/api/promovidos', requireUser, requirePromotor, express.json({ limit: '8mb' }), async (req, res) => {
@@ -993,6 +1000,8 @@ async function start() {
   await auth.ensureAdminCredentials();
   await zonas.migrarColores();
   app.listen(PORT, () => {
+    // Fotos guardadas antes de la compresión: se pasan a WebP en segundo plano (una sola vez)
+    setTimeout(() => fotos.compactarExistentes(), 10000);
     console.log(`VERTEX escuchando en http://localhost:${PORT}`);
   });
 }

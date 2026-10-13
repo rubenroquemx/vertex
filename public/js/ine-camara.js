@@ -8,7 +8,7 @@ import { ICONS } from './lib.js';
 
 // Proporción de la credencial (tarjeta ID-1: 85.6 × 54 mm) y tamaño con que se guarda
 const PROPORCION = 85.6 / 54;
-const ANCHO_SALIDA = 1400;
+const ANCHO_SALIDA = 1100;
 const ALTO_SALIDA = Math.round(ANCHO_SALIDA / PROPORCION);
 
 export const camaraDisponible = () => Boolean(window.isSecureContext && navigator.mediaDevices?.getUserMedia);
@@ -44,7 +44,7 @@ function recortar(fuente, sx, sy, sw, sh) {
   g.fillRect(0, 0, c.width, c.height);
   g.imageSmoothingQuality = 'high';
   g.drawImage(fuente, sx, sy, sw, sh, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.88);
+  return c.toDataURL('image/jpeg', 0.85);
 }
 
 /**
@@ -114,7 +114,7 @@ const giro = (izq) =>
     izq ? '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>' : '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>'
   }</svg>`;
 
-// La foto se lleva a un lienzo de tamaño moderado (suficiente para guardar 1400 px de ancho)
+// La foto se lleva a un lienzo de tamaño moderado (suficiente para guardar 1100 px de ancho)
 // sobre el que se gira y se ajusta
 const MAX_LADO = 3000;
 function aLienzo(img) {

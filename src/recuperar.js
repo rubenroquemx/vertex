@@ -101,7 +101,7 @@ async function restablecer({ username, code, password, confirm }) {
     throw invalido;
   }
   await query('UPDATE password_resets SET used_at = now() WHERE id = $1', [r.id]);
-  await users.update(user.id, { passwordHash: passwords.hash(password) });
+  await users.update(user.id, { passwordHash: await passwords.hashAsync(password) });
   await sessions.destroyAllFor(user.id);
   await audit.add({ action: 'password.reset', by: user.id });
   return { ok: true };

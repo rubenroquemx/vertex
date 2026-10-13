@@ -1989,7 +1989,8 @@ async function boot() {
       // Sin sesión confirmada no se muestra el panel: el error se queda en la pantalla de carga
       $('#boot').classList.add('is-error');
       $('#bootMsg').innerHTML = `<strong>No se pudo conectar</strong><br>${esc(navigator.onLine ? err.message : 'Sin conexión. Revisa tu internet.')}
-        <br><button class="btn btn--sm" type="button" onclick="location.reload()">Reintentar</button>`;
+        <br><button class="btn btn--sm" type="button" id="bootRetry">Reintentar</button>`;
+      $('#bootRetry').addEventListener('click', () => location.reload());
     }
     if (!state.sinConexion) return;
   }

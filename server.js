@@ -39,6 +39,36 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const isProd = process.env.NODE_ENV === 'production';
 
 app.disable('x-powered-by');
+
+// Cabeceras de seguridad: sin incrustar la app en otros sitios, solo recursos propios (más los
+// mosaicos del mapa y las fuentes de Google), HTTPS obligatorio y solo cámara/ubicación propias.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tile.openstreetmap.org",
+  "connect-src 'self'",
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "media-src 'self' blob:",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+].join('; ');
+app.use((req, res, next) => {
+  res.set({
+    'Content-Security-Policy': CSP,
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(self), geolocation=(self), microphone=(), payment=(), usb=()',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+  });
+  if (isProd) res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
 for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
   const original = app[method].bind(app);
   app[method] = (route, ...handlers) => {
@@ -182,7 +212,7 @@ app.post('/api/users', requireUser, async (req, res) => {
   if (Object.keys(cuenta.errors).length) return invalid(res, cuenta.errors);
 
   const created = await users.create({ ...cuenta.data, role: role.key, parentId: req.user.id });
-  await users.update(created.id, { passwordHash: passwords.hash(cuenta.password) });
+  await users.update(created.id, { passwordHash: await passwords.hashAsync(cuenta.password) });
   await audit.add({ action: 'user.create', by: req.realUser.id, as: req.user.id, user: created.id });
   res.status(201).json(publicUser(users.get(created.id), users.all()));
 });
@@ -234,7 +264,7 @@ app.get('/api/users/:id/backup', requireUser, async (req, res) => {
 app.delete('/api/users/:id', requireUser, async (req, res) => {
   const target = deletableTarget(req, res);
   if (!target) return;
-  const check = auth.confirmPassword(req.realUser, req.body?.password);
+  const check = await auth.confirmPassword(req.realUser, req.body?.password);
   if (!check.ok) {
     return res.status(check.status).json(check.field ? { error: check.error, fields: { password: check.error } } : { error: check.error });
   }
@@ -310,7 +340,7 @@ app.post('/api/coordinadores', requireUser, requireRole('superadmin'), async (re
   const v = validateCoordinador(req.body);
   if (Object.keys(v.errors).length) return invalid(res, v.errors);
   const created = await users.create({ ...v.data, role: 'coord_promocion', parentId: req.user.id });
-  await users.update(created.id, { passwordHash: passwords.hash(v.password) });
+  await users.update(created.id, { passwordHash: await passwords.hashAsync(v.password) });
   await audit.add({ action: 'user.create', by: req.realUser.id, user: created.id });
   res.status(201).json(coordinadorDetail(users.get(created.id)));
 });
@@ -334,7 +364,7 @@ app.post('/api/coordinadores/:id/acceso', requireUser, requireRole('superadmin')
   if (!u || u.role !== 'coord_promocion') return res.status(404).json({ error: 'Coordinador no encontrado' });
   if (!u.username) return res.status(422).json({ error: 'Esta cuenta no tiene usuario de acceso. Edítala para asignarle uno.' });
   const password = generarPassword();
-  await users.update(u.id, { passwordHash: passwords.hash(password) });
+  await users.update(u.id, { passwordHash: await passwords.hashAsync(password) });
   await sessions.destroyAllFor(u.id);
   await audit.add({ action: 'user.password_reset', by: req.realUser.id, user: u.id });
   res.json({ user: coordinadorDetail(users.get(u.id)), password });
@@ -347,7 +377,7 @@ app.put('/api/coordinadores/:id', requireUser, requireRole('superadmin'), async 
   if (Object.keys(v.errors).length) return invalid(res, v.errors);
   const patch = { ...v.data };
   if (v.password) {
-    patch.passwordHash = passwords.hash(v.password);
+    patch.passwordHash = await passwords.hashAsync(v.password);
     await sessions.destroyAllFor(current.id); // la contraseña nueva cierra sus sesiones abiertas
   }
   await users.update(current.id, patch);
@@ -402,7 +432,7 @@ app.post('/api/configuracion/cpv/simular', requireUser, requireCPV, async (req, 
 app.put('/api/configuracion/cpv', requireUser, requireCPV, async (req, res) => {
   const v = metas.validar(req.body);
   if (Object.keys(v.errors).length) return invalid(res, v.errors);
-  const check = auth.confirmPassword(req.realUser, req.body?.password);
+  const check = await auth.confirmPassword(req.realUser, req.body?.password);
   if (!check.ok) {
     return res.status(check.status).json(check.field ? { error: check.error, fields: { password: check.error } } : { error: check.error });
   }
@@ -478,7 +508,9 @@ app.get('/api/material/ordenes/:id', requireUser, conMaterial(async (req, res) =
 }));
 app.post('/api/material/ordenes/:id/recibir', requireUser, conMaterial(async (req, res) => res.json(await material.recibir(req.user, req.params.id))));
 app.delete('/api/material/ordenes/:id', requireUser, conMaterial(async (req, res) => res.json(await material.cancelar(req.user, req.params.id))));
-app.post('/api/material/ordenes/:id/evidencias', requireUser, express.json({ limit: '40mb' }), conMaterial(async (req, res) => {
+// Envíos grandes: primero se valida el nivel y después se lee el contenido
+const soloRoles = (...roles) => (req, res, next) => (roles.includes(req.user.role) ? next() : res.status(403).json({ error: 'No tienes permiso para esta acción' }));
+app.post('/api/material/ordenes/:id/evidencias', requireUser, soloRoles('resp_seccion'), express.json({ limit: '40mb' }), conMaterial(async (req, res) => {
   res.status(201).json(await material.subirEvidencia(req.user, req.params.id, req.body?.fotos));
 }));
 app.get('/api/material/evidencias/:id', requireUser, conMaterial(async (req, res) => {
@@ -519,15 +551,19 @@ app.get('/api/promovidos', requireUser, requirePromotor, async (req, res) => {
 });
 
 // Ficha y fotos de la INE: el promotor que lo capturó y su rama hasta el CPV
+// El super administrador no ve fotos de INE ni descarga fichas, tampoco en modo dios
+const inePrivada = (req) => req.realUser.role === 'superadmin';
+
 app.get('/api/promovidos/:id', requireUser, async (req, res) => {
   const p = await promovidos.detalle(req.user, req.params.id);
   if (!p) return res.status(404).json({ error: 'Promovido no encontrado' });
+  p.fotosOcultas = inePrivada(req);
   await audit.add({ action: 'promovido.view', by: req.realUser.id, as: req.user.id, promovido: p.id });
   res.json(p);
 });
 
 // Editar: el promotor que lo capturó o su Responsable de Sección (queda en el historial)
-app.put('/api/promovidos/:id', requireUser, express.json({ limit: '8mb' }), async (req, res) => {
+app.put('/api/promovidos/:id', requireUser, soloRoles('promotor', 'resp_seccion'), express.json({ limit: '8mb' }), async (req, res) => {
   try {
     const r = await promovidos.actualizar(req.user, req.params.id, req.body || {});
     if (r.cambios) await audit.add({ action: 'promovido.update', by: req.realUser.id, as: req.user.id, promovido: r.id, cambios: r.cambios });
@@ -539,6 +575,7 @@ app.put('/api/promovidos/:id', requireUser, express.json({ limit: '8mb' }), asyn
 
 // Ficha en PDF (sin historial ni observaciones): quien puede ver la ficha
 app.get('/api/promovidos/:id/pdf', requireUser, async (req, res) => {
+  if (inePrivada(req)) return res.status(403).json({ error: 'El super administrador no descarga fichas de promovidos.' });
   const p = await promovidos.detalle(req.user, req.params.id);
   if (!p) return res.status(404).json({ error: 'Promovido no encontrado' });
   // El PDF necesita JPEG (las fotos se guardan en WebP)
@@ -595,6 +632,7 @@ app.post('/api/promovidos/:id/observaciones', requireUser, async (req, res) => {
 });
 
 app.get('/api/promovidos/:id/ine/:lado', requireUser, async (req, res) => {
+  if (inePrivada(req)) return res.status(403).end();
   const img = await promovidos.foto(req.user, req.params.id, req.params.lado);
   if (!img) return res.status(404).end();
   // Dato sensible: no se guarda en cachés compartidas
@@ -661,7 +699,7 @@ app.post('/api/zonas', requireUser, requireCPV, async (req, res) => {
   const errors = { ...cuenta.errors, ...zona.errors };
   if (Object.keys(errors).length) return invalid(res, errors);
   const created = await users.create({ ...cuenta.data, role: 'coord_zona', parentId: req.user.id, zona: zona.zona, territorio: zona.territorio });
-  await users.update(created.id, { passwordHash: passwords.hash(cuenta.password) });
+  await users.update(created.id, { passwordHash: await passwords.hashAsync(cuenta.password) });
   await audit.add({ action: 'zona.create', by: req.realUser.id, as: req.user.id, user: created.id, secciones: zona.territorio.secciones.length });
   res.status(201).json(zonaDetail(users.get(created.id)));
 });
@@ -675,7 +713,7 @@ app.put('/api/zonas/:id', requireUser, requireCPV, async (req, res) => {
   if (Object.keys(errors).length) return invalid(res, errors);
   const patch = { ...cuenta.data, zona: zona.zona, territorio: zona.territorio };
   if (cuenta.password) {
-    patch.passwordHash = passwords.hash(cuenta.password);
+    patch.passwordHash = await passwords.hashAsync(cuenta.password);
     await sessions.destroyAllFor(current.id);
   }
   await users.update(current.id, patch);
@@ -716,7 +754,7 @@ app.post('/api/responsables', requireUser, requireCZ, async (req, res) => {
   const errors = { ...cuenta.errors, ...t.errors };
   if (Object.keys(errors).length) return invalid(res, errors);
   const created = await users.create({ ...cuenta.data, role: 'resp_seccion', parentId: req.user.id, territorio: t.territorio });
-  await users.update(created.id, { passwordHash: passwords.hash(cuenta.password) });
+  await users.update(created.id, { passwordHash: await passwords.hashAsync(cuenta.password) });
   await audit.add({ action: 'responsable.create', by: req.realUser.id, as: req.user.id, user: created.id, secciones: t.territorio.secciones.length });
   res.status(201).json(rsDetail(users.get(created.id)));
 });
@@ -730,7 +768,7 @@ app.put('/api/responsables/:id', requireUser, requireCZ, async (req, res) => {
   if (Object.keys(errors).length) return invalid(res, errors);
   const patch = { ...cuenta.data, territorio: t.territorio };
   if (cuenta.password) {
-    patch.passwordHash = passwords.hash(cuenta.password);
+    patch.passwordHash = await passwords.hashAsync(cuenta.password);
     await sessions.destroyAllFor(current.id);
   }
   await users.update(current.id, patch);
@@ -751,7 +789,7 @@ app.get('/api/configuracion/whatsapp', requireUser, requireRole('superadmin'), (
 app.put('/api/configuracion/whatsapp', requireUser, requireRole('superadmin'), async (req, res) => {
   const v = whatsapp.validar(req.body || {});
   if (Object.keys(v.errors).length) return invalid(res, v.errors);
-  const check = auth.confirmPassword(req.realUser, req.body?.password);
+  const check = await auth.confirmPassword(req.realUser, req.body?.password);
   if (!check.ok) {
     return res.status(check.status).json(check.field ? { error: check.error, fields: { password: check.error } } : { error: check.error });
   }
@@ -806,7 +844,7 @@ app.put('/api/me/avatar', requireUser, express.json({ limit: '3mb' }), async (re
   const isJpeg = buffer && buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
   if (!isJpeg) return res.status(422).json({ error: 'La imagen no es válida.' });
   if (buffer.length > 2 * 1024 * 1024) return res.status(413).json({ error: 'La imagen es demasiado grande (máx. 2 MB).' });
-  await avatars.save(req.user.id, buffer);
+  await avatars.save(req.user.id, await fotos.comprimir(buffer, fotos.AVATAR));
   const updated = await users.update(req.user.id, { avatarAt: new Date().toISOString() });
   res.json(publicUser(updated, users.all()));
 });
@@ -823,11 +861,11 @@ app.put('/api/me/password', requireUser, async (req, res) => {
   const next = String(req.body.next || '');
   const confirm = String(req.body.confirm || '');
   const errors = {};
-  if (req.user.passwordHash && !passwords.verify(current, req.user.passwordHash)) errors.current = 'La contraseña actual no es correcta.';
+  if (req.user.passwordHash && !(await passwords.verifyAsync(current, req.user.passwordHash))) errors.current = 'La contraseña actual no es correcta.';
   if (!auth.validPassword(next)) errors.next = auth.PASSWORD_HINT;
   else if (next !== confirm) errors.confirm = 'Las contraseñas no coinciden.';
   if (Object.keys(errors).length) return invalid(res, errors);
-  await users.update(req.user.id, { passwordHash: passwords.hash(next) });
+  await users.update(req.user.id, { passwordHash: await passwords.hashAsync(next) });
   res.json({ ok: true });
 });
 
@@ -838,7 +876,7 @@ app.get('/api/users/:id/avatar', requireUser, async (req, res) => {
   res.set('Cache-Control', 'private, max-age=31536000, immutable');
   const img = await avatars.get(target.id);
   if (!img) return res.status(404).end();
-  res.type('image/jpeg').send(img);
+  res.type(fotos.tipo(img)).send(img);
 });
 
 // --- Bases de datos (Super administrador) ----------------------------------

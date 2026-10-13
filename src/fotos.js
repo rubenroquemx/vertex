@@ -7,6 +7,7 @@ const settings = require('./settings');
 
 const INE = { ancho: 1100, calidad: 75 };
 const EVIDENCIA = { ancho: 1280, calidad: 70 };
+const AVATAR = { ancho: 400, calidad: 80 };
 
 const esWebp = (b) => Boolean(b) && b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP';
 const tipo = (b) => (esWebp(b) ? 'image/webp' : 'image/jpeg');
@@ -78,4 +79,4 @@ async function compactarExistentes() {
   }
 }
 
-module.exports = { INE, EVIDENCIA, esWebp, tipo, comprimir, aJpeg, compactarExistentes };
+module.exports = { INE, EVIDENCIA, AVATAR, esWebp, tipo, comprimir, aJpeg, compactarExistentes };

@@ -193,7 +193,23 @@ const passwords = {
     const actual = crypto.scryptSync(plain, salt, expected.length);
     return crypto.timingSafeEqual(expected, actual);
   },
+  // Versiones asíncronas: el cálculo (~50 ms) corre fuera del hilo principal, así muchos
+  // inicios de sesión simultáneos no frenan al resto de la app
+  async hashAsync(plain) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = await scryptAsync(plain, salt, 64);
+    return `scrypt:${salt}:${hash.toString('hex')}`;
+  },
+  async verifyAsync(plain, stored) {
+    if (!stored) return false;
+    const [, salt, hash] = stored.split(':');
+    const expected = Buffer.from(hash || '', 'hex');
+    if (!salt || !expected.length) return false;
+    const actual = await scryptAsync(plain, salt, expected.length);
+    return crypto.timingSafeEqual(expected, actual);
+  },
 };
+const scryptAsync = (plain, salt, len) => new Promise((ok, fail) => crypto.scrypt(plain, salt, len, (err, key) => (err ? fail(err) : ok(key))));
 
 // --- Arranque ----------------------------------------------------------------
 // Carga la copia en memoria. Si la base está vacía, crea el Super administrador

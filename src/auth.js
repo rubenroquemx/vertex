@@ -47,31 +47,53 @@ function requireUser(req, res, next) {
 
 const inGodMode = (req) => req.user.id !== req.realUser.id;
 
-// --- Límite de intentos fallidos (por usuario y por IP) --------------------
+// --- Límite de intentos fallidos -----------------------------------------------
+// Por usuario: tras 5 errores, una espera que crece (30 s, 1, 2, 4… hasta 15 min) en vez de un
+// bloqueo fijo, para que nadie pueda dejar fuera a otro por mucho tiempo.
+// Por IP: límite alto, porque con datos móviles cientos de promotores comparten la misma IP.
 const attempts = new Map();
 const DUMMY_HASH = passwords.hash('vertex-dummy-password');
 const WINDOW = 15 * 60 * 1000;
 const MAX_FAILS = 5;
-function tooManyAttempts(key) {
+const MAX_FAILS_IP = 60;
+const limite = (key) => (key.startsWith('ip:') ? MAX_FAILS_IP : MAX_FAILS);
+// Milisegundos que faltan para poder intentar de nuevo (0 si ya se puede)
+function espera(key) {
   const a = attempts.get(key);
-  return a && a.count >= MAX_FAILS && Date.now() - a.first < WINDOW;
+  if (!a || Date.now() - a.last > WINDOW) return 0;
+  const extra = a.count - limite(key);
+  if (extra < 0) return 0;
+  const ms = key.startsWith('ip:') ? WINDOW : Math.min(WINDOW, 30000 * 2 ** extra);
+  return Math.max(0, a.last + ms - Date.now());
 }
+const tooManyAttempts = (key) => espera(key) > 0;
 function registerFail(key) {
   const a = attempts.get(key);
-  if (!a || Date.now() - a.first > WINDOW) attempts.set(key, { count: 1, first: Date.now() });
-  else a.count += 1;
+  if (!a || Date.now() - a.last > WINDOW) attempts.set(key, { count: 1, last: Date.now() });
+  else {
+    a.count += 1;
+    a.last = Date.now();
+  }
 }
+const mensajeEspera = (ms) => {
+  const min = Math.ceil(ms / 60000);
+  return ms < 60000 ? `Demasiados intentos. Espera ${Math.ceil(ms / 1000)} segundos e intenta de nuevo.` : `Demasiados intentos. Espera ${min} ${min === 1 ? 'minuto' : 'minutos'} e intenta de nuevo.`;
+};
+// La memoria de intentos se limpia sola (no crece sin límite)
+setInterval(() => {
+  const ahora = Date.now();
+  for (const [k, a] of attempts) if (ahora - a.last > WINDOW) attempts.delete(k);
+}, 10 * 60 * 1000).unref();
 
 async function login(req, res) {
   const username = String(req.body.username || '').trim().toLowerCase();
   const password = String(req.body.password || '');
   const keys = [`u:${username}`, `ip:${req.ip}`];
-  if (keys.some(tooManyAttempts)) {
-    return res.status(429).json({ error: 'Demasiados intentos. Espera 15 minutos e intenta de nuevo.' });
-  }
+  const ms = Math.max(...keys.map(espera));
+  if (ms > 0) return res.status(429).json({ error: mensajeEspera(ms) });
   const user = users.byUsername(username);
   // Se verifica siempre una contraseña para no revelar por tiempo de respuesta si el usuario existe
-  const ok = passwords.verify(password, user?.passwordHash || DUMMY_HASH) && user && !user.disabled;
+  const ok = (await passwords.verifyAsync(password, user?.passwordHash || DUMMY_HASH)) && user && !user.disabled;
   if (!ok) {
     keys.forEach(registerFail);
     return res.status(401).json({ error: 'Usuario o contraseña incorrectos.' });
@@ -83,11 +105,11 @@ async function login(req, res) {
 }
 
 // Confirmación de acciones delicadas con la contraseña de quien inició sesión
-function confirmPassword(user, password) {
+async function confirmPassword(user, password) {
   const key = `confirm:${user.id}`;
   if (!user.passwordHash) return { error: 'Para confirmar esta acción necesitas una contraseña. Créala en "Mi perfil".', status: 409 };
-  if (tooManyAttempts(key)) return { error: 'Demasiados intentos. Espera 15 minutos e intenta de nuevo.', status: 429 };
-  if (!passwords.verify(String(password || ''), user.passwordHash)) {
+  if (tooManyAttempts(key)) return { error: mensajeEspera(espera(key)), status: 429 };
+  if (!(await passwords.verifyAsync(String(password || ''), user.passwordHash))) {
     registerFail(key);
     return { error: 'La contraseña no es correcta.', status: 422, field: 'password' };
   }
@@ -145,7 +167,7 @@ async function ensureAdminCredentials() {
   if (reset && (userOk || passOk)) {
     const patch = {};
     if (userOk && !taken) patch.username = userOk;
-    if (passOk) patch.passwordHash = passwords.hash(passOk);
+    if (passOk) patch.passwordHash = await passwords.hashAsync(passOk);
     await users.update(admin.id, patch);
     if (passOk) await sessions.destroyAllFor(admin.id);
     await audit.add({ action: 'admin.reset', by: admin.id });
@@ -156,7 +178,7 @@ async function ensureAdminCredentials() {
   if (admin.username && admin.passwordHash) return;
   const password = passOk || `${crypto.randomBytes(9).toString('base64url')}7a`;
   const username = admin.username || (userOk && !taken ? userOk : 'admin');
-  await users.update(admin.id, { username, passwordHash: passwords.hash(password) });
+  await users.update(admin.id, { username, passwordHash: await passwords.hashAsync(password) });
   if (!passOk) {
     const file = path.join(DATA_DIR, 'CREDENCIAL_ADMIN.txt');
     fs.writeFileSync(file, `Usuario: ${username}\nContraseña inicial: ${password}\n\nCámbiala desde "Mi perfil" y borra este archivo.\n`);

@@ -822,7 +822,7 @@ export async function viewPromovido(route, params, state) {
           <p>${chipEstatus(p)} Sección ${fmtSeccion(p.seccion)} · registrado el ${fmtDate(p.createdAt)}${p.promotor ? ` por ${esc(p.promotor)}` : ''}${p.revisadoPor ? ` · revisado por ${esc(p.revisadoPor)}` : ''}</p>
         </div>
         <div class="promo-ficha__acciones">
-          <a class="btn btn--secondary" href="/api/promovidos/${p.id}/pdf" download title="Descargar la ficha en PDF (sin historial ni observaciones)">${ICONO_PDF}<span>PDF</span></a>
+          ${p.fotosOcultas ? '' : `<a class="btn btn--secondary" href="/api/promovidos/${p.id}/pdf" download title="Descargar la ficha en PDF (sin historial ni observaciones)">${ICONO_PDF}<span>PDF</span></a>`}
           ${p.puedeEditar ? `<a class="btn btn--secondary" href="/promovidos/${p.id}/editar" data-link>${ICONS.edit}<span>Editar</span></a>` : ''}
         </div>
       </div>
@@ -832,7 +832,11 @@ export async function viewPromovido(route, params, state) {
         <div class="promo-ficha__main">
           <section class="card form-card" aria-labelledby="pv1">
             <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.camera}</span><h3 id="pv1">Credencial para votar (INE)</h3></header>
-            <div class="ine-views">${fotoIne('frente', 'Frente')}${fotoIne('reverso', 'Reverso')}</div>
+            ${
+              p.fotosOcultas
+                ? `<div class="notice">${ICONS.alert}<div>Las fotos de la INE no se muestran al super administrador (tampoco en modo dios).</div></div>`
+                : `<div class="ine-views">${fotoIne('frente', 'Frente')}${fotoIne('reverso', 'Reverso')}</div>`
+            }
             <dl class="ficha__grid">
               ${dato('Clave de elector', esc(p.claveElector), 'mono')}
               ${dato('CURP', esc(p.curp), 'mono')}

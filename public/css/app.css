@@ -2526,3 +2526,108 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 5px
   .table--cards td:has(.ec-bar) { display: grid; grid-template-columns: 1fr; text-align: left; }
   .table-wrap:has(.table--cards) { overflow: visible; }
 }
+
+/* ==========================================================================
+   Modo oscuro (Mi perfil › Preferencias › Apariencia). Se activa con data-theme="dark"
+   en <html>. Primero los tokens; después los colores claros escritos a mano (generado).
+   ========================================================================== */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-background: #0d0d0d;
+  --color-foreground: #f2f2f2;
+  --color-card: #1a1a19;
+  --color-surface-alt: #222221;
+  --color-muted: #262625;
+  --color-muted-hover: #333331;
+  --color-muted-foreground: #a8a8a3;
+  --color-border: #2f2f2d;
+  --color-primary: #f2f2f2;
+  --color-primary-hover: #ffffff;
+  --color-primary-soft: #262625;
+  --color-on-primary: #0d0d0d;
+  --color-ring: #f2f2f2;
+  --color-success-soft: #12301c;
+  --color-destructive-soft: #3b1515;
+  --shadow-sm: 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 3px rgba(0, 0, 0, .5);
+  --shadow-card: 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 3px rgba(0, 0, 0, .5);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, .6);
+}
+:root[data-theme="dark"] body { background: var(--color-background); color: var(--color-foreground); }
+/* Tarjetas oscuras de los paneles: un poco más claras que el fondo para distinguirlas */
+:root[data-theme="dark"] .ec-hero, :root[data-theme="dark"] .sa-hero, :root[data-theme="dark"] .ep-hero, :root[data-theme="dark"] .kband { background: #232322; box-shadow: 0 0 0 1px #33332f; }
+:root[data-theme="dark"] .ep-hero--sin { background: #2e2a26; }
+/* Barras de avance y gráficas que usaban tinta negra */
+:root[data-theme="dark"] .sa-meter__bar span, :root[data-theme="dark"] .hbars__track span { background: var(--color-foreground); }
+:root[data-theme="dark"] .sa-ref { stroke: var(--color-foreground); }
+:root[data-theme="dark"] .sa-ref__txt { fill: var(--color-foreground); stroke: var(--color-card); }
+:root[data-theme="dark"] .bienvenida { border-color: var(--color-foreground); }
+:root[data-theme="dark"] .dep-op:has(input:checked), :root[data-theme="dark"] .del__op:hover, :root[data-theme="dark"] .rev-card { box-shadow: inset 0 0 0 2px var(--color-foreground); }
+:root[data-theme="dark"] .rev-card { border-color: var(--color-foreground); }
+:root[data-theme="dark"] .consent__check input, :root[data-theme="dark"] .dep-op input { accent-color: var(--color-foreground); }
+:root[data-theme="dark"] .topbar__notif[aria-current="page"] { background: var(--color-foreground); color: var(--color-background); }
+:root[data-theme="dark"] .leaflet-container { background: #1a1a19; }
+:root[data-theme="dark"] .login { background: var(--color-background); }
+:root[data-theme="dark"] .ez-vacantes li { border-color: #555; }
+:root[data-theme="dark"] .mat-alerta { background: #3b1515; color: #fca5a5; }
+:root[data-theme="dark"] .ez-viejos, :root[data-theme="dark"] .pend-msg, :root[data-theme="dark"] .ep-item__msg, :root[data-theme="dark"] .pend-err { color: #fca5a5; }
+:root[data-theme="dark"] .table tbody tr:hover { background: var(--color-surface-alt); }
+:root[data-theme="dark"] .badge--warn { background: #3d2e0a; color: #fcd34d; }
+:root[data-theme="dark"] .notice { color: #fcd34d; }
+:root[data-theme="dark"] .map { background: var(--color-muted); }
+:root[data-theme="dark"] .map .leaflet-bar a.leaflet-disabled { background: var(--color-surface-alt); }
+:root[data-theme="dark"] .badge--ok { background: #12301c; }
+:root[data-theme="dark"] .done__icon { background: #12301c; }
+:root[data-theme="dark"] .notice--ok { background: #12301c; }
+:root[data-theme="dark"] .zstats__warn { color: #fdba74; }
+:root[data-theme="dark"] .badge--ok { background: #12301c; }
+:root[data-theme="dark"] .badge--warn { background: #3d2e0a; color: #fcd34d; }
+:root[data-theme="dark"] .user__avatar { background: var(--color-surface-alt); color: var(--color-foreground); }
+:root[data-theme="dark"] .chip[aria-pressed="true"] { background: var(--color-muted); color: var(--color-foreground); }
+:root[data-theme="dark"] .chip__check { color: var(--color-foreground); }
+:root[data-theme="dark"] .unit.is-selected { background: var(--color-muted); }
+:root[data-theme="dark"] .unit.is-selected .unit__name { color: var(--color-foreground); }
+:root[data-theme="dark"] .coalicion { color: var(--color-foreground); }
+:root[data-theme="dark"] .method:hover { color: var(--color-foreground); }
+:root[data-theme="dark"] .segmented button[aria-checked="true"] { color: var(--color-foreground); }
+:root[data-theme="dark"] .dropzone:hover, :root[data-theme="dark"] .dropzone.is-over { background: var(--color-muted); }
+:root[data-theme="dark"] .dropzone__icon, :root[data-theme="dark"] .empty svg, :root[data-theme="dark"] .form-card__icon, :root[data-theme="dark"] .stat__icon { color: var(--color-foreground); }
+:root[data-theme="dark"] .avatar, :root[data-theme="dark"] .profile__avatar { background: var(--color-muted); color: var(--color-foreground); }
+:root[data-theme="dark"] .link-btn, :root[data-theme="dark"] .vz-table summary, :root[data-theme="dark"] .back-link:hover { color: var(--color-foreground); }
+:root[data-theme="dark"] .zstats__accent, :root[data-theme="dark"] .cfg-steps__n--goal { color: var(--color-foreground); }
+:root[data-theme="dark"] .zstats__warn { color: var(--color-foreground); }
+:root[data-theme="dark"] .cfg-totals.is-preview div { background: var(--color-muted); color: var(--color-foreground); }
+:root[data-theme="dark"] .status { color: var(--color-foreground); }
+:root[data-theme="dark"] .badge--ok, :root[data-theme="dark"] .badge--warn { background: var(--color-muted); color: var(--color-foreground); }
+:root[data-theme="dark"] .notice, :root[data-theme="dark"] .notice--info, :root[data-theme="dark"] .notice--ok { background: var(--color-surface-alt); color: var(--color-foreground); }
+:root[data-theme="dark"] .done__icon { background: var(--color-muted); color: var(--color-foreground); }
+:root[data-theme="dark"] .field__ok { color: var(--color-foreground); }
+:root[data-theme="dark"] .map .leaflet-bar a:hover { background: var(--color-muted); color: var(--color-foreground); }
+:root[data-theme="dark"] .segmented button[aria-checked="true"]:hover { color: var(--color-foreground); }
+:root[data-theme="dark"] .chip[aria-pressed="true"]:hover { background: var(--color-muted); color: var(--color-foreground); }
+:root[data-theme="dark"] .switch__track span { background: var(--color-card); }
+:root[data-theme="dark"] #waConn.is-ok { color: var(--color-foreground); }
+:root[data-theme="dark"] .ps-bar span { background: var(--color-surface-alt); }
+:root[data-theme="dark"] .ine-shot:hover { color: var(--color-foreground); }
+:root[data-theme="dark"] .wiz-bar__track span { background: var(--color-muted-hover); }
+:root[data-theme="dark"] .promo-bloqueado { color: #86efac; }
+:root[data-theme="dark"] .notif__ic { background: var(--color-muted); color: var(--color-foreground); }
+:root[data-theme="dark"] .mat-alerta { background: #3b1515; color: #fca5a5; }
+:root[data-theme="dark"] .sa-ok.is-ok { background: #12301c; color: #86efac; }
+:root[data-theme="dark"] .sa-ok.is-no { background: var(--color-muted); color: var(--color-muted-foreground); }
+:root[data-theme="dark"] .ez-viejos { color: #fca5a5; }
+:root[data-theme="dark"] .ez-vacantes li { background: var(--color-surface-alt); }
+:root[data-theme="dark"] .rev-tag { background: #3b1515; color: #fca5a5; }
+:root[data-theme="dark"] .rev-tag--viejo { background: #3a2410; color: #fdba74; }
+:root[data-theme="dark"] .es-prom__main p strong { color: #fdba74; }
+:root[data-theme="dark"] .es-inactivo { color: #fca5a5; }
+:root[data-theme="dark"] .lupa { background-color: var(--color-card); }
+:root[data-theme="dark"] .rev-motivo:has(input:checked) { background: #3b1515; }
+:root[data-theme="dark"] .ep-item__msg { color: #fca5a5; }
+:root[data-theme="dark"] .topbar__pend { background: #3d2e0a; color: #fcd34d; }
+:root[data-theme="dark"] .pend-aviso { background: #3d2e0a; color: #fcd34d; }
+:root[data-theme="dark"] .notice--error { background: #3b1515; color: #fca5a5; }
+:root[data-theme="dark"] .pend-err { color: #fca5a5; }
+:root[data-theme="dark"] .pend-msg { color: #fca5a5; }
+:root[data-theme="dark"] .login__aviso { background: #3d2e0a; color: #fcd34d; }
+:root[data-theme="dark"] .del__op--danger svg { color: #fca5a5; }
+:root[data-theme="dark"] .estatus--revision, :root[data-theme="dark"] .estatus--observaciones, :root[data-theme="dark"] .estatus--aprobado { background: var(--color-muted); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-border); }

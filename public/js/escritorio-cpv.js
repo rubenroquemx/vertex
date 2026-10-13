@@ -31,7 +31,7 @@ export const ESTATUS = [
   { k: 'rechazados', t: 'Rechazados', c: '#4a3aa7' },
 ];
 
-export const barra = (valor, meta, color = '#171717') =>
+export const barra = (valor, meta, color = 'var(--color-foreground)') =>
   `<span class="ec-bar" role="img" aria-label="${pctTxt(valor, meta)}"><span style="width:${Math.min(100, pct(valor, meta))}%;background:${color}"></span></span>`;
 
 export function sparkline(serie, color) {

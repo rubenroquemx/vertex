@@ -11,7 +11,7 @@ const { query, tx } = require('./db');
 const { users } = require('./store');
 const { chainOf } = require('./access');
 const { notificar } = require('./notificaciones');
-const fotos = require('./fotos');
+const fotosLib = require('./fotos');
 
 const MIN_FOTOS = 5;
 const MAX_FOTOS_LOTE = 15;
@@ -318,7 +318,7 @@ async function subirEvidencia(viewer, id, fotos) {
     throw new MaterialError(msg, 422, { fotos: msg });
   }
   let comprobada = false;
-  const comprimidas = await Promise.all(bufs.map((b) => fotos.comprimir(b, fotos.EVIDENCIA)));
+  const comprimidas = await Promise.all(bufs.map((b) => fotosLib.comprimir(b, fotosLib.EVIDENCIA)));
   await tx(async (c) => {
     for (const b of comprimidas) await c.query('INSERT INTO material_evidencias (orden_id, user_id, image) VALUES ($1, $2, $3)', [id, viewer.id, b]);
     const r = await c.query("UPDATE material_ordenes SET estado = 'comprobada', comprobada_at = now() WHERE id = $1 AND estado = 'recibida' RETURNING id", [id]);

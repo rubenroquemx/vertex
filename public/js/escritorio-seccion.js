@@ -115,7 +115,7 @@ export async function viewEscritorioSeccion(route) {
       return `<li class="es-prom">
         <div class="es-prom__main">
           <div class="ec-rs__top"><strong>${esc(p.name)}</strong><span class="ec-rs__p">${pctTxt(p.promovidos, meta)}</span></div>
-          ${barra(p.promovidos, meta, p.promovidos >= meta ? '#16a34a' : '#171717')}
+          ${barra(p.promovidos, meta, p.promovidos >= meta ? '#16a34a' : 'var(--color-foreground)')}
           <p>${fmtNum(p.promovidos)} de ${fmtNum(meta)} · ${fmtNum(p.aprobados)} aprobados${p.porRevisar ? ` · <strong>${fmtNum(p.porRevisar)} por revisar</strong>` : ''}${p.rechazados ? ` · ${fmtNum(p.rechazados)} rechazados` : ''} · <span class="${inactivo ? 'es-inactivo' : ''}">${esc(hace(p.ultima))}</span></p>
         </div>
         ${sparkline(p.serie, '#2a78d6')}

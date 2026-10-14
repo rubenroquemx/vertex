@@ -327,7 +327,7 @@ export async function viewOrden(route, params) {
 }
 
 // Reduce la foto a JPEG de máximo 1600 px (las del celular pesan varios MB)
-async function aJpeg(file) {
+export async function aJpeg(file) {
   const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null);
   const img =
     bmp ||

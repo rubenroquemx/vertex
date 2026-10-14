@@ -189,6 +189,8 @@ async function transferirDependientes(target, destino) {
   for (const p of cachePromovidos.all()) if (p.responsableId === target.id) p.responsableId = destino.id;
   await query('UPDATE material_ordenes SET para_id = $2 WHERE para_id = $1', [target.id, destino.id]);
   await query('UPDATE material_ordenes SET de_id = $2 WHERE de_id = $1', [target.id, destino.id]);
+  // Asambleas y recorridos: pasan a la cuenta que hereda la estructura
+  for (const col of ['rs_id', 'zona_id', 'cpv_id']) await query(`UPDATE eventos SET ${col} = $2 WHERE ${col} = $1`, [target.id, destino.id]);
   return { subordinados: hijos.length, promovidos: rowCount };
 }
 

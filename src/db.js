@@ -303,6 +303,77 @@ const MIGRATIONS = [
       CREATE INDEX push_suscripciones_user_idx ON push_suscripciones(user_id);
     `,
   },
+  {
+    id: 10,
+    name: 'agenda: asambleas y recorridos',
+    sql: `
+      -- Propuestas del Responsable de Sección que suben a su Coordinador de Zona y al CPV, que las programa
+      CREATE TABLE eventos (
+        id              uuid PRIMARY KEY,
+        folio           bigserial UNIQUE,
+        tipo            text NOT NULL CHECK (tipo IN ('asamblea', 'recorrido')),
+        estado          text NOT NULL DEFAULT 'revision_zona'
+                        CHECK (estado IN ('revision_zona', 'revision_cpv', 'ajustes', 'programado', 'realizado', 'rechazado', 'cancelado')),
+        rs_id           uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        zona_id         uuid REFERENCES users(id) ON DELETE CASCADE,
+        cpv_id          uuid REFERENCES users(id) ON DELETE CASCADE,
+        seccion         integer,
+        lugar           text NOT NULL,
+        lat             double precision,
+        lng             double precision,
+        ruta            jsonb,
+        fecha_tentativa date NOT NULL,
+        asistentes      integer NOT NULL,
+        necesidades     jsonb NOT NULL DEFAULT '[]'::jsonb,
+        notas           text NOT NULL DEFAULT '',
+        inicio          timestamptz,
+        fin             timestamptz,
+        programado_por  uuid REFERENCES users(id) ON DELETE SET NULL,
+        reporte         jsonb,
+        reportado_at    timestamptz,
+        reporte_tardio  boolean NOT NULL DEFAULT false,
+        recordatorio_at timestamptz,
+        aviso_sin_reporte_at timestamptz,
+        created_at      timestamptz NOT NULL DEFAULT now(),
+        updated_at      timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX eventos_rs_idx ON eventos(rs_id);
+      CREATE INDEX eventos_zona_idx ON eventos(zona_id);
+      CREATE INDEX eventos_cpv_idx ON eventos(cpv_id);
+      CREATE INDEX eventos_inicio_idx ON eventos(inicio) WHERE inicio IS NOT NULL;
+
+      CREATE TABLE evento_fotos (
+        id          bigserial PRIMARY KEY,
+        evento_id   uuid NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
+        clase       text NOT NULL CHECK (clase IN ('lugar', 'testimonio')),
+        image       bytea NOT NULL,
+        created_at  timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX evento_fotos_idx ON evento_fotos(evento_id, clase);
+
+      CREATE TABLE evento_observaciones (
+        id          bigserial PRIMARY KEY,
+        evento_id   uuid NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
+        user_id     uuid REFERENCES users(id) ON DELETE SET NULL,
+        user_name   text NOT NULL,
+        texto       text NOT NULL,
+        at          timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX evento_observaciones_idx ON evento_observaciones(evento_id, at);
+
+      CREATE TABLE evento_historial (
+        id          bigserial PRIMARY KEY,
+        evento_id   uuid NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
+        user_id     uuid REFERENCES users(id) ON DELETE SET NULL,
+        user_name   text NOT NULL,
+        accion      text NOT NULL,
+        detalle     text NOT NULL DEFAULT '',
+        cambios     jsonb NOT NULL DEFAULT '[]'::jsonb,
+        at          timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX evento_historial_idx ON evento_historial(evento_id, at);
+    `,
+  },
 ];
 
 async function migrate() {

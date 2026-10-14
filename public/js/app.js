@@ -35,6 +35,7 @@ import { viewEscritorioSeccion, mountEscritorioSeccion } from './escritorio-secc
 import { viewRevision, mountRevision } from './revision.js';
 import { viewEscritorioPromotor } from './escritorio-promotor.js';
 import { viewInforme, mountInforme } from './informe.js';
+import { viewAgenda, viewEventos, viewFormEvento, mountFormEvento, viewEvento, mountEvento, viewReporte, mountReporte } from './agenda.js';
 import { viewPendientes, mountPendientes } from './pendientes.js';
 import { sesion, pendientes as pendientesLocales, iniciarSincronizacion, prepararSinConexion, borrarDatosLocales, esErrorDeRed } from './offline.js';
 import { viewNotificaciones, mountNotificaciones, iniciarCampana, actualizarContador } from './notificaciones.js';
@@ -70,6 +71,8 @@ const DASHBOARDS = {
 // ---------------------------------------------------------------------------
 // Material electoral: CPV, Coordinador de Zona y Responsable de Sección (el Promotor no participa)
 const MATERIAL = { path: '/material', title: 'Material electoral', icon: 'box', view: (r, p) => viewMaterial(r, p, state), mount: mountMaterial };
+// Agenda de asambleas y recorridos: toda la estructura (el Promotor solo ve lo programado)
+const AGENDA = { path: '/agenda', title: 'Agenda', icon: 'calendar', view: (r, p) => viewAgenda(r, p, state) };
 
 function buildMenu(me) {
   const key = me.role.key;
@@ -103,7 +106,7 @@ function buildMenu(me) {
         },
       ],
     });
-    groups.push({ label: 'Operación', items: [MATERIAL] });
+    groups.push({ label: 'Operación', items: [AGENDA, MATERIAL] });
     groups.push({
       label: 'Sistema',
       items: [{ path: '/configuracion', title: 'Configuración', icon: 'settings', view: viewConfiguracionCPV, mount: mountConfiguracionCPV }],
@@ -121,7 +124,7 @@ function buildMenu(me) {
         },
       ],
     });
-    groups.push({ label: 'Operación', items: [MATERIAL] });
+    groups.push({ label: 'Operación', items: [AGENDA, MATERIAL] });
   } else if (key === 'resp_seccion') {
     // Sin separador de sección: va junto al Panel
     groups[0].items.push(
@@ -130,7 +133,8 @@ function buildMenu(me) {
       { path: '/estructura/nuevo', title: 'Nuevo promotor', icon: 'plus', fab: true, view: viewEstructura, mount: mountEstructura },
       // Bandeja para aprobar o rechazar lo que capturan sus promotores
       { path: '/promovidos', title: 'Promovidos', icon: 'check', view: viewRevision, mount: mountRevision },
-      MATERIAL
+      MATERIAL,
+      AGENDA
     );
   } else if (me.childRole) {
     groups.push({
@@ -154,6 +158,7 @@ function buildMenu(me) {
         // `fab`: en celulares va como botón + al centro de la barra inferior
         { path: '/promovidos/nuevo', title: 'Nuevo promovido', icon: 'plus', fab: true, view: viewNuevoPromovido, mount: mountNuevoPromovido },
         { path: '/promovidos', title: 'Promovidos', icon: 'users', view: viewPromovidos },
+        AGENDA,
       ],
     });
   }
@@ -1541,6 +1546,7 @@ const CORTO = {
   '/estructura': 'Promotores',
   '/promovidos': 'Promovidos',
   '/material': 'Material',
+  '/agenda': 'Agenda',
   '/zonas': 'Zonas',
   '/responsables': 'Responsables',
   '/usuarios': 'Usuarios',
@@ -2217,6 +2223,19 @@ async function boot() {
   if (['coord_promocion', 'coord_zona', 'resp_seccion'].includes(state.me.role.key)) {
     state.routes.set('/material/entregar', { path: '/material/entregar', title: 'Nueva orden de entrega', view: (r, p) => viewEntregar(r, p, state), mount: mountEntregar });
     state.patternRoutes.push({ pattern: /^\/material\/ordenes\/([0-9a-f-]{36})$/, title: 'Orden de entrega', view: viewOrden, mount: mountOrden });
+  }
+  // Asambleas y recorridos: ficha para toda la rama; lista y ajustes para la estructura; alta y reporte del Responsable
+  if (state.me.role.key !== 'superadmin') {
+    state.patternRoutes.push({ pattern: /^\/agenda\/eventos\/([0-9a-f-]{36})$/, title: 'Asamblea o recorrido', view: viewEvento, mount: mountEvento });
+  }
+  if (['coord_promocion', 'coord_zona', 'resp_seccion'].includes(state.me.role.key)) {
+    state.routes.set('/agenda/eventos', { path: '/agenda/eventos', title: 'Asambleas y recorridos', view: (r, p) => viewEventos(r, p, state) });
+    state.patternRoutes.push({ pattern: /^\/agenda\/eventos\/([0-9a-f-]{36})\/editar$/, title: 'Ajustar propuesta', view: viewFormEvento, mount: mountFormEvento });
+  }
+  if (state.me.role.key === 'resp_seccion') {
+    state.routes.set('/agenda/nueva/asamblea', { path: '/agenda/nueva/asamblea', title: 'Proponer asamblea', view: viewFormEvento, mount: mountFormEvento });
+    state.routes.set('/agenda/nueva/recorrido', { path: '/agenda/nueva/recorrido', title: 'Proponer recorrido', view: viewFormEvento, mount: mountFormEvento });
+    state.patternRoutes.push({ pattern: /^\/agenda\/eventos\/([0-9a-f-]{36})\/reporte$/, title: 'Reportar evento', view: viewReporte, mount: mountReporte });
   }
   if (state.me.role.key === 'coord_promocion') {
     state.routes.set('/zonas/nueva', { path: '/zonas/nueva', title: 'Nueva zona', view: viewZona, mount: mountZona });

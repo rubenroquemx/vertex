@@ -19,6 +19,7 @@ const escritorio = require('./src/escritorio');
 const escritorioZona = require('./src/escritorio-zona');
 const escritorioPromotor = require('./src/escritorio-promotor');
 const informe = require('./src/informe');
+const eventos = require('./src/eventos');
 const responsables = require('./src/responsables');
 const metas = require('./src/metas');
 const panelSeccion = require('./src/panel-seccion');
@@ -106,8 +107,15 @@ const jsonBody = express.json();
 const CON_FOTOS = new Set(['/api/me/avatar', '/api/promovidos']);
 const PROMOVIDO_RE = /^\/api\/promovidos\/[0-9a-f-]{36}$/;
 const EVIDENCIA_RE = /^\/api\/material\/ordenes\/[0-9a-f-]{36}\/evidencias$/;
+// Asambleas y recorridos: alta, ajustes y reporte llevan fotos
+const EVENTO_FOTOS_RE = /^\/api\/eventos(\/[0-9a-f-]{36}(\/reporte)?)?$/;
 app.use((req, res, next) =>
-  CON_FOTOS.has(req.path) || (req.method === 'PUT' && PROMOVIDO_RE.test(req.path)) || EVIDENCIA_RE.test(req.path) ? next() : jsonBody(req, res, next)
+  CON_FOTOS.has(req.path) ||
+  (req.method === 'PUT' && PROMOVIDO_RE.test(req.path)) ||
+  EVIDENCIA_RE.test(req.path) ||
+  (req.method !== 'GET' && EVENTO_FOTOS_RE.test(req.path))
+    ? next()
+    : jsonBody(req, res, next)
 );
 
 
@@ -776,6 +784,65 @@ app.get('/api/escritorio/promotor', requireUser, requirePromotor, async (req, re
 app.get('/api/escritorio/zona', requireUser, requireRole('coord_zona'), async (req, res) => res.json(await memo(`zona:${req.user.id}`, 20000, () => escritorioZona.zona(req.user))));
 app.get('/api/escritorio/cpv', requireUser, requireCPV, async (req, res) => res.json(await memo(`cpv:${req.user.id}`, 20000, () => escritorio.cpv(req.user))));
 
+// ---------------------------------------------------------------------------
+// Agenda: asambleas y recorridos (propone el Responsable de Sección, pasa la zona, programa el CPV)
+// ---------------------------------------------------------------------------
+function eventoError(res, err) {
+  if (!(err instanceof eventos.EventoError)) throw err;
+  res.status(err.status).json(err.fields ? { error: err.message, fields: err.fields } : { error: err.message });
+}
+const conEventos = (fn) => async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (err) {
+    eventoError(res, err);
+  }
+};
+const ESTRUCTURA = ['resp_seccion', 'coord_zona', 'coord_promocion'];
+app.get('/api/agenda', requireUser, conEventos(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await eventos.agenda(req.user, String(req.query.mes || '')));
+}));
+app.get('/api/eventos', requireUser, conEventos(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await eventos.lista(req.user));
+}));
+app.post('/api/eventos', requireUser, soloRoles('resp_seccion'), express.json({ limit: '20mb' }), conEventos(async (req, res) => {
+  res.status(201).json(await eventos.crear(req.user, req.body || {}));
+}));
+app.get('/api/eventos/contexto', requireUser, soloRoles(...ESTRUCTURA), (req, res) => res.json(eventos.contexto(req.user)));
+app.get('/api/eventos/fotos/:id', requireUser, conEventos(async (req, res) => {
+  const img = await eventos.foto(req.user, req.params.id);
+  res.set({ 'Content-Type': fotos.tipo(img), 'Cache-Control': 'private, max-age=86400' });
+  res.send(img);
+}));
+app.get('/api/eventos/:id', requireUser, conEventos(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await eventos.detalle(req.user, req.params.id));
+}));
+app.put('/api/eventos/:id', requireUser, soloRoles(...ESTRUCTURA), express.json({ limit: '20mb' }), conEventos(async (req, res) => {
+  res.json(await eventos.editar(req.user, req.params.id, req.body || {}));
+}));
+app.post('/api/eventos/:id/accion', requireUser, soloRoles(...ESTRUCTURA), conEventos(async (req, res) => {
+  res.json(await eventos.accion(req.user, req.params.id, req.body || {}));
+}));
+app.post('/api/eventos/:id/reporte', requireUser, soloRoles('resp_seccion'), express.json({ limit: '40mb' }), conEventos(async (req, res) => {
+  res.json(await eventos.reportar(req.user, req.params.id, req.body || {}));
+}));
+app.get('/api/eventos/:id/historial', requireUser, conEventos(async (req, res) => res.json(await eventos.historialDe(req.user, req.params.id))));
+app.get('/api/eventos/:id/observaciones', requireUser, conEventos(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await eventos.observaciones(req.user, req.params.id));
+}));
+app.post('/api/eventos/:id/observaciones', requireUser, soloRoles(...ESTRUCTURA), conEventos(async (req, res) => {
+  res.status(201).json(await eventos.agregarObservacion(req.user, req.params.id, req.body?.texto));
+}));
+// Trazo por calles para el diseño de recorridos (consulta el servidor de rutas público)
+app.get('/api/rutas', requireUser, soloRoles(...ESTRUCTURA), conEventos(async (req, res) => {
+  res.set('Cache-Control', 'private, max-age=3600');
+  res.json(await eventos.rutaPorCalles(req.query.puntos));
+}));
+
 // Informe por periodo de cada nivel (cifras del periodo, unidades a cargo y FODA)
 function informeError(res, err) {
   if (!(err instanceof informe.InformeError)) throw err;
@@ -1189,6 +1256,10 @@ async function start() {
   app.listen(PORT, () => {
     // Fotos guardadas antes de la compresión: se pasan a WebP en segundo plano (una sola vez)
     setTimeout(() => fotos.compactarExistentes(), 10000);
+    // Asambleas y recorridos: recordatorio de reporte el mismo día y aviso de los no reportados
+    const avisarEventos = () => eventos.recordatorios().catch((err) => console.error('Recordatorios de eventos:', err.message));
+    setTimeout(avisarEventos, 20000);
+    setInterval(avisarEventos, 10 * 60 * 1000);
     console.log(`VERTEX escuchando en http://localhost:${PORT}`);
   });
 }

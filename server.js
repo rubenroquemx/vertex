@@ -18,6 +18,7 @@ const zonas = require('./src/zonas');
 const escritorio = require('./src/escritorio');
 const escritorioZona = require('./src/escritorio-zona');
 const escritorioPromotor = require('./src/escritorio-promotor');
+const informe = require('./src/informe');
 const responsables = require('./src/responsables');
 const metas = require('./src/metas');
 const panelSeccion = require('./src/panel-seccion');
@@ -774,6 +775,27 @@ app.get('/api/escritorio/promotor', requireUser, requirePromotor, async (req, re
 });
 app.get('/api/escritorio/zona', requireUser, requireRole('coord_zona'), async (req, res) => res.json(await memo(`zona:${req.user.id}`, 20000, () => escritorioZona.zona(req.user))));
 app.get('/api/escritorio/cpv', requireUser, requireCPV, async (req, res) => res.json(await memo(`cpv:${req.user.id}`, 20000, () => escritorio.cpv(req.user))));
+
+// Informe por periodo de cada nivel (cifras del periodo, unidades a cargo y FODA)
+function informeError(res, err) {
+  if (!(err instanceof informe.InformeError)) throw err;
+  res.status(err.status).json(err.fields ? { error: err.message, fields: err.fields } : { error: err.message });
+}
+app.get('/api/informe/inicio', requireUser, async (req, res) => {
+  try {
+    res.json(await informe.inicio(req.user));
+  } catch (err) {
+    informeError(res, err);
+  }
+});
+app.get('/api/informe', requireUser, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    res.json(await informe.generar(req.user, { desde: String(req.query.desde || ''), hasta: String(req.query.hasta || '') }));
+  } catch (err) {
+    informeError(res, err);
+  }
+});
 
 app.get('/api/zonas', requireUser, requireCPV, (req, res) => res.json(zonas.resumen(req.user)));
 

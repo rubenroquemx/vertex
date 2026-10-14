@@ -4,6 +4,7 @@
 import { ICONS, $, esc, fmtNum, fmtSeccion, api, homeControl, navigate } from './lib.js';
 import { baseMap, seccionesGeo } from './zonas.js';
 import { barras30 } from './panel-sa.js';
+import { botonInforme } from './informe.js';
 
 export const pct = (a, b) => (b ? (a / b) * 100 : 0);
 export const pctTxt = (a, b) => {
@@ -220,6 +221,7 @@ export async function viewEscritorioCPV(route) {
 
   return `
     <div class="ec">
+      ${botonInforme()}
       ${hero}
       ${kpis}
       <div class="ec-row ec-row--mapa">${mapa}${atencion}</div>

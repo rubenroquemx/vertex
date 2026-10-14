@@ -34,6 +34,7 @@ import { viewEscritorioZona, mountEscritorioZona } from './escritorio-zona.js';
 import { viewEscritorioSeccion, mountEscritorioSeccion } from './escritorio-seccion.js';
 import { viewRevision, mountRevision } from './revision.js';
 import { viewEscritorioPromotor } from './escritorio-promotor.js';
+import { viewInforme, mountInforme } from './informe.js';
 import { viewPendientes, mountPendientes } from './pendientes.js';
 import { sesion, pendientes as pendientesLocales, iniciarSincronizacion, prepararSinConexion, borrarDatosLocales, esErrorDeRed } from './offline.js';
 import { viewNotificaciones, mountNotificaciones, iniciarCampana, actualizarContador } from './notificaciones.js';
@@ -2197,6 +2198,8 @@ async function boot() {
   state.routes.set('/perfil', { path: '/perfil', title: 'Mi perfil', view: viewPerfil, mount: mountPerfil });
   // Notificaciones: todos los niveles, desde la campana de la barra superior
   state.routes.set('/notificaciones', { path: '/notificaciones', title: 'Notificaciones', view: viewNotificaciones, mount: mountNotificaciones });
+  // Informe por periodo con FODA: todos los niveles, desde el botón de su panel
+  state.routes.set('/informe', { path: '/informe', title: 'Informe', view: viewInforme, mount: mountInforme });
   // Rutas con parámetros
   state.patternRoutes = [];
   if (state.me.role.key === 'coord_zona') {

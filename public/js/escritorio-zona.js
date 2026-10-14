@@ -4,6 +4,7 @@ import { ICONS, $, esc, fmtNum, fmtSeccion, fmtDateTime, api, homeControl } from
 import { I } from './coordinador.js';
 import { baseMap, seccionesGeo } from './zonas.js';
 import { barras30 } from './panel-sa.js';
+import { botonInforme } from './informe.js';
 import { pct, pctTxt, RANGOS, colorAvance, SIN_RS, ESTATUS, barra, sparkline, FECHA } from './escritorio-cpv.js';
 
 function hace(iso) {
@@ -207,6 +208,7 @@ export async function viewEscritorioZona(route) {
 
   return `
     <div class="ec">
+      ${botonInforme()}
       ${hero}
       ${kpis}
       <div class="ec-row ec-row--mapa">${mapa}${atencion}</div>

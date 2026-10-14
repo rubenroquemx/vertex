@@ -2,6 +2,7 @@
 // Avance global · captura de los últimos 30 días · estatus de revisión · cada CPV ·
 // material electoral · actividad reciente · salud del sistema.
 import { ICONS, $, esc, fmtNum, fmtDateTime, api } from './lib.js';
+import { botonInforme } from './informe.js';
 
 const pct = (a, b) => (b ? (a / b) * 100 : 0);
 const pctTxt = (a, b) => {
@@ -53,8 +54,9 @@ function sparkline(serie) {
 // ---------------------------------------------------------------------------
 // Gráfico: promovidos por día (30 días), una sola serie
 // ---------------------------------------------------------------------------
-// `referencia`: línea punteada opcional (p. ej. el ritmo diario necesario para la meta)
-export function barras30(el, { dias, total }, { referencia = null, color = '#2a78d6' } = {}) {
+// `referencia`: línea punteada opcional (p. ej. el ritmo diario necesario para la meta).
+// Para otros periodos (informes): `ultimo` = etiqueta de la última barra (null = su fecha), `unidad` = 'día' | 'semana'.
+export function barras30(el, { dias, total }, { referencia = null, color = '#2a78d6', ultimo = 'Hoy', unidad = 'día', aria = 'Promovidos capturados por día en los últimos 30 días' } = {}) {
   const W = 720;
   const H = 240;
   const m = { top: 20, right: 8, bottom: 28, left: 44 };
@@ -70,6 +72,9 @@ export function barras30(el, { dias, total }, { referencia = null, color = '#2a7
   const bw = Math.max(4, band * 0.62);
   const y = (v) => m.top + ih - (v / max) * ih;
   const hoy = dias.length - 1;
+  const resaltar = ultimo !== null;
+  // Etiquetas del eje: una por semana (o cada varias semanas en periodos largos) y la última
+  const paso = unidad === 'semana' ? Math.max(1, Math.ceil(dias.length / 8)) : 7 * Math.max(1, Math.ceil(dias.length / 35));
   const grid = [0, 1, 2, 3, 4]
     .map((k) => {
       const v = (max / 4) * k;
@@ -85,13 +90,12 @@ export function barras30(el, { dias, total }, { referencia = null, color = '#2a7
       const h = m.top + ih - yy;
       const r = Math.min(4, h);
       const path = v
-        ? `<path d="M${x},${m.top + ih} V${yy + r} Q${x},${yy} ${x + r},${yy} H${x + bw - r} Q${x + bw},${yy} ${x + bw},${yy + r} V${m.top + ih} Z" class="sa-bar${i === hoy ? ' is-hoy' : ''}"/>`
+        ? `<path d="M${x},${m.top + ih} V${yy + r} Q${x},${yy} ${x + r},${yy} H${x + bw - r} Q${x + bw},${yy} ${x + bw},${yy + r} V${m.top + ih} Z" class="sa-bar${resaltar && i === hoy ? ' is-hoy' : ''}"/>`
         : '';
-      // Etiquetas del eje: cada semana y hoy
-      const tick = i === hoy ? 'Hoy' : (hoy - i) % 7 === 0 ? esc(fecha(d)) : '';
+      const tick = i === hoy && resaltar ? esc(ultimo) : (hoy - i) % paso === 0 ? esc(fecha(d)) : '';
       return `<g class="vz-col" data-i="${i}">
         <rect class="vz-hit" x="${m.left + band * i}" y="${m.top}" width="${band}" height="${ih}"/>${path}
-        ${tick ? `<text x="${x + bw / 2}" y="${H - 8}" class="vz-tick${i === hoy ? ' vz-today' : ''}" text-anchor="middle">${tick}</text>` : ''}
+        ${tick ? `<text x="${x + bw / 2}" y="${H - 8}" class="vz-tick${resaltar && i === hoy ? ' vz-today' : ''}" text-anchor="middle">${tick}</text>` : ''}
       </g>`;
     })
     .join('');
@@ -100,9 +104,9 @@ export function barras30(el, { dias, total }, { referencia = null, color = '#2a7
        <text x="${m.left + 6}" y="${y(referencia.valor) - 6}" class="sa-ref__txt">${esc(referencia.etiqueta)}</text>`
     : '';
   // Valor directo solo en hoy (no en cada barra)
-  const lbl = total[hoy] ? `<text x="${m.left + band * hoy + band / 2}" y="${y(total[hoy]) - 6}" class="vz-value" text-anchor="end">${fmtNum(total[hoy])}</text>` : '';
+  const lbl = resaltar && total[hoy] ? `<text x="${m.left + band * hoy + band / 2}" y="${y(total[hoy]) - 6}" class="vz-value" text-anchor="end">${fmtNum(total[hoy])}</text>` : '';
   el.innerHTML = `<div class="vz-wrap">
-      <svg viewBox="0 0 ${W} ${H}" class="vz-svg" role="img" aria-label="Promovidos capturados por día en los últimos 30 días" style="--bar:${color}">${grid}${bars}${ref}${lbl}</svg>
+      <svg viewBox="0 0 ${W} ${H}" class="vz-svg" role="img" aria-label="${esc(aria)}" style="--bar:${color}">${grid}${bars}${ref}${lbl}</svg>
       <div class="vz-tip" role="tooltip" hidden></div>
     </div>`;
   const wrap = el.querySelector('.vz-wrap');
@@ -112,9 +116,9 @@ export function barras30(el, { dias, total }, { referencia = null, color = '#2a7
   const show = (i) => {
     const prev = i ? total[i - 1] : null;
     const delta = prev ? Math.round(pct(total[i] - prev, prev)) : null;
-    tip.innerHTML = `<p class="vz-tip__title">${esc(fecha(dias[i], DIA_LARGO))}</p>
+    tip.innerHTML = `<p class="vz-tip__title">${unidad === 'semana' ? 'Semana del ' : ''}${esc(fecha(dias[i], DIA_LARGO))}</p>
       <p class="vz-tip__total">Promovidos <strong>${fmtNum(total[i])}</strong></p>
-      ${delta !== null ? `<p class="vz-tip__empty">${delta >= 0 ? '+' : ''}${delta}% contra el día anterior</p>` : ''}`;
+      ${delta !== null ? `<p class="vz-tip__empty">${delta >= 0 ? '+' : ''}${delta}% contra ${unidad === 'semana' ? 'la semana anterior' : 'el día anterior'}</p>` : ''}`;
     tip.hidden = false;
     const box = wrap.getBoundingClientRect();
     const colX = ((m.left + band * (i + 0.5)) / W) * box.width;
@@ -275,6 +279,7 @@ export async function viewPanelSA(route) {
 
   return `
     <div class="sa">
+      ${botonInforme()}
       ${hero}
       ${kpis}
       <div class="sa-row sa-row--chart">${grafica}${estatus}</div>

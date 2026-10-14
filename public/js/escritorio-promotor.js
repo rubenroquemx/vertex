@@ -3,6 +3,7 @@
 import { ICONS, esc, fmtNum, fmtSeccion, fmtDateTime, api } from './lib.js';
 import { I } from './coordinador.js';
 import { pendientes, sesion, esErrorDeRed } from './offline.js';
+import { botonInforme } from './informe.js';
 
 const ESTADO = {
   validado: { t: 'Aprobado', c: '#16a34a' },
@@ -165,6 +166,7 @@ export async function viewEscritorioPromotor() {
 
   return `
     <div class="ep">
+      ${botonInforme()}
       ${hero}
       ${porEnviar}
       ${corregir}

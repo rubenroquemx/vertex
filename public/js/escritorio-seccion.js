@@ -3,6 +3,7 @@
 import { ICONS, $, esc, fmtNum, fmtSeccion, fmtDateTime, api } from './lib.js';
 import { I } from './coordinador.js';
 import { barras30 } from './panel-sa.js';
+import { botonInforme } from './informe.js';
 import { pct, pctTxt, ESTATUS, barra, sparkline, FECHA } from './escritorio-cpv.js';
 
 function hace(iso) {
@@ -142,6 +143,7 @@ export async function viewEscritorioSeccion(route) {
 
   return `
     <div class="ec">
+      ${botonInforme()}
       ${hero}
       ${bandeja}
       ${kpis}

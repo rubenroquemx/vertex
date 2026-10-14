@@ -1387,9 +1387,9 @@ function viewPerfil() {
         <div class="field">
           <label for="prefTema">Apariencia</label>
           <select class="input" id="prefTema">
-            <option value="sistema">Igual que mi teléfono o computadora</option>
             <option value="claro">Clara</option>
             <option value="oscuro">Oscura</option>
+            <option value="sistema">Igual que mi teléfono o computadora</option>
           </select>
         </div>
         <div class="field" id="prefPushBox">
@@ -2065,9 +2065,10 @@ logoutBtn.addEventListener('click', async () => {
 const TEMA_KEY = 'vx:tema';
 function leerTema() {
   try {
-    return localStorage.getItem(TEMA_KEY) || 'sistema';
+    // Clara por defecto: el modo oscuro solo se activa si el usuario lo elige
+    return localStorage.getItem(TEMA_KEY) || 'claro';
   } catch {
-    return 'sistema';
+    return 'claro';
   }
 }
 const oscuroMq = window.matchMedia('(prefers-color-scheme: dark)');

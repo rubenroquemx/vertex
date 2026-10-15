@@ -361,7 +361,7 @@ async function generar(user, periodo) {
   };
 }
 
-function resumir({ kpis: k }, desde, hasta, len) {
+function resumir({ kpis: k, duplicados: dup }, desde, hasta, len) {
   const partes = [];
   partes.push(
     `Del ${largo(desde)} al ${largo(hasta)} (${n(len)} ${plural(len, 'día', 'días')}) se capturaron ${n(k.capturados)} promovidos` +
@@ -376,13 +376,21 @@ function resumir({ kpis: k }, desde, hasta, len) {
         ? `Al ritmo del periodo (${dec(k.ritmo)} al día) la meta se alcanzaría el ${FMT_LARGO.format(new Date(k.llegada))}, antes de la elección.`
         : `Al ritmo del periodo (${dec(k.ritmo)} al día) la meta no se alcanza antes de la elección: se necesitan ${dec(k.necesario)} al día.`
     );
+  if (dup?.personas)
+    partes.push(
+      `${n(dup.personas)} ${plural(dup.personas, 'persona está registrada', 'personas están registradas')} en más de una estructura${
+        dup.registrosExtra
+          ? `; sin los ${n(dup.registrosExtra)} registros repetidos de tu conteo, son ${n(k.acumulado - dup.registrosExtra)} personas únicas${k.meta ? ` (${pc((k.acumulado - dup.registrosExtra) / k.meta)} de la meta)` : ''}`
+          : ''
+      }.`
+    );
   return partes.join(' ');
 }
 
 // ---------------------------------------------------------------------------
 // FODA: reglas sobre las cifras del periodo. Cada punto lleva su dato y, cuando aplica, una acción.
 // ---------------------------------------------------------------------------
-function analizar({ a, kpis: k, unidades, dias, total, len, motivos, mat, revisados, duplicados: dup }) {
+function analizar({ a, kpis: k, unidades, dias, total, len, motivos, mat, revisados }) {
   const F = [];
   const O = [];
   const D = [];
@@ -620,21 +628,6 @@ function analizar({ a, kpis: k, unidades, dias, total, len, motivos, mat, revisa
         texto: `${n(mat.pendientes)} ${plural(mat.pendientes, 'orden de material no se ha confirmado como recibida', 'órdenes de material no se han confirmado como recibidas')}: riesgo de material extraviado.`,
         accion: voz({ rs: 'Confirmar «Recibido» en tus órdenes de material pendientes.' }, 'Confirmar con quien recibe las órdenes de material pendientes.'),
       });
-  }
-
-  // --- Personas registradas en más de una estructura (CPV y super administrador)
-  if (dup?.personas) {
-    const unicos = k.acumulado - dup.registrosExtra;
-    const partes = [
-      dup.otraEstructura ? `${n(dup.otraEstructura)} también ${plural(dup.otraEstructura, 'está', 'están')} en ${a.rol === 'sa' ? 'más de una estructura de CPV' : 'otra estructura'}` : '',
-      dup.mismaEstructura ? `${n(dup.mismaEstructura)} ${plural(dup.mismaEstructura, 'tiene', 'tienen')} más de un promotor ${a.rol === 'sa' ? 'en la misma estructura' : 'en tu estructura'}` : '',
-    ].filter(Boolean);
-    A.push({
-      titulo: 'Personas en más de una estructura',
-      texto: `${n(dup.personas)} ${plural(dup.personas, 'persona está registrada', 'personas están registradas')} más de una vez: ${partes.join('; ')}.${
-        dup.registrosExtra && k.meta ? ` Sin los ${n(dup.registrosExtra)} registros repetidos, el avance sería de ${pc(unicos / k.meta)} (${n(unicos)} personas).` : ''
-      }`,
-    });
   }
 
   // --- Promotor Territorial

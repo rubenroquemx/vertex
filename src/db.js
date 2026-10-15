@@ -374,6 +374,18 @@ const MIGRATIONS = [
       CREATE INDEX evento_historial_idx ON evento_historial(evento_id, at);
     `,
   },
+  {
+    id: 11,
+    name: 'una persona puede estar con varios promotores (solo una vez por promotor)',
+    sql: `
+      DROP INDEX IF EXISTS promovidos_clave_elector_uq;
+      DROP INDEX IF EXISTS promovidos_curp_uq;
+      CREATE INDEX IF NOT EXISTS promovidos_clave_elector_idx ON promovidos(clave_elector);
+      CREATE INDEX IF NOT EXISTS promovidos_curp_idx ON promovidos(curp);
+      CREATE UNIQUE INDEX promovidos_promotor_clave_uq ON promovidos(promotor_id, clave_elector);
+      CREATE UNIQUE INDEX promovidos_promotor_curp_uq ON promovidos(promotor_id, curp);
+    `,
+  },
 ];
 
 async function migrate() {

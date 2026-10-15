@@ -220,6 +220,35 @@ async function generar(user, periodo) {
     query(`SELECT to_char(min(p.created_at) AT TIME ZONE '${TZ}', 'YYYY-MM-DD') AS dia FROM promovidos p WHERE ${a.filtro.sql}`, [a.filtro.valor]),
   ]);
 
+  // ---- Personas en más de una estructura (solo CPV y super administrador; nadie más lo sabe).
+  // Se identifica a la persona por su clave de elector, con lo registrado hasta el cierre del periodo.
+  // «Estructura» = la de un CPV: otra estructura es otro CPV; misma estructura, otro promotor del mismo CPV.
+  let duplicados = null;
+  if (a.rol === 'cpv' || a.rol === 'sa') {
+    const { rows } = await query(
+      `${B},
+       mios AS (SELECT DISTINCT p.clave_elector FROM promovidos p, b WHERE ${a.filtro.sql} AND p.created_at < b.fin),
+       g AS (
+         SELECT p.clave_elector, count(*) AS total,
+                count(*) FILTER (WHERE ${a.filtro.sql}) AS dentro,
+                count(DISTINCT z.parent_id) AS cpvs
+         FROM promovidos p
+         JOIN mios m ON m.clave_elector = p.clave_elector
+         JOIN users rs ON rs.id = p.responsable_id
+         JOIN users z ON z.id = rs.parent_id, b
+         WHERE p.created_at < b.fin
+         GROUP BY 1 HAVING count(*) > 1)
+       SELECT count(*)::int AS personas,
+              count(*) FILTER (WHERE ${a.rol === 'sa' ? 'cpvs > 1' : 'total > dentro'})::int AS otra,
+              count(*) FILTER (WHERE ${a.rol === 'sa' ? 'total > cpvs' : 'dentro > 1'})::int AS misma,
+              COALESCE(sum(dentro - 1) FILTER (WHERE dentro > 1), 0)::int AS extra
+       FROM g`,
+      P
+    );
+    const r = rows[0];
+    duplicados = { personas: r.personas, otraEstructura: r.otra, mismaEstructura: r.misma, registrosExtra: r.extra };
+  }
+
   // ---- Totales y unidades
   const tot = { capturados: 0, acumulado: 0, anterior: 0, aprobados: 0, rechazados: 0, seg: 0, enRevision: 0, viejos: 0 };
   const activos = new Set();
@@ -312,7 +341,7 @@ async function generar(user, periodo) {
       }
     : null;
 
-  const ctx = { a, kpis, unidades, dias, total, len, motivos: motivos.rows, mat, revisados };
+  const ctx = { a, kpis, unidades, dias, total, len, motivos: motivos.rows, mat, revisados, duplicados };
   const foda = analizar(ctx);
   return {
     generado: new Date().toISOString(),
@@ -324,6 +353,7 @@ async function generar(user, periodo) {
     serie: { dias, total },
     motivos: motivos.rows,
     material: mat,
+    duplicados,
     unidades: unidades.sort((x, y) => (y.avance ?? -1) - (x.avance ?? -1) || y.capturados - x.capturados),
     foda,
     acciones: [...foda.amenazas, ...foda.debilidades, ...foda.oportunidades].filter((x) => x.accion).slice(0, 5).map((x) => x.accion),
@@ -352,7 +382,7 @@ function resumir({ kpis: k }, desde, hasta, len) {
 // ---------------------------------------------------------------------------
 // FODA: reglas sobre las cifras del periodo. Cada punto lleva su dato y, cuando aplica, una acción.
 // ---------------------------------------------------------------------------
-function analizar({ a, kpis: k, unidades, dias, total, len, motivos, mat, revisados }) {
+function analizar({ a, kpis: k, unidades, dias, total, len, motivos, mat, revisados, duplicados: dup }) {
   const F = [];
   const O = [];
   const D = [];
@@ -590,6 +620,21 @@ function analizar({ a, kpis: k, unidades, dias, total, len, motivos, mat, revisa
         texto: `${n(mat.pendientes)} ${plural(mat.pendientes, 'orden de material no se ha confirmado como recibida', 'órdenes de material no se han confirmado como recibidas')}: riesgo de material extraviado.`,
         accion: voz({ rs: 'Confirmar «Recibido» en tus órdenes de material pendientes.' }, 'Confirmar con quien recibe las órdenes de material pendientes.'),
       });
+  }
+
+  // --- Personas registradas en más de una estructura (CPV y super administrador)
+  if (dup?.personas) {
+    const unicos = k.acumulado - dup.registrosExtra;
+    const partes = [
+      dup.otraEstructura ? `${n(dup.otraEstructura)} también ${plural(dup.otraEstructura, 'está', 'están')} en ${a.rol === 'sa' ? 'más de una estructura de CPV' : 'otra estructura'}` : '',
+      dup.mismaEstructura ? `${n(dup.mismaEstructura)} ${plural(dup.mismaEstructura, 'tiene', 'tienen')} más de un promotor ${a.rol === 'sa' ? 'en la misma estructura' : 'en tu estructura'}` : '',
+    ].filter(Boolean);
+    A.push({
+      titulo: 'Personas en más de una estructura',
+      texto: `${n(dup.personas)} ${plural(dup.personas, 'persona está registrada', 'personas están registradas')} más de una vez: ${partes.join('; ')}.${
+        dup.registrosExtra && k.meta ? ` Sin los ${n(dup.registrosExtra)} registros repetidos, el avance sería de ${pc(unicos / k.meta)} (${n(unicos)} personas).` : ''
+      }`,
+    });
   }
 
   // --- Promotor Territorial

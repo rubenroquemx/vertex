@@ -220,33 +220,29 @@ async function generar(user, periodo) {
     query(`SELECT to_char(min(p.created_at) AT TIME ZONE '${TZ}', 'YYYY-MM-DD') AS dia FROM promovidos p WHERE ${a.filtro.sql}`, [a.filtro.valor]),
   ]);
 
-  // ---- Personas en más de una estructura (solo CPV y super administrador; nadie más lo sabe).
-  // Se identifica a la persona por su clave de elector, con lo registrado hasta el cierre del periodo.
-  // «Estructura» = la de un CPV: otra estructura es otro CPV; misma estructura, otro promotor del mismo CPV.
+  // ---- Personas registradas más de una vez (solo CPV y super administrador; nadie más lo sabe).
+  // Se evalúan dentro del árbol de cada CPV, nunca contra otro CPV. La persona se identifica por su
+  // clave de elector, con lo registrado hasta el cierre del periodo.
   let duplicados = null;
   if (a.rol === 'cpv' || a.rol === 'sa') {
     const { rows } = await query(
       `${B},
-       mios AS (SELECT DISTINCT p.clave_elector FROM promovidos p, b WHERE ${a.filtro.sql} AND p.created_at < b.fin),
        g AS (
-         SELECT p.clave_elector, count(*) AS total,
-                count(*) FILTER (WHERE ${a.filtro.sql}) AS dentro,
-                count(DISTINCT z.parent_id) AS cpvs
+         SELECT z.parent_id AS cpv, p.clave_elector, count(*) AS total, count(DISTINCT z.id) AS zonas
          FROM promovidos p
-         JOIN mios m ON m.clave_elector = p.clave_elector
          JOIN users rs ON rs.id = p.responsable_id
          JOIN users z ON z.id = rs.parent_id, b
-         WHERE p.created_at < b.fin
-         GROUP BY 1 HAVING count(*) > 1)
+         WHERE ${a.filtro.sql} AND p.created_at < b.fin
+         GROUP BY 1, 2 HAVING count(*) > 1)
        SELECT count(*)::int AS personas,
-              count(*) FILTER (WHERE ${a.rol === 'sa' ? 'cpvs > 1' : 'total > dentro'})::int AS otra,
-              count(*) FILTER (WHERE ${a.rol === 'sa' ? 'total > cpvs' : 'dentro > 1'})::int AS misma,
-              COALESCE(sum(dentro - 1) FILTER (WHERE dentro > 1), 0)::int AS extra
+              count(*) FILTER (WHERE zonas > 1)::int AS zonas,
+              count(*) FILTER (WHERE zonas = 1)::int AS misma,
+              COALESCE(sum(total - 1), 0)::int AS extra
        FROM g`,
       P
     );
     const r = rows[0];
-    duplicados = { personas: r.personas, otraEstructura: r.otra, mismaEstructura: r.misma, registrosExtra: r.extra };
+    duplicados = { personas: r.personas, distintasZonas: r.zonas, mismaZona: r.misma, registrosExtra: r.extra };
   }
 
   // ---- Totales y unidades
@@ -378,7 +374,7 @@ function resumir({ kpis: k, duplicados: dup }, desde, hasta, len) {
     );
   if (dup?.personas)
     partes.push(
-      `${n(dup.personas)} ${plural(dup.personas, 'persona está registrada', 'personas están registradas')} en más de una estructura${
+      `${n(dup.personas)} ${plural(dup.personas, 'persona está registrada', 'personas están registradas')} con más de un promotor del mismo árbol de CPV${
         dup.registrosExtra
           ? `; sin los ${n(dup.registrosExtra)} registros repetidos de tu conteo, son ${n(k.acumulado - dup.registrosExtra)} personas únicas${k.meta ? ` (${pc((k.acumulado - dup.registrosExtra) / k.meta)} de la meta)` : ''}`
           : ''

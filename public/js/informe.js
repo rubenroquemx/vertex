@@ -191,19 +191,20 @@ function reporte(d) {
       </section>`
     : '';
 
-  // Personas registradas en más de una estructura (solo CPV y super administrador)
+  // Personas registradas con más de un promotor dentro del mismo árbol de CPV (solo CPV y super administrador)
   const dp = d.duplicados;
+  const sa = d.ambito.nivel === 'Super administrador';
   const duplicados = dp
     ? `<section class="card" aria-labelledby="infDpT">
-        <header class="dash-card__head"><h3 id="infDpT">Personas en más de una estructura</h3><span class="muted">Por clave de elector, al cierre del periodo</span></header>
+        <header class="dash-card__head"><h3 id="infDpT">Personas en más de una estructura</h3><span class="muted">${sa ? 'Dentro del árbol de cada CPV' : 'Dentro de tu árbol'} · por clave de elector, al cierre del periodo</span></header>
         <dl class="inf-dl">
-          ${fila('Personas registradas más de una vez', fmtNum(dp.personas))}
-          ${fila(d.ambito.nivel === 'Super administrador' ? 'En estructuras de distintos CPV' : 'También en otra estructura', fmtNum(dp.otraEstructura))}
-          ${fila(d.ambito.nivel === 'Super administrador' ? 'Con más de un promotor del mismo CPV' : 'Con más de un promotor de tu estructura', fmtNum(dp.mismaEstructura))}
-          ${fila('Registros repetidos en tu conteo', fmtNum(dp.registrosExtra))}
+          ${fila('Personas registradas por más de un promotor', fmtNum(dp.personas))}
+          ${fila('En distintas zonas', fmtNum(dp.distintasZonas))}
+          ${fila('En la misma zona', fmtNum(dp.mismaZona))}
+          ${fila('Registros repetidos en el conteo', fmtNum(dp.registrosExtra))}
           ${k.meta ? fila('Personas únicas al cierre', `${fmtNum(k.acumulado - dp.registrosExtra)} <small>(${pc((k.acumulado - dp.registrosExtra) / k.meta)} de la meta)</small>`) : ''}
         </dl>
-        <p class="inf-nota">Los promotores y responsables no saben que la persona también está registrada con alguien más; solo aparece en este informe.</p>
+        <p class="inf-nota">No se cruza con los promovidos de otros CPV. Los promotores y responsables no saben que la persona también está registrada con alguien más; solo aparece en este informe.</p>
       </section>`
     : '';
 

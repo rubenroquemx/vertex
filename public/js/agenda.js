@@ -1,20 +1,20 @@
 // Agenda: asambleas y recorridos.
-// Calendario de la rama · lista de propuestas · propuesta con mapa (pin o ruta por calles) · ficha con el
-// flujo de aprobación (Responsable → Zona → CPV), observaciones e historial · reporte del día del evento.
+// El CPV los crea (borrador → publicar), elige a quién van dirigidos (toda su red o algunas zonas) y quién
+// los reporta. Al publicarse aparecen en el calendario de los destinatarios. Quien reporta envía, el día del
+// evento, los resultados y la lista de asistencia (Excel con el mismo formato que las estructuras externas).
 import { ICONS, $, esc, fmtNum, fmtSeccion, fmtDateTime, api, fieldErrorSetter, toast, navigate } from './lib.js';
-import { baseMap, seccionesGeo } from './zonas.js';
+import { baseMap } from './zonas.js';
 import { aJpeg } from './material.js';
 
 const TZ = 'America/Mexico_City';
 const DIA_LARGO = new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
-const FECHA = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 const MES = new Intl.DateTimeFormat('es-MX', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const HORA = new Intl.DateTimeFormat('es-MX', { hour: 'numeric', minute: '2-digit', timeZone: TZ });
 const FECHA_HORA = new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', timeZone: TZ });
 const HHMM = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ });
 const KEY = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
 const diaKey = (iso) => KEY.format(new Date(iso));
-const fechaDe = (key, fmt = FECHA) => fmt.format(new Date(`${key}T12:00:00Z`));
+const fechaDe = (key, fmt = DIA_LARGO) => fmt.format(new Date(`${key}T12:00:00Z`));
 const icono = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const I = {
   asamblea: icono('<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>'),
@@ -25,29 +25,32 @@ const I = {
   enviar: icono('<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>'),
   reloj: icono('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   ok: icono('<path d="M20 6 9 17l-5-5"/>'),
+  red: icono('<circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4M12 11l-6 6M12 11l6 6"/>'),
 };
 const TIPO = { asamblea: 'Asamblea', recorrido: 'Recorrido' };
 // Identidad de cada tipo (siempre con su icono y nombre, nunca solo color)
 const COLOR = { asamblea: '#2a78d6', recorrido: '#0d9488' };
-const CHIP = {
-  revision_zona: 'estatus--revision',
-  revision_cpv: 'estatus--revision',
-  ajustes: 'estatus--observaciones',
-  programado: 'estatus--programado',
-  realizado: 'estatus--aprobado',
-  rechazado: 'estatus--neutro',
-  cancelado: 'estatus--neutro',
-};
+const CHIP = { borrador: 'estatus--neutro', programado: 'estatus--programado', realizado: 'estatus--aprobado', cancelado: 'estatus--neutro' };
 const chip = (e) => `<span class="estatus ${CHIP[e.estado]}">${esc(e.estadoTexto)}</span>`;
-const cuando = (e) =>
-  e.inicio
-    ? `${esc(FECHA_HORA.format(new Date(e.inicio)))}${e.fin ? ` a ${esc(HORA.format(new Date(e.fin)))}` : ''}`
-    : `Tentativa: ${esc(fechaDe(e.fechaTentativa))}`;
+const cuando = (e) => (e.inicio ? `${esc(FECHA_HORA.format(new Date(e.inicio)))}${e.fin ? ` a ${esc(HORA.format(new Date(e.fin)))}` : ''}` : 'Sin fecha');
 
 function tabs(rol, actual) {
-  if (!['resp_seccion', 'coord_zona', 'coord_promocion'].includes(rol)) return '';
+  if (rol !== 'coord_promocion') return '';
   const t = (href, txt) => `<a class="tabs__tab" href="${href}" data-link ${href === actual ? 'aria-current="page"' : ''}>${txt}</a>`;
   return `<nav class="tabs ag-tabs" aria-label="Agenda">${t('/agenda', 'Calendario')}${t('/agenda/eventos', 'Asambleas y recorridos')}</nav>`;
+}
+
+function filaEvento(e, rol) {
+  const extra = rol === 'coord_promocion' ? ` · Para ${esc(e.para)}${e.reporta ? ` · Reporta ${esc(e.reporta)}` : ''}` : e.reportaYo ? ' · Tú lo reportas' : '';
+  return `<li><a class="ev-item ${e.turno ? 'is-turno' : ''}" href="/agenda/eventos/${e.id}" data-link>
+      <span class="ev-item__ico ev-item__ico--${e.tipo}" aria-hidden="true">${I[e.tipo]}</span>
+      <span class="ev-item__main">
+        <span class="ev-item__top"><strong>${esc(e.lugar)}</strong>${chip(e)}</span>
+        <span class="ev-item__sub">${TIPO[e.tipo]} · ${cuando(e)}${extra}</span>
+        ${e.turno ? `<span class="ev-item__turno">Te toca: ${esc(e.turno)}</span>` : ''}
+        ${e.reporteTardio ? '<span class="ev-item__tarde">Reporte tardío</span>' : ''}
+      </span>
+    </a></li>`;
 }
 
 // ===========================================================================
@@ -56,7 +59,6 @@ function tabs(rol, actual) {
 export async function viewAgenda(route, _p, state) {
   const q = new URLSearchParams(location.search);
   const d = await api(`/api/agenda?mes=${encodeURIComponent(q.get('mes') || '')}`);
-  route.data = d;
   const rol = state.me.role.key;
   const [y, m] = d.mes.split('-').map(Number);
   const mesKey = (yy, mm) => `${yy}-${String(mm).padStart(2, '0')}`;
@@ -91,18 +93,23 @@ export async function viewAgenda(route, _p, state) {
   const lista = dias.length
     ? dias
         .map(
-          (k) => `<section class="ag-grupo" aria-label="${esc(fechaDe(k, DIA_LARGO))}">
-          <h3 class="ag-grupo__dia ${k === d.hoy ? 'is-hoy' : ''}">${esc(fechaDe(k, DIA_LARGO))}${k === d.hoy ? ' · hoy' : ''}</h3>
+          (k) => `<section class="ag-grupo" aria-label="${esc(fechaDe(k))}">
+          <h3 class="ag-grupo__dia ${k === d.hoy ? 'is-hoy' : ''}">${esc(fechaDe(k))}${k === d.hoy ? ' · hoy' : ''}</h3>
           <ul class="ev-lista">${porDia.get(k).map((e) => filaEvento(e, rol)).join('')}</ul>
         </section>`
         )
         .join('')
-    : `<div class="empty"><span aria-hidden="true">${ICONS.calendar}</span><strong>Sin eventos programados en ${esc(MES.format(primero))}</strong>
-        <span>${rol === 'resp_seccion' ? 'Propón una asamblea o un recorrido; cuando el CPV lo programe aparecerá aquí.' : 'Cuando el CPV programe asambleas o recorridos aparecerán aquí.'}</span></div>`;
+    : `<div class="empty"><span aria-hidden="true">${ICONS.calendar}</span><strong>Sin eventos en ${esc(MES.format(primero))}</strong>
+        <span>${rol === 'coord_promocion' ? 'Crea una asamblea o un recorrido y publícalo para que aparezca en la agenda de tu red.' : 'Cuando el CPV publique asambleas o recorridos para tu zona aparecerán aquí.'}</span></div>`;
+  const porReportar = d.porReportar.length
+    ? `<section class="ev-grupo is-turno" aria-labelledby="agPR"><h3 id="agPR">Por reportar <span class="muted">${fmtNum(d.porReportar.length)}</span></h3>
+        <ul class="ev-lista">${d.porReportar.map((e) => filaEvento(e, rol)).join('')}</ul></section>`
+    : '';
 
   return `
     <div class="ag">
       ${tabs(rol, '/agenda')}
+      ${porReportar}
       <div class="ag-mesnav">
         <a class="icon-btn icon-btn--always" href="/agenda?mes=${prev}" data-link aria-label="Mes anterior">${ICONS.back}</a>
         <h2 class="ag-mes">${esc(MES.format(primero))}</h2>
@@ -121,32 +128,18 @@ export async function viewAgenda(route, _p, state) {
     </div>`;
 }
 
-function filaEvento(e, rol) {
-  const quien = rol === 'resp_seccion' || rol === 'promotor' ? '' : ` · Sección ${fmtSeccion(e.seccion)} · ${esc(e.responsable)}`;
-  return `<li><a class="ev-item ${e.turno ? 'is-turno' : ''}" href="/agenda/eventos/${e.id}" data-link>
-      <span class="ev-item__ico ev-item__ico--${e.tipo}" aria-hidden="true">${I[e.tipo]}</span>
-      <span class="ev-item__main">
-        <span class="ev-item__top"><strong>${esc(e.lugar)}</strong>${chip(e)}</span>
-        <span class="ev-item__sub">${TIPO[e.tipo]} · ${cuando(e)}${quien}</span>
-        ${e.turno ? `<span class="ev-item__turno">Te toca: ${esc(e.turno)}</span>` : ''}
-        ${e.reporteTardio ? '<span class="ev-item__tarde">Reporte tardío</span>' : ''}
-      </span>
-      ${e.observaciones ? `<span class="ev-item__obs" title="Observaciones">${fmtNum(e.observaciones)}</span>` : ''}
-    </a></li>`;
-}
-
 // ===========================================================================
-// Lista de propuestas y eventos
+// Lista del CPV: borradores, publicados, realizados y cancelados
 // ===========================================================================
 export async function viewEventos(route, _p, state) {
   const lista = await api('/api/eventos');
   const rol = state.me.role.key;
   const grupos = [
-    { t: 'Te toca', f: (e) => e.turno },
-    { t: 'En revisión', f: (e) => !e.turno && ['revision_zona', 'revision_cpv', 'ajustes'].includes(e.estado) },
-    { t: 'Programados', f: (e) => !e.turno && e.estado === 'programado' },
+    { t: 'Por reportar', f: (e) => e.estado === 'programado' && e.inicio && new Date(e.inicio) <= new Date() },
+    { t: 'Borradores', f: (e) => e.estado === 'borrador' },
+    { t: 'Publicados', f: (e) => e.estado === 'programado', orden: true },
     { t: 'Realizados', f: (e) => e.estado === 'realizado' },
-    { t: 'Rechazados y cancelados', f: (e) => ['rechazado', 'cancelado'].includes(e.estado), cerrado: true },
+    { t: 'Cancelados', f: (e) => e.estado === 'cancelado', cerrado: true },
   ];
   const usados = new Set();
   const secciones = grupos
@@ -154,53 +147,52 @@ export async function viewEventos(route, _p, state) {
       const items = lista.filter((e) => !usados.has(e.id) && g.f(e));
       items.forEach((e) => usados.add(e.id));
       if (!items.length) return '';
-      // Programados: el más próximo primero
-      if (g.t === 'Programados') items.sort((a, b) => a.inicio.localeCompare(b.inicio));
+      if (g.orden) items.sort((a, b) => (a.inicio || '').localeCompare(b.inicio || ''));
       const ul = `<ul class="ev-lista">${items.map((e) => filaEvento(e, rol)).join('')}</ul>`;
       return g.cerrado
         ? `<details class="ev-grupo"><summary><h3>${g.t} <span class="muted">${fmtNum(items.length)}</span></h3></summary>${ul}</details>`
-        : `<section class="ev-grupo ${g.t === 'Te toca' ? 'is-turno' : ''}"><h3>${g.t} <span class="muted">${fmtNum(items.length)}</span></h3>${ul}</section>`;
+        : `<section class="ev-grupo ${g.t === 'Por reportar' ? 'is-turno' : ''}"><h3>${g.t} <span class="muted">${fmtNum(items.length)}</span></h3>${ul}</section>`;
     })
     .join('');
-  const proponer =
-    rol === 'resp_seccion'
-      ? `<div class="ev-proponer">
-          <a class="btn" href="/agenda/nueva/asamblea" data-link>${I.asamblea}<span>Proponer asamblea</span></a>
-          <a class="btn btn--secondary" href="/agenda/nueva/recorrido" data-link>${I.recorrido}<span>Proponer recorrido</span></a>
-        </div>`
-      : '';
-  const ayuda = {
-    resp_seccion: 'Propón asambleas y recorridos en tu sección. Tu Coordinador de Zona los revisa y el CPV decide la fecha y hora.',
-    coord_zona: 'Revisa las propuestas de tus Responsables de Sección: pásalas al CPV, pide ajustes o recházalas.',
-    coord_promocion: 'Programa con fecha y hora las propuestas que te pasan tus Coordinadores de Zona.',
-  }[rol];
+  const ayuda = 'Crea asambleas y recorridos, elige a quién van dirigidos y quién los reportará. Al publicarlos aparecen en la agenda de los destinatarios.';
   return `
     <div class="ag">
       ${tabs(rol, '/agenda/eventos')}
-      <p class="muted ag-ayuda">${esc(ayuda || '')}</p>
-      ${proponer}
-      ${secciones || `<div class="empty"><span aria-hidden="true">${ICONS.calendar}</span><strong>Aún no hay asambleas ni recorridos</strong><span>${esc(ayuda || '')}</span></div>`}
+      <p class="muted ag-ayuda">${esc(ayuda)}</p>
+      <div class="ev-proponer">
+        <a class="btn" href="/agenda/nueva/asamblea" data-link>${I.asamblea}<span>Nueva asamblea</span></a>
+        <a class="btn btn--secondary" href="/agenda/nueva/recorrido" data-link>${I.recorrido}<span>Nuevo recorrido</span></a>
+      </div>
+      ${secciones || `<div class="empty"><span aria-hidden="true">${ICONS.calendar}</span><strong>Aún no hay asambleas ni recorridos</strong><span>${esc(ayuda)}</span></div>`}
     </div>`;
 }
 
 // ===========================================================================
-// Propuesta: alta y ajustes (mapa con pin o ruta por calles)
+// Crear y editar (CPV): mapa con pin o ruta por calles, fecha, destinatarios y quién reporta
 // ===========================================================================
 export async function viewFormEvento(route, params) {
-  const editando = Boolean(params[0]) && /editar$/.test(location.pathname);
+  const editando = Boolean(params[0]);
   const [e, ctx] = await Promise.all([editando ? api(`/api/eventos/${params[0]}`) : null, api('/api/eventos/contexto')]);
   const tipo = editando ? e.tipo : location.pathname.endsWith('/recorrido') ? 'recorrido' : 'asamblea';
   if (editando && !e.puede.editar) return `<div class="empty"><strong>Este evento ya no se puede modificar</strong><span>Está ${esc(e.estadoTexto.toLowerCase())}.</span></div>`;
   route.data = { e, ctx, tipo, editando };
-  const v = e || { necesidades: [], asistentes: '', notas: '', lugar: '', fechaTentativa: '' };
+  const v = e || { necesidades: [], asistentes: '', notas: '', lugar: '', alcance: 'red', zonas: [], reportaId: '' };
   const hoy = KEY.format(new Date());
   const otras = (v.necesidades || []).filter((n) => !ctx.necesidades.includes(n));
   const volver = editando ? `/agenda/eventos/${e.id}` : '/agenda/eventos';
+  const publicado = editando && e.estado === 'programado';
+  const fecha = v.inicio ? diaKey(v.inicio) : '';
+  const hIni = v.inicio ? HHMM.format(new Date(v.inicio)) : '';
+  const hFin = v.fin ? HHMM.format(new Date(v.fin)) : '';
+  const op = (id, txt) => `<option value="${id}" ${v.reportaId === id ? 'selected' : ''}>${esc(txt)}</option>`;
+  const titulo = editando ? `Editar ${tipo === 'asamblea' ? 'asamblea' : 'recorrido'}` : tipo === 'asamblea' ? 'Nueva asamblea' : 'Nuevo recorrido';
   return `
     <form class="ev-form" id="evForm" novalidate>
       <a class="back-link" href="${volver}" data-link>${ICONS.back}<span>${editando ? 'Volver al evento' : 'Asambleas y recorridos'}</span></a>
-      <div class="page-head"><h2>${editando ? `Ajustar ${tipo === 'asamblea' ? 'asamblea' : 'recorrido'}` : `Proponer ${tipo === 'asamblea' ? 'asamblea' : 'recorrido'}`}</h2>
-        <p>${tipo === 'asamblea' ? 'Encuentro multitudinario en el que el candidato habla con los asistentes.' : 'Recorrido por la comunidad para saludar y platicar del proyecto.'}${editando ? ' Los cambios quedan en el historial y se avisa a los involucrados.' : ' Tu Coordinador de Zona lo revisará y el CPV decidirá la fecha y hora.'}</p></div>
+      <div class="page-head"><h2>${titulo}</h2>
+        <p>${tipo === 'asamblea' ? 'Encuentro multitudinario en el que el candidato habla con los asistentes.' : 'Recorrido por la comunidad para saludar y platicar del proyecto.'}${
+          publicado ? ' Ya está publicado: si cambias la fecha, el lugar o los destinatarios, se avisará a la red.' : ' Guárdalo como borrador o publícalo para que aparezca en la agenda de los destinatarios.'
+        }</p></div>
 
       <section class="card form-card">
         <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${I.pin}</span><h3>${tipo === 'asamblea' ? 'Lugar' : 'Ruta'}</h3></header>
@@ -230,28 +222,62 @@ export async function viewFormEvento(route, params) {
       </section>
 
       <section class="card form-card">
+        <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.calendar}</span><h3>Fecha y hora</h3></header>
+        <div class="field-row field-row--3">
+          <div class="field"><label for="evFecha">Fecha <span class="req" aria-hidden="true">*</span></label>
+            <input class="input" type="date" id="evFecha" value="${esc(fecha)}" ${publicado ? '' : `min="${hoy}"`}><p class="field__error" id="evFecha-err"></p></div>
+          <div class="field"><label for="evIni">Hora de inicio <span class="req" aria-hidden="true">*</span></label>
+            <input class="input" type="time" id="evIni" value="${esc(hIni)}"><p class="field__error" id="evIni-err"></p></div>
+          <div class="field"><label for="evFin">Hora de término <span class="muted">(opcional)</span></label>
+            <input class="input" type="time" id="evFin" value="${esc(hFin)}"><p class="field__error" id="evFin-err"></p></div>
+        </div>
+        <div class="field">
+          <label for="evAsis">${tipo === 'asamblea' ? 'Asistentes esperados' : 'Personas que acompañarán al candidato'} <span class="req" aria-hidden="true">*</span></label>
+          <input class="input" id="evAsis" inputmode="numeric" value="${esc(v.asistentes)}" placeholder="${tipo === 'asamblea' ? 'ej. 300' : 'ej. 15'}">
+          <p class="field__error" id="evAsis-err"></p>
+        </div>
+      </section>
+
+      <section class="card form-card">
+        <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${I.red}</span><h3>Destinatarios y reporte</h3></header>
+        <fieldset class="field ev-alcance"><legend>¿En la agenda de quién aparecerá? <span class="req" aria-hidden="true">*</span></legend>
+          <label class="ev-alc__op"><input type="radio" name="alcance" value="red" ${v.alcance !== 'zonas' ? 'checked' : ''}><span><strong>Toda mi red</strong><small>Todos los Coordinadores de Zona, Responsables de Sección y Promotores Territoriales</small></span></label>
+          <label class="ev-alc__op"><input type="radio" name="alcance" value="zonas" ${v.alcance === 'zonas' ? 'checked' : ''}><span><strong>Coordinadores específicos</strong><small>Solo las zonas que elijas, con sus responsables y promotores</small></span></label>
+          <div class="ev-zonas" id="evZonas" ${v.alcance === 'zonas' ? '' : 'hidden'}>
+            ${
+              ctx.zonas.length
+                ? ctx.zonas
+                    .map(
+                      (z) => `<label class="ev-nec__op"><input type="checkbox" name="zona" value="${z.id}" ${(v.zonas || []).includes(z.id) ? 'checked' : ''}><span>${esc(z.codigo || z.zona)} · ${esc(z.nombre)}</span></label>`
+                    )
+                    .join('')
+                : '<p class="muted">Aún no tienes Coordinadores de Zona.</p>'
+            }
+          </div>
+          <p class="field__error" id="evZonas-err"></p>
+        </fieldset>
+        <div class="field">
+          <label for="evReporta">¿Quién reportará el evento? <span class="req" aria-hidden="true">*</span></label>
+          <select class="input" id="evReporta">
+            <option value="">Elige a una persona</option>
+            ${op(ctx.yo.id, `Yo (${ctx.yo.nombre})`)}
+            ${ctx.zonas.length ? `<optgroup label="Coordinadores de Zona">${ctx.zonas.map((z) => op(z.id, `${z.nombre} · ${z.codigo || z.zona}`)).join('')}</optgroup>` : ''}
+            ${ctx.zonas
+              .filter((z) => z.responsables.length)
+              .map((z) => `<optgroup label="Responsables · ${esc(z.codigo || z.zona)}">${z.responsables.map((r) => op(r.id, `${r.nombre}${r.seccion !== null ? ` · Sección ${fmtSeccion(r.seccion)}` : ''}`)).join('')}</optgroup>`)
+              .join('')}
+          </select>
+          <p class="field__help">Esa persona enviará el día del evento los resultados, las fotos y la lista de asistencia.</p>
+          <p class="field__error" id="evReporta-err"></p>
+        </div>
+      </section>
+
+      <section class="card form-card">
         <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.camera}</span><h3>Fotos del lugar <span class="muted">(hasta 5)</span></h3></header>
         <input type="file" id="evFotos" accept="image/*" multiple hidden>
         <div class="mat-previas ev-previas" id="evPrevias"></div>
         <button class="btn btn--secondary" type="button" id="evElegir">${ICONS.camera}<span>Tomar o elegir fotos</span></button>
         <p class="field__error" id="evFotos-err"></p>
-      </section>
-
-      <section class="card form-card">
-        <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.calendar}</span><h3>Fecha y asistencia</h3></header>
-        <div class="field-row">
-          <div class="field">
-            <label for="evFecha">Fecha tentativa <span class="req" aria-hidden="true">*</span></label>
-            <input class="input" type="date" id="evFecha" value="${esc(v.fechaTentativa)}" ${editando ? '' : `min="${hoy}"`} required>
-            <p class="field__help">El CPV decide la fecha y hora definitivas.</p>
-            <p class="field__error" id="evFecha-err"></p>
-          </div>
-          <div class="field">
-            <label for="evAsis">${tipo === 'asamblea' ? 'Asistentes tentativos' : 'Personas que acompañarán al candidato'} <span class="req" aria-hidden="true">*</span></label>
-            <input class="input" id="evAsis" inputmode="numeric" value="${esc(v.asistentes)}" placeholder="${tipo === 'asamblea' ? 'ej. 300' : 'ej. 15'}" required>
-            <p class="field__error" id="evAsis-err"></p>
-          </div>
-        </div>
       </section>
 
       <section class="card form-card">
@@ -265,14 +291,18 @@ export async function viewFormEvento(route, params) {
         </div>
         <div class="field">
           <label for="evNotas">Notas</label>
-          <textarea class="input" id="evNotas" rows="4" maxlength="2000" placeholder="Contexto, contactos del lugar, permisos, horarios recomendados…">${esc(v.notas)}</textarea>
+          <textarea class="input" id="evNotas" rows="4" maxlength="2000" placeholder="Contexto, contactos del lugar, permisos, logística…">${esc(v.notas)}</textarea>
         </div>
       </section>
 
       <p class="form-error" id="evErr" role="alert"></p>
       <div class="ev-form__acc">
         <a class="btn btn--secondary" href="${volver}" data-link>Cancelar</a>
-        <button class="btn" type="submit">${editando ? 'Guardar cambios' : 'Enviar propuesta'}</button>
+        ${
+          publicado
+            ? '<button class="btn" type="submit" data-modo="guardar">Guardar cambios</button>'
+            : '<button class="btn btn--secondary" type="submit" data-modo="borrador">Guardar borrador</button><button class="btn" type="submit" data-modo="publicar">Publicar</button>'
+        }
       </div>
     </form>`;
 }
@@ -295,13 +325,12 @@ const kmTxt = (v) => `${v.toLocaleString('es-MX', { maximumFractionDigits: v < 1
 const puntoIcono = (txt, color) => L.divIcon({ className: 'ev-punto', html: `<span style="background:${color}">${txt}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] });
 const pinIcono = () => L.divIcon({ className: 'ev-pin', html: I.pin, iconSize: [36, 36], iconAnchor: [18, 34] });
 
-// Dibuja la sección del responsable como referencia
-async function dibujarSeccion(map, entidad, seccion) {
-  if (!entidad || seccion === null || seccion === undefined) return null;
+// Contorno de la entidad como referencia (y para encuadrar el mapa)
+async function dibujarEntidad(map, entidad) {
+  if (!entidad) return null;
   try {
-    const fc = await seccionesGeo(entidad, [seccion]);
-    if (!fc.features.length) return null;
-    const capa = L.geoJSON(fc, { style: { color: '#171717', weight: 2, dashArray: '6 6', fillOpacity: 0.04 }, interactive: false }).addTo(map);
+    const fc = await api(`/api/geo/states/${entidad}/layers/entidad`);
+    const capa = L.geoJSON(fc, { style: { color: '#171717', weight: 1.5, dashArray: '6 6', fill: false }, interactive: false }).addTo(map);
     return capa.getBounds();
   } catch {
     return null;
@@ -314,21 +343,29 @@ export function mountFormEvento(root, route) {
   const { e, ctx, tipo, editando } = r;
   const form = $('#evForm', root);
   const { map, destroy } = baseMap($('#evMap', root));
-  map.setView([17.99, -92.93], 13);
-  const setErrors = fieldErrorSetter(root, { lugar: 'evLugar', fechaTentativa: 'evFecha', asistentes: 'evAsis' });
+  map.setView([23.6, -102.5], 5);
+  const setErrors = fieldErrorSetter(root, { lugar: 'evLugar', asistentes: 'evAsis', reportaId: 'evReporta' });
   const errMapa = $('#evMapa-err', root);
-  const seccion = editando ? e.seccion : ctx.seccion;
   let encuadrado = false;
-  dibujarSeccion(map, ctx.entidad, seccion).then((b) => {
-    if (b && !encuadrado) map.fitBounds(b, { padding: [20, 20] });
+  dibujarEntidad(map, ctx.entidad).then((b) => {
+    if (!b || encuadrado) return;
+    // El mapa ya tiene su tamaño final cuando llega la capa; se recalcula antes de encuadrar
+    requestAnimationFrame(() => {
+      map.invalidateSize();
+      if (!encuadrado) map.fitBounds(b, { padding: [12, 12] });
+    });
+  });
+
+  // ---- Destinatarios
+  form.addEventListener('change', (ev) => {
+    if (ev.target.name === 'alcance') $('#evZonas', root).hidden = ev.target.value !== 'zonas';
   });
 
   // ---- Asamblea: pin
   let pin = null;
   const ponerPin = (lat, lng, centrar = false) => {
-    if (!pin) {
-      pin = L.marker([lat, lng], { draggable: true, icon: pinIcono(), keyboard: true, title: 'Lugar de la asamblea' }).addTo(map);
-    } else pin.setLatLng([lat, lng]);
+    if (!pin) pin = L.marker([lat, lng], { draggable: true, icon: pinIcono(), keyboard: true, title: 'Lugar de la asamblea' }).addTo(map);
+    else pin.setLatLng([lat, lng]);
     if (centrar) map.setView([lat, lng], Math.max(map.getZoom(), 17));
     errMapa.textContent = '';
     $('#evPinTxt', root).textContent = `Pin en ${lat.toFixed(5)}, ${lng.toFixed(5)}. Arrástralo para afinarlo.`;
@@ -350,9 +387,8 @@ export function mountFormEvento(root, route) {
       const txt = i === 0 ? 'A' : ult && ruta.puntos.length > 1 ? 'B' : String(i);
       L.marker(p, { icon: puntoIcono(txt, i === 0 ? '#16a34a' : ult ? '#171717' : COLOR.recorrido), interactive: false }).addTo(capaRuta);
     });
-    const k = km(t);
     $('#evKm', root).textContent = ruta.puntos.length
-      ? `${ruta.puntos.length} ${ruta.puntos.length === 1 ? 'punto' : 'puntos'}${t.length > 1 ? ` · ${kmTxt(k)} de recorrido` : ' · toca el siguiente punto'}`
+      ? `${ruta.puntos.length} ${ruta.puntos.length === 1 ? 'punto' : 'puntos'}${t.length > 1 ? ` · ${kmTxt(km(t))} de recorrido` : ' · toca el siguiente punto'}`
       : '';
     $('#evDeshacer', root).disabled = !ruta.puntos.length;
     $('#evBorrar', root).disabled = !ruta.puntos.length;
@@ -408,11 +444,9 @@ export function mountFormEvento(root, route) {
     });
   } else {
     if (e?.ruta) {
-      // Al ajustar, la ruta guardada queda como un solo tramo editable desde su último punto
-      ruta.puntos = e.ruta.puntos;
-      ruta.tramos = [];
-      const t = e.ruta.trazo;
       // Reparte el trazo guardado entre los puntos (cercanía), para que «Deshacer» funcione
+      ruta.puntos = e.ruta.puntos;
+      const t = e.ruta.trazo;
       let desde = 0;
       for (let i = 1; i < ruta.puntos.length; i++) {
         const [la, lo] = ruta.puntos[i];
@@ -461,7 +495,7 @@ export function mountFormEvento(root, route) {
     });
   }
 
-  // ---- Fotos del lugar (existentes al ajustar + nuevas)
+  // ---- Fotos del lugar (existentes al editar + nuevas)
   const existentes = editando ? [...e.fotosLugar] : [];
   const quitar = new Set();
   const nuevas = [];
@@ -505,12 +539,19 @@ export function mountFormEvento(root, route) {
 
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    const btn = form.querySelector('[type="submit"]');
+    const btn = ev.submitter || form.querySelector('[type="submit"]:last-of-type');
+    const modo = btn?.dataset.modo || 'guardar';
     const err = $('#evErr', root);
     err.textContent = '';
     setErrors();
     errMapa.textContent = '';
+    for (const id of ['evFecha-err', 'evIni-err', 'evFin-err', 'evZonas-err']) $(`#${id}`, root).textContent = '';
     if (ruta.ocupado) return;
+    const fecha = $('#evFecha', root).value;
+    const hi = $('#evIni', root).value;
+    const hf = $('#evFin', root).value;
+    if ((hi || hf) && !fecha) return ($('#evFecha-err', root).textContent = 'Elige la fecha.');
+    if (fecha && !hi) return ($('#evIni-err', root).textContent = 'Elige la hora de inicio.');
     const necesidades = [
       ...[...form.querySelectorAll('input[name="nec"]:checked')].map((x) => x.value),
       ...$('#evOtras', root)
@@ -521,116 +562,110 @@ export function mountFormEvento(root, route) {
     const body = {
       tipo,
       lugar: $('#evLugar', root).value,
-      fechaTentativa: $('#evFecha', root).value,
+      inicio: fecha && hi ? `${fecha}T${hi}` : '',
+      fin: fecha && hf ? `${fecha}T${hf}` : '',
       asistentes: $('#evAsis', root).value,
       necesidades,
       notas: $('#evNotas', root).value,
+      alcance: form.querySelector('input[name="alcance"]:checked')?.value || 'red',
+      zonas: [...form.querySelectorAll('input[name="zona"]:checked')].map((x) => x.value),
+      reportaId: $('#evReporta', root).value,
+      publicar: modo === 'publicar',
     };
     if (tipo === 'asamblea') {
       const p = pin?.getLatLng();
       body.lat = p?.lat;
       body.lng = p?.lng;
-    } else body.ruta = { puntos: ruta.puntos, trazo: trazo(), calles: ruta.calles };
+    } else body.ruta = ruta.puntos.length > 1 ? { puntos: ruta.puntos, trazo: trazo(), calles: ruta.calles } : null;
     if (editando) {
       body.fotosNuevas = nuevas;
       body.fotosQuitar = [...quitar].map(Number);
     } else body.fotos = nuevas;
-    btn.disabled = true;
-    btn.textContent = 'Enviando…';
+    const botones = form.querySelectorAll('[type="submit"]');
+    botones.forEach((b) => (b.disabled = true));
+    const texto = btn.textContent;
+    btn.textContent = modo === 'publicar' ? 'Publicando…' : 'Guardando…';
     try {
       const res = editando ? await api(`/api/eventos/${e.id}`, { method: 'PUT', body }) : await api('/api/eventos', { method: 'POST', body });
-      toast(editando ? (res.cambios ? 'Cambios guardados' : 'Sin cambios') : 'Propuesta enviada a tu Coordinador de Zona');
+      toast(modo === 'publicar' ? 'Publicado: ya está en la agenda de los destinatarios' : editando && !res.cambios ? 'Sin cambios' : 'Guardado');
       navigate(`/agenda/eventos/${editando ? e.id : res.id}`);
     } catch (x) {
       const f = x.data?.fields || {};
       setErrors(f);
       if (f.ubicacion || f.ruta) errMapa.textContent = f.ubicacion || f.ruta;
       if (f.fotos) errFotos.textContent = f.fotos;
+      if (f.inicio) $('#evIni-err', root).textContent = f.inicio;
+      if (f.fin) $('#evFin-err', root).textContent = f.fin;
+      if (f.zonas) $('#evZonas-err', root).textContent = f.zonas;
       err.textContent = navigator.onLine ? x.message : 'Sin conexión. Intenta de nuevo cuando tengas señal.';
-      if ((f.ubicacion || f.ruta) && !f.lugar) $('#evMap', root).scrollIntoView({ block: 'center' });
     } finally {
-      btn.disabled = false;
-      btn.textContent = editando ? 'Guardar cambios' : 'Enviar propuesta';
+      botones.forEach((b) => (b.disabled = false));
+      btn.textContent = texto;
     }
   });
   return destroy;
 }
 
 // ===========================================================================
-// Ficha del evento: datos, mapa, flujo de aprobación, reporte, historial y observaciones
+// Ficha del evento: datos, mapa, acciones del CPV, reporte, asistencia e historial
 // ===========================================================================
 const HIST = {
+  creado: 'Guardó el borrador',
+  publicado: 'Publicó',
+  editado: 'Editó',
+  cancelado: 'Canceló',
+  reportado: 'Reportó',
+  asistencia: 'Actualizó la lista de asistencia',
+  // Eventos anteriores al cambio de flujo
   propuesto: 'Propuso',
-  editado: 'Ajustó datos',
   pasado: 'Pasó al CPV',
   reenviado: 'Reenvió con ajustes',
   ajustes: 'Pidió ajustes',
   rechazado: 'Rechazó',
   programado: 'Programó',
   reprogramado: 'Reprogramó',
-  cancelado: 'Canceló',
-  reportado: 'Reportó',
-  asistencia: 'Actualizó la lista de asistencia',
 };
-const mensaje = (m) => `
-  <li class="obs__msg ${m.propia ? 'is-propia' : ''}" data-id="${m.id}">
-    <p class="obs__burbuja">${esc(m.texto).replace(/\n/g, '<br>')}</p>
-    <span class="obs__meta">${m.propia ? 'Tú' : esc(m.autor)} · <time datetime="${m.at}">${esc(fmtDateTime(m.at))}</time></span>
-  </li>`;
 const minutos = (m) => (m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`);
 
 export async function viewEvento(route, params) {
   const e = await api(`/api/eventos/${params[0]}`);
-  const participa = ['rs', 'zona', 'cpv', 'sa'].includes(e.rol);
-  const hist = participa ? await api(`/api/eventos/${e.id}/historial`).catch(() => []) : [];
+  const hist = e.puede.historial ? await api(`/api/eventos/${e.id}/historial`).catch(() => []) : [];
   route.evento = e;
   const p = e.puede;
   const dato = (label, value) => `<div><dt>${label}</dt><dd>${value || '—'}</dd></div>`;
-  const inicioLocal = e.inicio ? `${diaKey(e.inicio)}T${HHMM.format(new Date(e.inicio))}` : '';
-  const finHora = e.fin ? HHMM.format(new Date(e.fin)) : '';
 
   // Acciones según quién mira y en qué estado está
   const botones = [];
-  if (p.pasar) botones.push(`<button class="btn btn--aprobar" type="button" data-accion="pasar">${I.ok}<span>Pasar al CPV</span></button>`);
-  if (p.programar) botones.push(`<button class="btn ${e.estado === 'programado' ? 'btn--secondary' : 'btn--aprobar'}" type="button" data-abrir="programar">${ICONS.calendar}<span>${e.estado === 'programado' ? 'Reprogramar' : 'Programar fecha y hora'}</span></button>`);
-  if (p.enviar) botones.push(`<button class="btn btn--aprobar" type="button" data-accion="enviar">${I.enviar}<span>Reenviar con los ajustes</span></button>`);
+  if (p.publicar) botones.push(`<button class="btn btn--aprobar" type="button" data-publicar>${I.enviar}<span>Publicar</span></button>`);
   if (p.reportar) botones.push(`<a class="btn btn--aprobar" href="/agenda/eventos/${e.id}/reporte" data-link>${I.ok}<span>Reportar evento</span></a>`);
-  if (p.editar) botones.push(`<a class="btn btn--secondary" href="/agenda/eventos/${e.id}/editar" data-link>${ICONS.edit}<span>Ajustar datos</span></a>`);
-  if (p.ajustes) botones.push(`<button class="btn btn--secondary" type="button" data-abrir="ajustes">${ICONS.edit}<span>Pedir ajustes</span></button>`);
-  if (p.rechazar) botones.push(`<button class="btn btn--secondary" type="button" data-abrir="rechazar">${ICONS.close}<span>Rechazar</span></button>`);
-  if (p.cancelar) botones.push(`<button class="btn btn--secondary" type="button" data-abrir="cancelar">${ICONS.trash}<span>${e.rol === 'rs' ? 'Retirar propuesta' : 'Cancelar evento'}</span></button>`);
-  const guia = {
-    revision_zona: e.rol === 'zona' ? 'Revisa la propuesta: pásala al CPV, pide ajustes al responsable o recházala.' : 'Esperando la revisión del Coordinador de Zona.',
-    revision_cpv: e.rol === 'cpv' ? 'Decide la fecha y hora, pide ajustes o recházala.' : 'Esperando que el CPV la programe.',
-    ajustes: e.rol === 'rs' ? 'Revisa las observaciones, ajusta los datos y reenvíala.' : 'Esperando los ajustes del Responsable de Sección.',
-    programado: p.reportar
-      ? 'Hoy es el día: al terminar, reporta los resultados.'
-      : e.rol === 'rs' && e.reportarDesde
-        ? `Podrás reportarlo a partir del ${fechaDe(e.reportarDesde, DIA_LARGO)}.`
-        : 'Programado y en la agenda de toda la rama.',
-  }[e.estado];
+  if (p.editar) botones.push(`<a class="btn btn--secondary" href="/agenda/eventos/${e.id}/editar" data-link>${ICONS.edit}<span>Editar</span></a>`);
+  if (p.cancelar) botones.push(`<button class="btn btn--secondary" type="button" data-abrir="cancelar">${ICONS.close}<span>Cancelar evento</span></button>`);
+  if (p.eliminar) botones.push(`<button class="btn btn--secondary" type="button" data-eliminar>${ICONS.trash}<span>Eliminar borrador</span></button>`);
+  const guia =
+    e.estado === 'borrador'
+      ? 'Borrador: solo tú lo ves. Publícalo para que aparezca en la agenda de los destinatarios.'
+      : e.estado === 'programado'
+        ? p.reportar
+          ? 'Hoy es el día: al terminar, reporta los resultados con la lista de asistencia.'
+          : e.reportaYo && e.reportarDesde
+            ? `Tú lo reportas. Podrás hacerlo a partir del ${fechaDe(e.reportarDesde)}.`
+            : e.rol === 'cpv'
+              ? `Publicado.${e.reporta ? ` Lo reportará ${e.reporta}.` : ''}`
+              : ''
+        : '';
   const acciones =
     botones.length || guia
       ? `<section class="card ev-acc" aria-labelledby="evAccT">
-          <h3 id="evAccT">${esc(guia || '')}</h3>
+          <h3 id="evAccT">${esc(guia)}</h3>
           ${botones.length ? `<div class="ev-acc__btns" id="evBtns">${botones.join('')}</div>` : ''}
           <form class="ev-acc__form" id="evAccForm" hidden novalidate>
-            <div data-panel="programar" hidden>
-              <div class="field-row field-row--3">
-                <div class="field"><label for="evPF">Fecha</label><input class="input" type="date" id="evPF" value="${esc(inicioLocal.slice(0, 10) || e.fechaTentativa)}" min="${KEY.format(new Date())}"><p class="field__error" id="evPF-err"></p></div>
-                <div class="field"><label for="evPI">Hora de inicio</label><input class="input" type="time" id="evPI" value="${esc(inicioLocal.slice(11))}"><p class="field__error" id="evPI-err"></p></div>
-                <div class="field"><label for="evPT">Hora de término <span class="muted">(opcional)</span></label><input class="input" type="time" id="evPT" value="${esc(finHora)}"><p class="field__error" id="evPT-err"></p></div>
-              </div>
-              <p class="field__help">Se agrega a la agenda y se avisa a toda la rama: CPV, Coordinador de Zona, Responsable y sus Promotores Territoriales.</p>
-            </div>
-            <div data-panel="motivo" hidden>
-              <div class="field"><label for="evMotivo" id="evMotivoL">Motivo</label>
-                <textarea class="input" id="evMotivo" rows="3" maxlength="1000"></textarea>
-                <p class="field__error" id="evMotivo-err"></p></div>
-            </div>
+            <div class="field"><label for="evMotivo">Motivo de la cancelación</label>
+              <textarea class="input" id="evMotivo" rows="3" maxlength="1000"></textarea>
+              <p class="field__help">Se avisará a todos los destinatarios.</p>
+              <p class="field__error" id="evMotivo-err"></p></div>
             <div class="ev-acc__confirm">
               <button class="btn btn--secondary" type="button" data-cerrar>Volver</button>
-              <button class="btn" type="submit" id="evAccOk">Confirmar</button>
+              <button class="btn btn--destructive" type="submit">Cancelar evento</button>
             </div>
           </form>
           <p class="form-error" id="evAccErr" role="alert"></p>
@@ -655,7 +690,7 @@ export async function viewEvento(route, params) {
         </div>
         ${r.observaciones ? `<p class="ev-reporte__obs">${esc(r.observaciones).replace(/\n/g, '<br>')}</p>` : ''}
         ${e.fotosTestimonio.length ? `<h4 class="ev-sub">Fotos de testimonio</h4><div class="mat-galeria">${e.fotosTestimonio.map((id) => `<a href="/api/eventos/fotos/${id}" target="_blank" rel="noopener"><img src="/api/eventos/fotos/${id}" alt="Foto de testimonio" loading="lazy"></a>`).join('')}</div>` : ''}
-        <p class="muted ev-reporte__pie">Reportado el ${esc(fmtDateTime(e.reportadoAt))} por ${esc(e.responsable)}.</p>
+        <p class="muted ev-reporte__pie">Reportado el ${esc(fmtDateTime(e.reportadoAt))}${e.reporta ? ` por ${esc(e.reporta)}` : ''}.</p>
       </section>`
     : '';
 
@@ -693,75 +728,83 @@ export async function viewEvento(route, params) {
     h.cambios?.length
       ? `<ul class="hist__cambios">${h.cambios.map((c) => `<li><span>${esc(c.campo)}:</span> ${c.antes ? `<s>${esc(c.antes)}</s> → ` : ''}<strong>${esc(c.despues || '(vacío)')}</strong></li>`).join('')}</ul>`
       : '';
+  const hayMapa = e.lat || e.ruta;
 
   return `
     <div class="promo-ficha ev-ficha">
-      <a class="back-link" href="${e.rol === 'promotor' ? '/agenda' : '/agenda/eventos'}" data-link>${ICONS.back}<span>${e.rol === 'promotor' ? 'Agenda' : 'Asambleas y recorridos'}</span></a>
+      <a class="back-link" href="${e.rol === 'cpv' ? '/agenda/eventos' : '/agenda'}" data-link>${ICONS.back}<span>${e.rol === 'cpv' ? 'Asambleas y recorridos' : 'Agenda'}</span></a>
       <div class="page-head">
         <p class="ev-tipo ev-tipo--${e.tipo}">${I[e.tipo]}<span>${TIPO[e.tipo]} · ${esc(e.folio)}</span></p>
         <h2>${esc(e.lugar)}</h2>
-        <p>${chip(e)} Sección ${fmtSeccion(e.seccion)} · propuesta de ${esc(e.responsable)}</p>
+        <p>${chip(e)} Para ${esc(e.para)}${e.reporta ? ` · Reporta ${esc(e.reporta)}` : ''}</p>
       </div>
       ${
-        e.inicio && ['programado', 'realizado'].includes(e.estado)
+        e.inicio
           ? `<div class="ev-cuando">${I.reloj}<div><strong>${esc(FECHA_HORA.format(new Date(e.inicio)))}${e.fin ? ` a ${esc(HORA.format(new Date(e.fin)))}` : ''}</strong>
-             <span>${e.programadoPor ? `Programado por ${esc(e.programadoPor)}` : ''}</span></div></div>`
+             <span>${e.estado === 'borrador' ? 'Fecha del borrador (aún no publicado)' : `Convoca ${esc(e.cpv)}`}</span></div></div>`
           : ''
       }
       ${acciones}
       ${reporte}
       ${asistencia}
-      <div class="promo-ficha__grid ${e.puede.observar ? '' : 'is-sola'}">
-        <div class="promo-ficha__main">
-          <section class="card form-card" aria-labelledby="evMapT">
+      <div class="ev-ficha__grid">
+        ${
+          hayMapa
+            ? `<section class="card form-card" aria-labelledby="evMapT">
             <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${I.pin}</span><h3 id="evMapT">${e.tipo === 'asamblea' ? 'Ubicación' : `Ruta${e.ruta ? ` · ${esc(kmTxt(e.ruta.km))}` : ''}`}</h3>
               ${comoLlegar ? `<a class="btn btn--secondary btn--sm" href="${comoLlegar}" target="_blank" rel="noopener">Cómo llegar</a>` : ''}</header>
             <div class="ev-map ev-map--ver" id="evMapVer"></div>
-          </section>
-          <section class="card form-card" aria-labelledby="evDatT">
-            <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.calendar}</span><h3 id="evDatT">Datos de la propuesta</h3></header>
-            <dl class="ficha__grid">
-              ${dato('Fecha tentativa', esc(fechaDe(e.fechaTentativa)))}
-              ${dato(e.tipo === 'asamblea' ? 'Asistentes tentativos' : 'Acompañantes del candidato', fmtNum(e.asistentes))}
-              ${dato('Coordinador de Zona', esc(e.zonaNombre))}
-              ${dato('CPV', esc(e.cpv))}
-            </dl>
-            <h4 class="ev-sub">Necesidades técnicas</h4>
-            ${e.necesidades.length ? `<ul class="ev-tags">${e.necesidades.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : '<p class="muted">Ninguna.</p>'}
-            ${e.notas ? `<h4 class="ev-sub">Notas</h4><p class="ev-notas">${esc(e.notas).replace(/\n/g, '<br>')}</p>` : ''}
-            ${e.fotosLugar.length ? `<h4 class="ev-sub">Fotos del lugar</h4><div class="mat-galeria">${e.fotosLugar.map((id) => `<a href="/api/eventos/fotos/${id}" target="_blank" rel="noopener"><img src="/api/eventos/fotos/${id}" alt="Foto del lugar" loading="lazy"></a>`).join('')}</div>` : ''}
-          </section>
-          ${
-            hist.length
-              ? `<section class="card form-card" aria-labelledby="evHisT">
-              <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.bitacora}</span><h3 id="evHisT">Historial</h3></header>
-              <ol class="hist">${hist
-                .map(
-                  (h) => `<li class="hist__item"><div class="hist__head"><strong>${esc(h.autor)} · ${esc(HIST[h.accion] || h.accion)}</strong><time datetime="${h.at}">${esc(fmtDateTime(h.at))}</time></div>
-                  ${h.detalle && h.accion !== 'propuesto' ? `<p class="hist__det">${esc(h.detalle)}</p>` : ''}${cambios(h)}</li>`
-                )
-                .join('')}</ol>
-            </section>`
-              : ''
-          }
-        </div>
+          </section>`
+            : ''
+        }
+        <section class="card form-card" aria-labelledby="evDatT">
+          <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.calendar}</span><h3 id="evDatT">Datos del evento</h3></header>
+          <dl class="ficha__grid">
+            ${dato(e.tipo === 'asamblea' ? 'Asistentes esperados' : 'Acompañantes del candidato', fmtNum(e.asistentes))}
+            ${dato('Destinatarios', esc(e.para))}
+            ${dato('Reporta', esc(e.reporta || ''))}
+            ${dato('Convoca', esc(e.cpv))}
+          </dl>
+          <h4 class="ev-sub">Necesidades técnicas</h4>
+          ${e.necesidades.length ? `<ul class="ev-tags">${e.necesidades.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : '<p class="muted">Ninguna.</p>'}
+          ${e.notas ? `<h4 class="ev-sub">Notas</h4><p class="ev-notas">${esc(e.notas).replace(/\n/g, '<br>')}</p>` : ''}
+          ${e.fotosLugar.length ? `<h4 class="ev-sub">Fotos del lugar</h4><div class="mat-galeria">${e.fotosLugar.map((id) => `<a href="/api/eventos/fotos/${id}" target="_blank" rel="noopener"><img src="/api/eventos/fotos/${id}" alt="Foto del lugar" loading="lazy"></a>`).join('')}</div>` : ''}
+        </section>
         ${
-          e.puede.observar
-            ? `<aside class="card obs" aria-labelledby="obsT">
-            <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${I.enviar}</span><h3 id="obsT">Observaciones</h3></header>
-            <p class="obs__nota">Las ven el Responsable de Sección, su Coordinador de Zona y el CPV.</p>
-            <ol class="obs__lista" id="obsLista" aria-live="polite"><li class="obs__vacio">Cargando…</li></ol>
-            <form class="obs__form" id="obsForm" novalidate>
-              <label class="sr-only" for="obsTexto">Escribe una observación</label>
-              <textarea class="input obs__texto" id="obsTexto" rows="1" maxlength="1000" placeholder="Escribe una observación"></textarea>
-              <button class="obs__enviar" type="submit" aria-label="Enviar observación" title="Enviar">${I.enviar}</button>
-            </form>
-            <p class="field__error" id="obsErr" role="alert"></p>
-          </aside>`
+          hist.length
+            ? `<section class="card form-card" aria-labelledby="evHisT">
+            <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.bitacora}</span><h3 id="evHisT">Historial</h3></header>
+            <ol class="hist">${hist
+              .map(
+                (h) => `<li class="hist__item"><div class="hist__head"><strong>${esc(h.autor)} · ${esc(HIST[h.accion] || h.accion)}</strong><time datetime="${h.at}">${esc(fmtDateTime(h.at))}</time></div>
+                ${h.detalle && !['creado', 'propuesto'].includes(h.accion) ? `<p class="hist__det">${esc(h.detalle)}</p>` : ''}${cambios(h)}</li>`
+              )
+              .join('')}</ol>
+          </section>`
             : ''
         }
       </div>
     </div>`;
+}
+
+// Cuerpo para publicar un borrador desde la ficha (mismos datos que tiene guardados)
+function cuerpoDe(e) {
+  const fecha = e.inicio ? diaKey(e.inicio) : '';
+  return {
+    lugar: e.lugar,
+    lat: e.lat,
+    lng: e.lng,
+    ruta: e.ruta,
+    inicio: e.inicio ? `${fecha}T${HHMM.format(new Date(e.inicio))}` : '',
+    fin: e.fin ? `${fecha}T${HHMM.format(new Date(e.fin))}` : '',
+    asistentes: e.asistentes,
+    necesidades: e.necesidades,
+    notas: e.notas,
+    alcance: e.alcance,
+    zonas: e.zonas,
+    reportaId: e.reportaId,
+    publicar: true,
+  };
 }
 
 export function mountEvento(root, route) {
@@ -769,17 +812,19 @@ export function mountEvento(root, route) {
   if (!e) return;
   const limpieza = [];
   // Mapa de solo lectura
-  const { map, destroy } = baseMap($('#evMapVer', root));
-  limpieza.push(destroy);
-  if (e.tipo === 'asamblea' && e.lat) {
-    L.marker([e.lat, e.lng], { icon: pinIcono(), interactive: false }).addTo(map);
-    map.setView([e.lat, e.lng], 17);
-  } else if (e.ruta) {
-    L.polyline(e.ruta.trazo, { color: '#ffffff', weight: 8, opacity: 0.9 }).addTo(map);
-    L.polyline(e.ruta.trazo, { color: COLOR.recorrido, weight: 4.5 }).addTo(map);
-    L.marker(e.ruta.puntos[0], { icon: puntoIcono('A', '#16a34a'), interactive: false }).addTo(map);
-    L.marker(e.ruta.puntos.at(-1), { icon: puntoIcono('B', '#171717'), interactive: false }).addTo(map);
-    map.fitBounds(L.latLngBounds(e.ruta.trazo), { padding: [24, 24] });
+  if ($('#evMapVer', root)) {
+    const { map, destroy } = baseMap($('#evMapVer', root));
+    limpieza.push(destroy);
+    if (e.tipo === 'asamblea' && e.lat) {
+      L.marker([e.lat, e.lng], { icon: pinIcono(), interactive: false }).addTo(map);
+      map.setView([e.lat, e.lng], 17);
+    } else if (e.ruta) {
+      L.polyline(e.ruta.trazo, { color: '#ffffff', weight: 8, opacity: 0.9 }).addTo(map);
+      L.polyline(e.ruta.trazo, { color: COLOR.recorrido, weight: 4.5 }).addTo(map);
+      L.marker(e.ruta.puntos[0], { icon: puntoIcono('A', '#16a34a'), interactive: false }).addTo(map);
+      L.marker(e.ruta.puntos.at(-1), { icon: puntoIcono('B', '#171717'), interactive: false }).addTo(map);
+      map.fitBounds(L.latLngBounds(e.ruta.trazo), { padding: [24, 24] });
+    }
   }
 
   // ---- Corregir la lista de asistencia (reemplaza la anterior)
@@ -814,122 +859,67 @@ export function mountEvento(root, route) {
     });
   }
 
-  // ---- Acciones del flujo
+  // ---- Acciones del CPV: publicar, cancelar (con motivo) y eliminar borrador (doble toque)
   const btns = $('#evBtns', root);
   const accForm = $('#evAccForm', root);
   const accErr = $('#evAccErr', root);
-  let abierta = null;
-  const enviarAccion = async (body, boton) => {
-    accErr.textContent = '';
-    if (boton) boton.disabled = true;
-    try {
-      const r = await api(`/api/eventos/${e.id}/accion`, { method: 'POST', body });
-      toast(
-        {
-          revision_cpv: 'Pasado al CPV',
-          revision_zona: 'Reenviado al Coordinador de Zona',
-          ajustes: 'Se pidió ajustar la propuesta',
-          rechazado: 'Propuesta rechazada',
-          programado: 'Programado y agregado a la agenda de la rama',
-          cancelado: 'Cancelado',
-        }[r.estado] || 'Listo'
-      );
-      navigate(location.pathname);
-    } catch (err) {
-      const f = err.data?.fields || {};
-      $('#evMotivo-err', root) && ($('#evMotivo-err', root).textContent = f.motivo || '');
-      $('#evPF-err', root) && ($('#evPF-err', root).textContent = f.inicio || '');
-      $('#evPT-err', root) && ($('#evPT-err', root).textContent = f.fin || '');
-      accErr.textContent = err.message;
-      if (boton) boton.disabled = false;
-    }
-  };
+  let confirmarEliminar = false;
   if (btns) {
-    btns.addEventListener('click', (ev) => {
-      const b = ev.target.closest('[data-accion], [data-abrir]');
+    btns.addEventListener('click', async (ev) => {
+      const b = ev.target.closest('[data-publicar], [data-abrir], [data-eliminar]');
       if (!b) return;
-      if (b.dataset.accion) return enviarAccion({ accion: b.dataset.accion }, b);
-      abierta = b.dataset.abrir;
-      const motivo = abierta !== 'programar';
-      accForm.hidden = false;
-      btns.hidden = true;
-      accForm.querySelector('[data-panel="programar"]').hidden = motivo;
-      accForm.querySelector('[data-panel="motivo"]').hidden = !motivo;
-      $('#evMotivoL', root).textContent = {
-        ajustes: '¿Qué hay que ajustar?',
-        rechazar: 'Motivo del rechazo',
-        cancelar: e.rol === 'rs' ? 'Motivo (opcional)' : 'Motivo de la cancelación',
-      }[abierta] || 'Motivo';
-      $('#evAccOk', root).textContent = { programar: e.estado === 'programado' ? 'Reprogramar' : 'Programar', ajustes: 'Pedir ajustes', rechazar: 'Rechazar', cancelar: e.rol === 'rs' ? 'Retirar propuesta' : 'Cancelar evento' }[abierta];
-      $('#evAccOk', root).classList.toggle('btn--destructive', ['rechazar', 'cancelar'].includes(abierta));
-      (motivo ? $('#evMotivo', root) : $('#evPF', root)).focus();
+      accErr.textContent = '';
+      if (b.dataset.abrir) {
+        accForm.hidden = false;
+        btns.hidden = true;
+        $('#evMotivo', root).focus();
+        return;
+      }
+      if (b.hasAttribute('data-eliminar') && !confirmarEliminar) {
+        confirmarEliminar = true;
+        b.querySelector('span').textContent = '¿Eliminar el borrador? Toca de nuevo';
+        setTimeout(() => {
+          confirmarEliminar = false;
+          b.querySelector('span').textContent = 'Eliminar borrador';
+        }, 4000);
+        return;
+      }
+      b.disabled = true;
+      try {
+        if (b.hasAttribute('data-publicar')) {
+          await api(`/api/eventos/${e.id}`, { method: 'PUT', body: cuerpoDe(e) });
+          toast('Publicado: ya está en la agenda de los destinatarios');
+          navigate(location.pathname);
+        } else {
+          await api(`/api/eventos/${e.id}/cancelar`, { method: 'POST', body: {} });
+          toast('Borrador eliminado');
+          navigate('/agenda/eventos');
+        }
+      } catch (err) {
+        const falta = Object.values(err.data?.fields || {});
+        accErr.textContent = falta.length ? `Para publicar falta: ${falta.join(' ')} Usa «Editar» para completarlo.` : err.message;
+        b.disabled = false;
+      }
     });
-    accForm.addEventListener('click', (ev) => {
+    accForm?.addEventListener('click', (ev) => {
       if (!ev.target.closest('[data-cerrar]')) return;
       accForm.hidden = true;
       btns.hidden = false;
       accErr.textContent = '';
     });
-    accForm.addEventListener('submit', (ev) => {
+    accForm?.addEventListener('submit', async (ev) => {
       ev.preventDefault();
-      if (abierta === 'programar') {
-        const f = $('#evPF', root).value;
-        const hi = $('#evPI', root).value;
-        const ht = $('#evPT', root).value;
-        $('#evPF-err', root).textContent = f ? '' : 'Elige la fecha.';
-        $('#evPI-err', root).textContent = hi ? '' : 'Elige la hora de inicio.';
-        if (!f || !hi) return;
-        return enviarAccion({ accion: 'programar', inicio: `${f}T${hi}`, fin: ht ? `${f}T${ht}` : '' }, $('#evAccOk', root));
-      }
-      enviarAccion({ accion: abierta, motivo: $('#evMotivo', root).value }, $('#evAccOk', root));
-    });
-  }
-
-  // ---- Observaciones (se actualizan mientras la ficha está abierta)
-  if (e.puede.observar) {
-    const lista = $('#obsLista', root);
-    const form = $('#obsForm', root);
-    const texto = $('#obsTexto', root);
-    let ultimo = null;
-    const pintar = (msgs) => {
-      const firma = msgs.map((m) => m.id).join(',');
-      if (firma === ultimo) return;
-      ultimo = firma;
-      lista.innerHTML = msgs.length ? msgs.map(mensaje).join('') : '<li class="obs__vacio">Aún no hay observaciones.</li>';
-      lista.scrollTop = lista.scrollHeight;
-    };
-    const cargar = () => api(`/api/eventos/${e.id}/observaciones`).then(pintar).catch(() => {});
-    cargar();
-    const timer = setInterval(() => document.visibilityState === 'visible' && cargar(), 15000);
-    limpieza.push(() => clearInterval(timer));
-    const ajustar = () => {
-      texto.style.height = 'auto';
-      texto.style.height = `${Math.min(texto.scrollHeight, 140)}px`;
-    };
-    texto.addEventListener('input', ajustar);
-    texto.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
-        ev.preventDefault();
-        form.requestSubmit();
-      }
-    });
-    form.addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      const t = texto.value.trim();
-      if (!t) return;
-      const b = form.querySelector('button');
-      b.disabled = true;
-      $('#obsErr', root).textContent = '';
+      const ok = accForm.querySelector('[type="submit"]');
+      ok.disabled = true;
+      $('#evMotivo-err', root).textContent = '';
       try {
-        await api(`/api/eventos/${e.id}/observaciones`, { method: 'POST', body: { texto: t } });
-        texto.value = '';
-        ajustar();
-        await cargar();
+        await api(`/api/eventos/${e.id}/cancelar`, { method: 'POST', body: { motivo: $('#evMotivo', root).value } });
+        toast('Evento cancelado; se avisó a los destinatarios');
+        navigate(location.pathname);
       } catch (err) {
-        $('#obsErr', root).textContent = navigator.onLine ? err.message : 'Sin conexión. Intenta de nuevo.';
-      } finally {
-        b.disabled = false;
-        texto.focus();
+        $('#evMotivo-err', root).textContent = err.data?.fields?.motivo || '';
+        accErr.textContent = err.message;
+        ok.disabled = false;
       }
     });
   }
@@ -937,14 +927,20 @@ export function mountEvento(root, route) {
 }
 
 // ===========================================================================
-// Reporte del Responsable de Sección
+// Reporte (la persona designada por el CPV)
 // ===========================================================================
 export async function viewReporte(route, params) {
   const e = await api(`/api/eventos/${params[0]}`);
   route.evento = e;
   if (!e.puede.reportar) {
     return `<div class="empty"><strong>Este evento no se puede reportar</strong><span>${
-      e.estado === 'realizado' ? 'Ya fue reportado.' : e.estado === 'programado' ? `Podrás reportarlo a partir del ${esc(fechaDe(e.reportarDesde, DIA_LARGO))}.` : 'Solo se reportan eventos programados.'
+      e.estado === 'realizado'
+        ? 'Ya fue reportado.'
+        : !e.reportaYo
+          ? 'Lo reporta otra persona.'
+          : e.estado === 'programado'
+            ? `Podrás reportarlo a partir del ${esc(fechaDe(e.reportarDesde))}.`
+            : 'Solo se reportan eventos publicados.'
     }</span><a class="btn btn--secondary" href="/agenda/eventos/${e.id}" data-link>Volver al evento</a></div>`;
   }
   const tarde = KEY.format(new Date()) > e.reportarDesde;
@@ -958,7 +954,7 @@ export async function viewReporte(route, params) {
       <a class="back-link" href="/agenda/eventos/${e.id}" data-link>${ICONS.back}<span>Volver al evento</span></a>
       <div class="page-head"><h2>Reporte: ${esc(e.lugar)}</h2>
         <p>${TIPO[e.tipo]} del ${esc(FECHA_HORA.format(new Date(e.inicio)))}.</p></div>
-      ${tarde ? `<div class="notice notice--danger">${ICONS.alert}<div>El evento fue el ${esc(fechaDe(e.reportarDesde, DIA_LARGO))}: este reporte quedará marcado como <strong>tardío</strong> y se avisará a tu Coordinador de Zona y al CPV.</div></div>` : ''}
+      ${tarde ? `<div class="notice notice--danger">${ICONS.alert}<div>El evento fue el ${esc(fechaDe(e.reportarDesde))}: este reporte quedará marcado como <strong>tardío</strong> y se avisará al CPV.</div></div>` : ''}
       <section class="card form-card">
         <div class="field-row">
           <div class="field"><label for="repAsis">${e.tipo === 'asamblea' ? 'Cantidad de asistentes' : 'Personas que acompañaron al candidato'} <span class="req" aria-hidden="true">*</span></label>
@@ -975,7 +971,7 @@ export async function viewReporte(route, params) {
             ? `<div class="field-row">
                 <div class="field"><label for="repKm">Kilómetros recorridos <span class="req" aria-hidden="true">*</span></label>
                   <input class="input" id="repKm" inputmode="decimal" value="${e.ruta ? String(e.ruta.km) : ''}" required>
-                  <p class="field__help">Prellenado con la ruta trazada (${e.ruta ? esc(kmTxt(e.ruta.km)) : '—'}); corrígelo si cambió.</p><p class="field__error" id="repKm-err"></p></div>
+                  <p class="field__help">${e.ruta ? `Prellenado con la ruta trazada (${esc(kmTxt(e.ruta.km))}); corrígelo si cambió.` : 'Distancia aproximada del recorrido.'}</p><p class="field__error" id="repKm-err"></p></div>
                 ${tiempo('repTiempo', 'Tiempo de recorrido')}
               </div>
               <p class="ev-promedio" id="repProm" aria-live="polite">Promedio: — casas por hora</p>`

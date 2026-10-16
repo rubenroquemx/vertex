@@ -1,8 +1,8 @@
 // Agenda: asambleas y recorridos.
-// El Responsable de Sección propone → su Coordinador de Zona revisa y lo pasa (o lo regresa) → el CPV lo
-// programa con fecha y hora (o lo regresa / rechaza). En el camino todos pueden ajustar y dejar observaciones.
-// Ya programado, aparece en la agenda de toda la rama (CPV, zona, responsable y sus promotores).
-// El Responsable reporta el mismo día; después se acepta, pero queda marcado como tardío.
+// Solo el CPV los crea: los prepara en borrador y, al publicarlos, aparecen en la agenda de los destinatarios
+// (toda su red o las zonas que elija, con sus Responsables de Sección y Promotores Territoriales).
+// Al crearlo designa quién lo reporta (él mismo, un Coordinador de Zona o un Responsable de Sección):
+// esa persona envía el reporte el día del evento con la lista de asistencia; después se acepta, marcado como tardío.
 const crypto = require('crypto');
 const { query, tx } = require('./db');
 const { users } = require('./store');
@@ -21,16 +21,9 @@ const MAX_FOTOS_LUGAR = 5;
 const MAX_FOTOS_TESTIMONIO = 10;
 const NECESIDADES = ['Planta de luz', 'Iluminación', 'Sonido', 'Templete', 'Sillas', 'Mesas', 'Carpa o toldo', 'Pantalla', 'Transporte'];
 const TIPO = { asamblea: 'Asamblea', recorrido: 'Recorrido' };
-const ESTADO = {
-  revision_zona: 'Con el Coordinador de Zona',
-  revision_cpv: 'Con el CPV',
-  ajustes: 'Requiere ajustes',
-  programado: 'Programado',
-  realizado: 'Realizado',
-  rechazado: 'Rechazado',
-  cancelado: 'Cancelado',
-};
-const EDITABLE = new Set(['revision_zona', 'ajustes', 'revision_cpv']);
+const ESTADO = { borrador: 'Borrador', programado: 'Publicado', realizado: 'Realizado', cancelado: 'Cancelado' };
+const EDITABLE = new Set(['borrador', 'programado']);
+const ROLES_REPORTAN = new Set(['coord_promocion', 'coord_zona', 'resp_seccion']);
 // Límites de México (para descartar coordenadas sin sentido)
 const enMexico = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && lat > 14 && lat < 33 && lng > -118.5 && lng < -86;
 
@@ -42,23 +35,53 @@ class EventoError extends Error {
   }
 }
 
-const seccionTxt = (s) => (s === null || s === undefined ? '' : String(s).padStart(4, '0'));
 const titulo = (e) => `${TIPO[e.tipo]} · ${e.lugar}`;
 const url = (id) => `/agenda/eventos/${id}`;
+const nombre = (id) => users.get(id)?.name || 'Cuenta eliminada';
+
+// ---------------------------------------------------------------------------
+// Red del CPV: zonas, responsables y promotores
+// ---------------------------------------------------------------------------
+const hijos = (id, role) => users.all().filter((u) => u.parentId === id && u.role === role);
+// Zona (Coordinador de Zona) y CPV a los que pertenece una cuenta
+function ubicar(u) {
+  if (!u) return {};
+  if (u.role === 'coord_promocion') return { cpv: u.id };
+  if (u.role === 'coord_zona') return { zona: u.id, cpv: u.parentId };
+  if (u.role === 'resp_seccion') return { zona: u.parentId, cpv: users.get(u.parentId)?.parentId };
+  if (u.role === 'promotor') {
+    const rs = users.get(u.parentId);
+    return { zona: rs?.parentId, cpv: users.get(rs?.parentId)?.parentId };
+  }
+  return {};
+}
+const zonasDe = (e) => (e.alcance === 'red' ? hijos(e.cpv_id, 'coord_zona').map((z) => z.id) : e.zonas || []);
+// Todas las cuentas que deben ver el evento en su agenda
+function audiencia(e) {
+  const ids = new Set([e.cpv_id, e.reporta_id].filter(Boolean));
+  for (const z of zonasDe(e)) {
+    ids.add(z);
+    for (const rs of hijos(z, 'resp_seccion')) {
+      ids.add(rs.id);
+      for (const p of hijos(rs.id, 'promotor')) ids.add(p.id);
+    }
+  }
+  return [...ids];
+}
 
 // ---------------------------------------------------------------------------
 // Acceso
 // ---------------------------------------------------------------------------
 function rolEn(viewer, e) {
-  if (viewer.id === e.rs_id) return 'rs';
-  if (viewer.id === e.zona_id) return 'zona';
   if (viewer.id === e.cpv_id) return 'cpv';
   if (viewer.role === 'superadmin') return 'sa';
-  // Los promotores del responsable solo ven lo ya programado
-  if (viewer.role === 'promotor' && viewer.parentId === e.rs_id && (e.estado === 'programado' || e.estado === 'realizado')) return 'promotor';
+  if (!e.publicado_at) return null; // los borradores solo los ve el CPV
+  if (viewer.id === e.reporta_id) return 'reporta';
+  const u = ubicar(viewer);
+  if (u.cpv === e.cpv_id && u.zona && (e.alcance === 'red' || (e.zonas || []).includes(u.zona))) return 'red';
   return null;
 }
-const participa = (rol) => rol === 'rs' || rol === 'zona' || rol === 'cpv';
+const reporta = (viewer, e) => viewer.id === e.reporta_id;
 
 async function fila(id) {
   if (!/^[0-9a-f-]{36}$/i.test(String(id))) return null;
@@ -72,24 +95,15 @@ async function cargar(viewer, id) {
   return { e, rol };
 }
 
-// Quién debe actuar ahora (para resaltarlo en las listas)
-function turnoDe(e, rol) {
-  if (rol === 'zona' && e.estado === 'revision_zona') return 'Revisar y pasar al CPV';
-  if (rol === 'cpv' && e.estado === 'revision_cpv') return 'Programar';
-  if (rol === 'rs' && e.estado === 'ajustes') return 'Ajustar y reenviar';
-  if (rol === 'rs' && e.estado === 'programado' && e.inicio && hoyKey() >= diaDe(e.inicio)) return 'Reportar';
+// Qué toca hacer (para resaltarlo en las listas)
+function turnoDe(viewer, e) {
+  if (viewer.id === e.cpv_id && e.estado === 'borrador') return 'Publicar';
+  if (reporta(viewer, e) && e.estado === 'programado' && e.inicio && hoyKey() >= diaDe(e.inicio)) return 'Reportar';
   return null;
 }
 
-// Toda la rama del evento (para la agenda y los avisos de programación)
-function rama(e) {
-  const promotores = users.all().filter((u) => u.parentId === e.rs_id && u.role === 'promotor').map((u) => u.id);
-  return [e.rs_id, e.zona_id, e.cpv_id, ...promotores].filter(Boolean);
-}
-const involucrados = (e) => [e.rs_id, e.zona_id, e.cpv_id].filter(Boolean);
-
 // ---------------------------------------------------------------------------
-// Validación de la propuesta
+// Validación
 // ---------------------------------------------------------------------------
 function fotoValida(dataUrl) {
   const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
@@ -121,7 +135,15 @@ function limpiarRuta(r) {
   return { puntos: puntos.map(redondear), trazo: t, km: km(t), calles: Boolean(r.calles) };
 }
 
-function validar(tipo, body, { parcial = false } = {}) {
+// "YYYY-MM-DDTHH:MM" en hora del centro (sin horario de verano desde 2022)
+function fechaHora(s) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(String(s || ''))) return null;
+  const d = new Date(`${s}:00-06:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// `publicar`: además de los datos básicos exige fecha y hora futuras, destinatarios y quién reporta
+function validar(cpv, tipo, body, { publicar, inicioAnterior = null }) {
   const f = {};
   const d = {};
   const lugar = String(body.lugar ?? '').trim().replace(/\s+/g, ' ');
@@ -129,20 +151,25 @@ function validar(tipo, body, { parcial = false } = {}) {
   else if (lugar.length > 160) f.lugar = 'Máximo 160 caracteres.';
   d.lugar = lugar;
   if (tipo === 'asamblea') {
-    const lat = Number(body.lat);
-    const lng = Number(body.lng);
-    if (!enMexico(lat, lng)) f.ubicacion = 'Marca en el mapa dónde será la asamblea.';
-    d.lat = lat;
-    d.lng = lng;
+    d.lat = Number(body.lat);
+    d.lng = Number(body.lng);
+    if (!enMexico(d.lat, d.lng)) {
+      if (publicar) f.ubicacion = 'Marca en el mapa dónde será la asamblea.';
+      d.lat = null;
+      d.lng = null;
+    }
   } else {
-    const ruta = limpiarRuta(body.ruta);
-    if (!ruta) f.ruta = 'Traza la ruta del recorrido en el mapa (mínimo dos puntos).';
-    d.ruta = ruta;
+    d.ruta = limpiarRuta(body.ruta);
+    if (!d.ruta && publicar) f.ruta = 'Traza la ruta del recorrido en el mapa (mínimo dos puntos).';
   }
-  const fecha = String(body.fechaTentativa || '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || FMT_DIA.format(new Date(`${fecha}T12:00:00Z`)) !== fecha) f.fechaTentativa = 'Elige la fecha tentativa.';
-  else if (!parcial && fecha < hoyKey()) f.fechaTentativa = 'La fecha tentativa no puede ser pasada.';
-  d.fechaTentativa = fecha;
+  d.inicio = body.inicio ? fechaHora(body.inicio) : null;
+  d.fin = body.fin ? fechaHora(body.fin) : null;
+  if (body.inicio && !d.inicio) f.inicio = 'Fecha u hora no válida.';
+  else if (!d.inicio && publicar) f.inicio = 'Elige la fecha y la hora de inicio.';
+  // Al publicar, la fecha debe ser futura (salvo que no haya cambiado respecto a la ya publicada)
+  else if (d.inicio && publicar && d.inicio < new Date() && !(inicioAnterior && +inicioAnterior === +d.inicio)) f.inicio = 'La fecha y hora deben ser futuras.';
+  if (body.fin && !d.fin) f.fin = 'Hora de término no válida.';
+  else if (d.fin && d.inicio && d.fin <= d.inicio) f.fin = 'Debe terminar después de iniciar.';
   const asis = Number(String(body.asistentes ?? '').replace(/[,\s]/g, ''));
   if (!Number.isInteger(asis) || asis < 1 || asis > 200000)
     f.asistentes = tipo === 'asamblea' ? 'Escribe cuántos asistentes esperas (número entero).' : 'Escribe cuántas personas acompañarán al candidato.';
@@ -150,11 +177,21 @@ function validar(tipo, body, { parcial = false } = {}) {
   const nec = Array.isArray(body.necesidades) ? body.necesidades : [];
   d.necesidades = [...new Set(nec.map((x) => String(x).trim().slice(0, 80)).filter(Boolean))].slice(0, 20);
   d.notas = String(body.notas ?? '').trim().slice(0, 2000);
+  // Destinatarios
+  d.alcance = body.alcance === 'zonas' ? 'zonas' : 'red';
+  const propias = new Set(hijos(cpv.id, 'coord_zona').map((z) => z.id));
+  d.zonas = d.alcance === 'zonas' ? [...new Set((Array.isArray(body.zonas) ? body.zonas : []).map(String))].filter((z) => propias.has(z)) : [];
+  if (d.alcance === 'zonas' && !d.zonas.length) f.zonas = 'Elige al menos un Coordinador de Zona.';
+  // Quién reporta: el CPV, un Coordinador de Zona o un Responsable de Sección de su red
+  d.reportaId = body.reportaId ? String(body.reportaId) : null;
+  const r = d.reportaId ? users.get(d.reportaId) : null;
+  if (d.reportaId && (!r || !ROLES_REPORTAN.has(r.role) || ubicar(r).cpv !== cpv.id)) f.reportaId = 'Elige a una persona de tu red.';
+  else if (!d.reportaId && publicar) f.reportaId = 'Elige quién reportará el evento.';
   return { f, d };
 }
 
 // ---------------------------------------------------------------------------
-// Historial, observaciones y fotos
+// Historial y fotos
 // ---------------------------------------------------------------------------
 async function historial(c, e, viewer, accion, detalle = '', cambios = []) {
   await c.query('INSERT INTO evento_historial (evento_id, user_id, user_name, accion, detalle, cambios) VALUES ($1, $2, $3, $4, $5, $6)', [
@@ -165,9 +202,6 @@ async function historial(c, e, viewer, accion, detalle = '', cambios = []) {
     detalle,
     JSON.stringify(cambios),
   ]);
-}
-async function observar(c, e, viewer, texto) {
-  await c.query('INSERT INTO evento_observaciones (evento_id, user_id, user_name, texto) VALUES ($1, $2, $3, $4)', [e.id, viewer.id, viewer.name, texto]);
 }
 
 async function guardarFotos(c, eventoId, bufs, clase) {
@@ -183,72 +217,85 @@ function fotosDe(lista, max) {
   return bufs;
 }
 
-// ---------------------------------------------------------------------------
-// Proponer (Responsable de Sección)
-// ---------------------------------------------------------------------------
-async function crear(rs, body) {
-  if (rs.role !== 'resp_seccion') throw new EventoError('Solo el Responsable de Sección propone asambleas y recorridos.', 403);
-  const tipo = body.tipo === 'recorrido' ? 'recorrido' : body.tipo === 'asamblea' ? 'asamblea' : null;
-  if (!tipo) throw new EventoError('Tipo de evento no válido.', 422);
-  const zona = users.get(rs.parentId);
-  const cpv = zona ? users.get(zona.parentId) : null;
-  if (!zona || !cpv) throw new EventoError('Tu cuenta no tiene Coordinador de Zona o CPV asignado.', 409);
-  const { f, d } = validar(tipo, body);
-  const bufs = fotosDe(body.fotos, MAX_FOTOS_LUGAR);
-  if (Object.keys(f).length) throw new EventoError('Revisa los datos marcados.', 422, f);
-  const id = crypto.randomUUID();
-  const e = { id, tipo, rs_id: rs.id, zona_id: zona.id, cpv_id: cpv.id, lugar: d.lugar };
-  await tx(async (c) => {
-    await c.query(
-      `INSERT INTO eventos (id, tipo, rs_id, zona_id, cpv_id, seccion, lugar, lat, lng, ruta, fecha_tentativa, asistentes, necesidades, notas)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-      [
-        id,
-        tipo,
-        rs.id,
-        zona.id,
-        cpv.id,
-        rs.territorio?.secciones?.[0] ?? null,
-        d.lugar,
-        tipo === 'asamblea' ? d.lat : null,
-        tipo === 'asamblea' ? d.lng : null,
-        tipo === 'recorrido' ? JSON.stringify(d.ruta) : null,
-        d.fechaTentativa,
-        d.asistentes,
-        JSON.stringify(d.necesidades),
-        d.notas,
-      ]
-    );
-    await guardarFotos(c, id, bufs, 'lugar');
-    await historial(c, e, rs, 'propuesto', 'Propuesta enviada al Coordinador de Zona.');
+const cuandoTxt = (d) => (d.inicio ? `${FMT_CORTO.format(d.inicio)}${d.fin ? ` a ${FMT_CORTO.format(d.fin)}` : ''}` : 'sin fecha');
+const paraTxt = (d) => (d.alcance === 'red' ? 'toda la red' : d.zonas.map((z) => users.get(z)?.zona?.codigo || nombre(z)).join(', '));
+
+// Aviso a los destinatarios al publicar o al cambiar un evento publicado
+async function avisarPublicacion(e, viewer, { cambio = false } = {}) {
+  const fecha = e.inicio ? FMT_CORTO.format(e.inicio) : '';
+  await notificar(audiencia(e), {
+    tipo: cambio ? 'evento.cambio' : 'evento.programado',
+    titulo: `${cambio ? 'Cambio: ' : ''}${TIPO[e.tipo]} el ${fecha}`,
+    cuerpo: `${e.lugar}. ${cambio ? 'Revisa los datos actualizados en tu agenda.' : 'Ya está en tu agenda.'}`,
+    url: url(e.id),
+    autorId: viewer.id,
   });
-  await notificar([zona.id], {
-    tipo: 'evento.propuesto',
-    titulo: `${rs.name} propone ${tipo === 'asamblea' ? 'una asamblea' : 'un recorrido'}`,
-    cuerpo: `${d.lugar} · sección ${seccionTxt(rs.territorio?.secciones?.[0])}. Revísalo y pásalo al CPV.`,
-    url: url(id),
-    autorId: rs.id,
-  });
-  return { id };
+  if (e.reporta_id && e.reporta_id !== viewer.id)
+    await notificar([e.reporta_id], {
+      tipo: 'evento.encargado',
+      titulo: `Te toca reportar: ${titulo(e)}`,
+      cuerpo: `El ${fecha}. Al terminar, envía el reporte con la lista de asistencia.`,
+      url: url(e.id),
+      autorId: viewer.id,
+    });
 }
 
 // ---------------------------------------------------------------------------
-// Ajustar datos (los tres involucrados, mientras no esté programado)
+// Crear y editar (solo el CPV)
 // ---------------------------------------------------------------------------
-const CAMPOS = [
-  { k: 'lugar', t: 'Lugar' },
-  { k: 'fecha_tentativa', t: 'Fecha tentativa', d: 'fechaTentativa' },
-  { k: 'asistentes', t: 'Asistentes tentativos' },
-  { k: 'notas', t: 'Notas' },
-];
-const txtNec = (a) => (a || []).join(', ');
-const fechaTxt = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v || ''));
+async function crear(cpv, body) {
+  if (cpv.role !== 'coord_promocion') throw new EventoError('Solo el CPV crea asambleas y recorridos.', 403);
+  const tipo = body.tipo === 'recorrido' ? 'recorrido' : body.tipo === 'asamblea' ? 'asamblea' : null;
+  if (!tipo) throw new EventoError('Tipo de evento no válido.', 422);
+  const publicar = body.publicar === true;
+  const { f, d } = validar(cpv, tipo, body, { publicar });
+  const bufs = fotosDe(body.fotos, MAX_FOTOS_LUGAR);
+  if (Object.keys(f).length) throw new EventoError('Revisa los datos marcados.', 422, f);
+  const id = crypto.randomUUID();
+  const e = { id, tipo, cpv_id: cpv.id, lugar: d.lugar, inicio: d.inicio, fin: d.fin, alcance: d.alcance, zonas: d.zonas, reporta_id: d.reportaId };
+  await tx(async (c) => {
+    await c.query(
+      `INSERT INTO eventos (id, tipo, estado, cpv_id, lugar, lat, lng, ruta, asistentes, necesidades, notas, inicio, fin,
+                            alcance, zonas, reporta_id, creado_por, programado_por, publicado_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $4, $17, $18)`,
+      [
+        id,
+        tipo,
+        publicar ? 'programado' : 'borrador',
+        cpv.id,
+        d.lugar,
+        tipo === 'asamblea' ? d.lat : null,
+        tipo === 'asamblea' ? d.lng : null,
+        tipo === 'recorrido' && d.ruta ? JSON.stringify(d.ruta) : null,
+        d.asistentes,
+        JSON.stringify(d.necesidades),
+        d.notas,
+        d.inicio,
+        d.fin,
+        d.alcance,
+        d.zonas,
+        d.reportaId,
+        publicar ? cpv.id : null,
+        publicar ? new Date() : null,
+      ]
+    );
+    await guardarFotos(c, id, bufs, 'lugar');
+    await historial(c, e, cpv, publicar ? 'publicado' : 'creado', publicar ? `Publicó para ${paraTxt(d)}: ${cuandoTxt(d)}.` : 'Guardó el borrador.');
+  });
+  if (publicar) await avisarPublicacion(e, cpv);
+  return { id, estado: publicar ? 'programado' : 'borrador' };
+}
+
+const fechaTxt = (v) => (v ? FMT_CORTO.format(v) : '');
 
 async function editar(viewer, id, body) {
   const { e, rol } = await cargar(viewer, id);
-  if (!participa(rol)) throw new EventoError('No puedes modificar este evento.', 403);
-  if (!EDITABLE.has(e.estado)) throw new EventoError('Ya no se puede modificar: el evento está ' + ESTADO[e.estado].toLowerCase() + '.', 409);
-  const { f, d } = validar(e.tipo, body, { parcial: true });
+  if (rol !== 'cpv') throw new EventoError('Solo el CPV modifica el evento.', 403);
+  if (!EDITABLE.has(e.estado)) throw new EventoError(`Ya no se puede modificar: el evento está ${ESTADO[e.estado].toLowerCase()}.`, 409);
+  const publicado = e.estado === 'programado';
+  // `publicar: true` en un borrador lo publica; uno ya publicado se valida siempre como publicado
+  const publicar = publicado || body.publicar === true;
+  const { f, d } = validar(viewer, e.tipo, body, { publicar, inicioAnterior: e.inicio });
   const nuevas = fotosDe(body.fotosNuevas, MAX_FOTOS_LUGAR);
   const quitar = (Array.isArray(body.fotosQuitar) ? body.fotosQuitar : []).map(Number).filter(Number.isInteger);
   const ya = (await query("SELECT id FROM evento_fotos WHERE evento_id = $1 AND clase = 'lugar'", [id])).rows.map((r) => Number(r.id));
@@ -257,151 +304,95 @@ async function editar(viewer, id, body) {
   if (Object.keys(f).length) throw new EventoError('Revisa los datos marcados.', 422, f);
 
   const cambios = [];
-  for (const c of CAMPOS) {
-    const antes = c.k === 'fecha_tentativa' ? fechaTxt(e[c.k]) : String(e[c.k] ?? '');
-    const despues = String(d[c.d || c.k] ?? '');
-    if (antes !== despues) cambios.push({ campo: c.t, antes, despues });
-  }
-  if (txtNec(e.necesidades) !== txtNec(d.necesidades)) cambios.push({ campo: 'Necesidades técnicas', antes: txtNec(e.necesidades), despues: txtNec(d.necesidades) });
-  if (e.tipo === 'asamblea' && (Math.abs(e.lat - d.lat) > 1e-6 || Math.abs(e.lng - d.lng) > 1e-6)) cambios.push({ campo: 'Ubicación', antes: 'anterior', despues: 'nueva ubicación en el mapa' });
-  if (e.tipo === 'recorrido' && JSON.stringify(e.ruta?.trazo) !== JSON.stringify(d.ruta.trazo))
-    cambios.push({ campo: 'Ruta', antes: `${e.ruta?.km ?? 0} km`, despues: `${d.ruta.km} km` });
-  if (quitar.some((x) => ya.includes(x))) cambios.push({ campo: 'Fotos del lugar', antes: '', despues: `${quitar.filter((x) => ya.includes(x)).length} quitadas` });
+  const cmp = (campo, antes, despues) => String(antes ?? '') !== String(despues ?? '') && cambios.push({ campo, antes: String(antes ?? ''), despues: String(despues ?? '') });
+  cmp('Lugar', e.lugar, d.lugar);
+  cmp('Inicio', fechaTxt(e.inicio), fechaTxt(d.inicio));
+  cmp('Término', fechaTxt(e.fin), fechaTxt(d.fin));
+  cmp('Asistentes esperados', e.asistentes, d.asistentes);
+  cmp('Necesidades técnicas', (e.necesidades || []).join(', '), d.necesidades.join(', '));
+  cmp('Notas', e.notas, d.notas);
+  cmp('Destinatarios', paraTxt({ alcance: e.alcance, zonas: e.zonas || [] }), paraTxt(d));
+  cmp('Quién reporta', e.reporta_id ? nombre(e.reporta_id) : '', d.reportaId ? nombre(d.reportaId) : '');
+  if (e.tipo === 'asamblea' && (e.lat !== d.lat || e.lng !== d.lng)) cambios.push({ campo: 'Ubicación', antes: '', despues: d.lat ? 'nueva ubicación en el mapa' : 'sin ubicación' });
+  if (e.tipo === 'recorrido' && JSON.stringify(e.ruta?.trazo || null) !== JSON.stringify(d.ruta?.trazo || null))
+    cambios.push({ campo: 'Ruta', antes: e.ruta ? `${e.ruta.km} km` : '', despues: d.ruta ? `${d.ruta.km} km` : 'sin ruta' });
+  const quitadas = quitar.filter((x) => ya.includes(x)).length;
+  if (quitadas) cambios.push({ campo: 'Fotos del lugar', antes: '', despues: `${quitadas} quitadas` });
   if (nuevas.length) cambios.push({ campo: 'Fotos del lugar', antes: '', despues: `${nuevas.length} agregadas` });
-  if (!cambios.length) return { cambios: 0 };
+  const seVaAPublicar = !publicado && body.publicar === true;
+  if (!cambios.length && !seVaAPublicar) return { cambios: 0, estado: e.estado };
 
   await tx(async (c) => {
     await c.query(
-      `UPDATE eventos SET lugar = $2, lat = $3, lng = $4, ruta = $5, fecha_tentativa = $6, asistentes = $7, necesidades = $8, notas = $9, updated_at = now() WHERE id = $1`,
+      `UPDATE eventos SET lugar = $2, lat = $3, lng = $4, ruta = $5, asistentes = $6, necesidades = $7, notas = $8,
+              inicio = $9, fin = $10, alcance = $11, zonas = $12, reporta_id = $13, updated_at = now(),
+              estado = CASE WHEN $14::boolean THEN 'programado' ELSE estado END,
+              publicado_at = CASE WHEN $14::boolean THEN now() ELSE publicado_at END,
+              programado_por = CASE WHEN $14::boolean THEN $15::uuid ELSE programado_por END,
+              recordatorio_at = CASE WHEN inicio IS DISTINCT FROM $9::timestamptz THEN NULL ELSE recordatorio_at END,
+              aviso_sin_reporte_at = CASE WHEN inicio IS DISTINCT FROM $9::timestamptz THEN NULL ELSE aviso_sin_reporte_at END
+       WHERE id = $1`,
       [
         id,
         d.lugar,
         e.tipo === 'asamblea' ? d.lat : null,
         e.tipo === 'asamblea' ? d.lng : null,
-        e.tipo === 'recorrido' ? JSON.stringify(d.ruta) : null,
-        d.fechaTentativa,
+        e.tipo === 'recorrido' && d.ruta ? JSON.stringify(d.ruta) : null,
         d.asistentes,
         JSON.stringify(d.necesidades),
         d.notas,
+        d.inicio,
+        d.fin,
+        d.alcance,
+        d.zonas,
+        d.reportaId,
+        seVaAPublicar,
+        viewer.id,
       ]
     );
     if (quitar.length) await c.query("DELETE FROM evento_fotos WHERE evento_id = $1 AND clase = 'lugar' AND id = ANY($2::bigint[])", [id, quitar]);
     await guardarFotos(c, id, nuevas, 'lugar');
-    await historial(c, e, viewer, 'editado', '', cambios);
+    if (cambios.length) await historial(c, e, viewer, 'editado', '', cambios);
+    if (seVaAPublicar) await historial(c, e, viewer, 'publicado', `Publicó para ${paraTxt(d)}: ${cuandoTxt(d)}.`);
   });
-  await notificar(involucrados(e), {
-    tipo: 'evento.editado',
-    titulo: `${viewer.name} ajustó ${e.tipo === 'asamblea' ? 'la asamblea' : 'el recorrido'} ${e.lugar}`,
-    cuerpo: cambios.map((x) => x.campo).filter((v, i, a) => a.indexOf(v) === i).join(', '),
-    url: url(id),
-    autorId: viewer.id,
-  });
-  return { cambios: cambios.length };
-}
-
-// ---------------------------------------------------------------------------
-// Flujo de aprobación y programación
-// ---------------------------------------------------------------------------
-// "YYYY-MM-DDTHH:MM" en hora del centro (sin horario de verano desde 2022)
-function fechaHora(s) {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(String(s || ''))) return null;
-  const d = new Date(`${s}:00-06:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-async function accion(viewer, id, body) {
-  const { e, rol } = await cargar(viewer, id);
-  const a = String(body.accion || '');
-  const motivo = String(body.motivo || '').trim().slice(0, 1000);
-  const quien = e.tipo === 'asamblea' ? 'La asamblea' : 'El recorrido';
-  const pedirMotivo = (texto) => {
-    if (motivo.length < 5) throw new EventoError(texto, 422, { motivo: texto });
-  };
-  let nuevo = null;
-  // Nombre de la acción en el historial (en pasado)
-  let accionHist = { pasar: 'pasado', enviar: 'reenviado', ajustes: 'ajustes', rechazar: 'rechazado', cancelar: 'cancelado' }[a] || a;
-  let detalle = '';
-  let aviso = null;
-  let inicio = null;
-  let fin = null;
-
-  if (a === 'pasar') {
-    if (rol !== 'zona' || e.estado !== 'revision_zona') throw new EventoError('Esta acción no está disponible.', 409);
-    nuevo = 'revision_cpv';
-    detalle = 'Pasó la propuesta al CPV.';
-    aviso = { a: [e.cpv_id, e.rs_id], titulo: `${quien} ${e.lugar} pasó al CPV`, cuerpo: `${viewer.name} lo revisó; falta que el CPV lo programe.` };
-  } else if (a === 'enviar') {
-    if (rol !== 'rs' || e.estado !== 'ajustes') throw new EventoError('Esta acción no está disponible.', 409);
-    nuevo = 'revision_zona';
-    detalle = 'Reenvió la propuesta con los ajustes.';
-    aviso = { a: [e.zona_id, e.cpv_id], titulo: `${viewer.name} reenvió ${e.tipo === 'asamblea' ? 'la asamblea' : 'el recorrido'} ${e.lugar}`, cuerpo: 'Ya tiene los ajustes; revísalo de nuevo.' };
-  } else if (a === 'ajustes') {
-    if (!((rol === 'zona' && e.estado === 'revision_zona') || (rol === 'cpv' && e.estado === 'revision_cpv'))) throw new EventoError('Esta acción no está disponible.', 409);
-    pedirMotivo('Escribe qué hay que ajustar.');
-    nuevo = 'ajustes';
-    detalle = `Pidió ajustes: ${motivo}`;
-    aviso = { a: involucrados(e), titulo: `${quien} ${e.lugar} requiere ajustes`, cuerpo: motivo };
-  } else if (a === 'rechazar') {
-    if (!((rol === 'zona' && e.estado === 'revision_zona') || (rol === 'cpv' && e.estado === 'revision_cpv'))) throw new EventoError('Esta acción no está disponible.', 409);
-    pedirMotivo('Escribe el motivo del rechazo.');
-    nuevo = 'rechazado';
-    detalle = `Rechazó la propuesta: ${motivo}`;
-    aviso = { a: involucrados(e), titulo: `${quien} ${e.lugar} fue rechazado`, cuerpo: motivo };
-  } else if (a === 'programar') {
-    if (rol !== 'cpv' || !['revision_cpv', 'programado'].includes(e.estado)) throw new EventoError('Solo el CPV programa asambleas y recorridos.', 409);
-    inicio = fechaHora(body.inicio);
-    fin = body.fin ? fechaHora(body.fin) : null;
-    const f = {};
-    if (!inicio) f.inicio = 'Elige la fecha y la hora de inicio.';
-    else if (inicio < new Date()) f.inicio = 'La fecha y hora deben ser futuras.';
-    if (body.fin && !fin) f.fin = 'Hora de término no válida.';
-    else if (fin && inicio && fin <= inicio) f.fin = 'Debe terminar después de iniciar.';
-    if (Object.keys(f).length) throw new EventoError('Revisa la fecha y la hora.', 422, f);
-    const re = e.estado === 'programado';
-    nuevo = 'programado';
-    accionHist = re ? 'reprogramado' : 'programado';
-    detalle = `${re ? 'Reprogramó' : 'Programó'} para el ${FMT_CORTO.format(inicio)}${fin ? ` al ${FMT_CORTO.format(fin)}` : ''}.`;
-    aviso = { a: rama(e), titulo: `${re ? 'Cambio de fecha: ' : ''}${TIPO[e.tipo]} el ${FMT_CORTO.format(inicio)}`, cuerpo: `${e.lugar} · sección ${seccionTxt(e.seccion)}. Ya está en tu agenda.` };
-  } else if (a === 'cancelar') {
-    const propia = rol === 'rs' && EDITABLE.has(e.estado);
-    const delCPV = rol === 'cpv' && (EDITABLE.has(e.estado) || e.estado === 'programado');
-    if (!propia && !delCPV) throw new EventoError('Esta acción no está disponible.', 409);
-    if (rol === 'cpv') pedirMotivo('Escribe el motivo de la cancelación.');
-    nuevo = 'cancelado';
-    detalle = `Canceló${motivo ? `: ${motivo}` : '.'}`;
-    aviso = { a: e.estado === 'programado' ? rama(e) : involucrados(e), titulo: `Cancelado: ${titulo(e)}`, cuerpo: motivo || `Lo canceló ${viewer.name}.` };
-  } else {
-    throw new EventoError('Acción no válida.', 422);
+  const actual = { ...e, lugar: d.lugar, inicio: d.inicio, fin: d.fin, alcance: d.alcance, zonas: d.zonas, reporta_id: d.reportaId };
+  if (seVaAPublicar) await avisarPublicacion(actual, viewer);
+  else if (publicado) {
+    // Cambios que importan a la red: fecha, lugar o destinatarios (los nuevos destinatarios también se enteran)
+    const relevantes = cambios.some((c) => ['Lugar', 'Inicio', 'Término', 'Destinatarios', 'Ubicación', 'Ruta'].includes(c.campo));
+    if (relevantes) await avisarPublicacion(actual, viewer, { cambio: true });
+    else if (e.reporta_id !== d.reportaId && d.reportaId && d.reportaId !== viewer.id)
+      await notificar([d.reportaId], { tipo: 'evento.encargado', titulo: `Te toca reportar: ${titulo(actual)}`, cuerpo: `El ${fechaTxt(d.inicio)}.`, url: url(id), autorId: viewer.id });
   }
+  return { cambios: cambios.length, estado: seVaAPublicar ? 'programado' : e.estado };
+}
 
+// Cancelar un evento publicado (con motivo) o eliminar un borrador
+async function cancelar(viewer, id, motivo) {
+  const { e, rol } = await cargar(viewer, id);
+  if (rol !== 'cpv') throw new EventoError('Solo el CPV cancela el evento.', 403);
+  if (e.estado === 'borrador') {
+    await query('DELETE FROM eventos WHERE id = $1', [id]);
+    return { eliminado: true };
+  }
+  if (e.estado !== 'programado') throw new EventoError('Solo se cancelan eventos publicados.', 409);
+  const m = String(motivo || '').trim().slice(0, 1000);
+  if (m.length < 5) throw new EventoError('Escribe el motivo de la cancelación.', 422, { motivo: 'Escribe el motivo de la cancelación.' });
   await tx(async (c) => {
-    const r = await c.query(
-      `UPDATE eventos SET estado = $2, updated_at = now(),
-              inicio = COALESCE($4, inicio), fin = CASE WHEN $4::timestamptz IS NULL THEN fin ELSE $5 END,
-              programado_por = CASE WHEN $4::timestamptz IS NULL THEN programado_por ELSE $6 END,
-              recordatorio_at = CASE WHEN $4::timestamptz IS NULL THEN recordatorio_at ELSE NULL END,
-              aviso_sin_reporte_at = CASE WHEN $4::timestamptz IS NULL THEN aviso_sin_reporte_at ELSE NULL END
-       WHERE id = $1 AND estado = $3 RETURNING id`,
-      [id, nuevo, e.estado, inicio, fin, viewer.id]
-    );
-    if (!r.rows.length) throw new EventoError('El evento cambió mientras tanto; vuelve a abrirlo.', 409);
-    await historial(c, e, viewer, accionHist, detalle);
-    if (motivo && ['ajustes', 'rechazar', 'cancelar'].includes(a)) {
-      const pre = { ajustes: 'Ajustes', rechazar: 'Rechazado', cancelar: 'Cancelado' }[a];
-      await observar(c, e, viewer, `${pre}: ${motivo}`);
-    }
+    await c.query("UPDATE eventos SET estado = 'cancelado', updated_at = now() WHERE id = $1", [id]);
+    await historial(c, e, viewer, 'cancelado', `Canceló: ${m}`);
   });
-  if (aviso) await notificar(aviso.a, { tipo: `evento.${accionHist}`, titulo: aviso.titulo, cuerpo: aviso.cuerpo, url: url(id), autorId: viewer.id });
-  return { estado: nuevo };
+  await notificar(audiencia(e), { tipo: 'evento.cancelado', titulo: `Cancelado: ${titulo(e)}`, cuerpo: m, url: url(id), autorId: viewer.id });
+  return { estado: 'cancelado' };
 }
 
 // ---------------------------------------------------------------------------
-// Reporte del Responsable de Sección (el día del evento; después queda como tardío)
+// Reporte (la persona designada; el día del evento, después queda como tardío)
 // ---------------------------------------------------------------------------
 async function reportar(viewer, id, body) {
-  const { e, rol } = await cargar(viewer, id);
-  if (rol !== 'rs') throw new EventoError('Solo el Responsable de Sección reporta el evento.', 403);
-  if (e.estado !== 'programado') throw new EventoError(e.estado === 'realizado' ? 'Este evento ya fue reportado.' : 'Solo se reportan eventos programados.', 409);
+  const { e } = await cargar(viewer, id);
+  if (!reporta(viewer, e)) throw new EventoError('Este evento lo reporta otra persona.', 403);
+  if (e.estado !== 'programado') throw new EventoError(e.estado === 'realizado' ? 'Este evento ya fue reportado.' : 'Solo se reportan eventos publicados.', 409);
   const dia = diaDe(e.inicio);
   if (hoyKey() < dia) throw new EventoError('Podrás reportarlo el día del evento.', 409);
   const f = {};
@@ -450,20 +441,14 @@ async function reportar(viewer, id, body) {
     e.tipo === 'asamblea'
       ? `${rep.asistentes} asistentes · ${rep.duracionMin} min`
       : `${rep.asistentes} acompañantes · ${rep.casas} casas · ${rep.km} km · ${rep.casasHora ?? 0} casas/hora`;
-  await notificar([e.zona_id, e.cpv_id], {
-    tipo: 'evento.reportado',
-    titulo: `${tardio ? 'Reporte tardío' : 'Reporte'}: ${titulo(e)}`,
-    cuerpo: resumen,
-    url: url(id),
-    autorId: viewer.id,
-  });
+  await notificar([e.cpv_id], { tipo: 'evento.reportado', titulo: `${tardio ? 'Reporte tardío' : 'Reporte'}: ${titulo(e)}`, cuerpo: resumen, url: url(id), autorId: viewer.id });
   return { ok: true, tardio, lista: resumenLista(lista) };
 }
 
 // ---------------------------------------------------------------------------
 // Lista de asistencia
 // ---------------------------------------------------------------------------
-async function leerLista(dataUrl, nombre) {
+async function leerLista(dataUrl, nombreArchivo) {
   const buf = Buffer.isBuffer(dataUrl) ? dataUrl : listas.desdeDataUrl(dataUrl);
   if (!buf || !buf.length) throw new EventoError('Sube la lista de asistencia (Excel con la plantilla).', 422, { lista: 'Sube la lista de asistencia (Excel con la plantilla).' });
   let r;
@@ -477,7 +462,7 @@ async function leerLista(dataUrl, nombre) {
     const msg = 'La lista no tiene personas con clave de elector o CURP válida.';
     throw new EventoError(msg, 422, { lista: msg });
   }
-  return { ...r, archivo: String(nombre || 'asistencia.xlsx').slice(0, 200) };
+  return { ...r, archivo: String(nombreArchivo || 'asistencia.xlsx').slice(0, 200) };
 }
 const resumenLista = (l) => ({ archivo: l.archivo, filas: l.leidas, asistentes: l.unicas.length, repetidas: l.repetidas, errores: l.errores.length, filasConError: l.errores.slice(0, 30) });
 
@@ -496,10 +481,10 @@ async function guardarLista(c, eventoId, l, viewer) {
   await c.query('UPDATE eventos SET asistencia = $2 WHERE id = $1', [eventoId, JSON.stringify({ ...resumenLista(l), at: new Date().toISOString(), por: viewer.name })]);
 }
 
-// Corregir la lista después del reporte (Responsable, Coordinador de Zona o CPV)
+// Corregir la lista después del reporte (quien reporta o el CPV)
 async function actualizarLista(viewer, id, buffer, archivo) {
   const { e, rol } = await cargar(viewer, id);
-  if (!participa(rol)) throw new EventoError('No puedes modificar la lista de este evento.', 403);
+  if (rol !== 'cpv' && !reporta(viewer, e)) throw new EventoError('No puedes modificar la lista de este evento.', 403);
   if (e.estado !== 'realizado') throw new EventoError('La lista de asistencia se sube con el reporte del evento.', 409);
   const l = await leerLista(buffer, archivo);
   const antes = e.asistencia?.asistentes ?? 0;
@@ -507,7 +492,7 @@ async function actualizarLista(viewer, id, buffer, archivo) {
     await guardarLista(c, id, l, viewer);
     await historial(c, e, viewer, 'asistencia', `Actualizó la lista de asistencia: ${antes} → ${l.unicas.length} asistentes.`);
   });
-  await notificar(involucrados(e), {
+  await notificar([e.cpv_id, e.reporta_id].filter(Boolean), {
     tipo: 'evento.asistencia',
     titulo: `${viewer.name} actualizó la lista de asistencia de ${titulo(e)}`,
     cuerpo: `${l.unicas.length} asistentes${l.errores.length ? ` · ${l.errores.length} filas con error` : ''}.`,
@@ -535,7 +520,7 @@ async function cotejoLista(e) {
 
 async function exportarLista(viewer, id) {
   const { e, rol } = await cargar(viewer, id);
-  if (!participa(rol) && rol !== 'sa') throw new EventoError('No disponible.', 403);
+  if (rol !== 'cpv' && rol !== 'sa' && !reporta(viewer, e)) throw new EventoError('No disponible.', 403);
   const { rows } = await query('SELECT * FROM evento_asistentes WHERE evento_id = $1 ORDER BY paterno, materno, nombres', [id]);
   return { buffer: await listas.exportar(rows, 'Asistencia'), nombre: `asistencia-${String(e.folio).padStart(5, '0')}.xlsx` };
 }
@@ -543,17 +528,16 @@ async function exportarLista(viewer, id) {
 // ---------------------------------------------------------------------------
 // Consultas
 // ---------------------------------------------------------------------------
-// Filtro SQL de lo que ve cada cuenta (alias e)
-function filtro(viewer) {
-  if (viewer.role === 'superadmin') return { sql: 'true', valor: null };
-  if (viewer.role === 'promotor') return { sql: "e.rs_id = $1 AND e.estado IN ('programado', 'realizado')", valor: viewer.parentId };
-  return { sql: '(e.rs_id = $1 OR e.zona_id = $1 OR e.cpv_id = $1)', valor: viewer.id };
+// Eventos publicados que le tocan a la cuenta (alias e): los de su zona o toda la red de su CPV, o los que reporta
+function filtroRed(viewer) {
+  const u = ubicar(viewer);
+  return {
+    sql: `e.publicado_at IS NOT NULL AND (e.reporta_id = $1 OR (e.cpv_id = $2 AND (e.alcance = 'red' OR $3::uuid = ANY(e.zonas))))`,
+    params: [viewer.id, u.cpv || null, u.zona || null],
+  };
 }
 
-const nombre = (id) => users.get(id)?.name || 'Cuenta eliminada';
-
 function resumenFila(viewer, e, extra = {}) {
-  const rol = rolEn(viewer, e);
   return {
     id: e.id,
     folio: `EV-${String(e.folio).padStart(5, '0')}`,
@@ -561,119 +545,98 @@ function resumenFila(viewer, e, extra = {}) {
     estado: e.estado,
     estadoTexto: ESTADO[e.estado],
     lugar: e.lugar,
-    seccion: e.seccion,
-    responsable: nombre(e.rs_id),
-    zona: users.get(e.zona_id)?.zona?.codigo || nombre(e.zona_id),
-    fechaTentativa: fechaTxt(e.fecha_tentativa),
     inicio: e.inicio ? e.inicio.toISOString() : null,
     fin: e.fin ? e.fin.toISOString() : null,
     asistentes: e.asistentes,
+    alcance: e.alcance,
+    para: paraTxt({ alcance: e.alcance, zonas: e.zonas || [] }),
+    reporta: e.reporta_id ? nombre(e.reporta_id) : null,
+    reportaYo: e.reporta_id === viewer.id,
     reporteTardio: e.reporte_tardio,
-    turno: turnoDe(e, rol),
+    turno: turnoDe(viewer, e),
     updatedAt: e.updated_at.toISOString(),
     ...extra,
   };
 }
 
-// Lista de propuestas y eventos (sin promotores: ellos solo ven la agenda)
+// Lista de gestión: el CPV ve todos los suyos; los demás, los que les toca reportar
 async function lista(viewer) {
-  if (viewer.role === 'promotor') throw new EventoError('No disponible para tu nivel.', 403);
-  const fl = filtro(viewer);
-  const { rows } = await query(
-    `SELECT e.*,
-            (SELECT count(*)::int FROM evento_observaciones o WHERE o.evento_id = e.id) AS obs
-     FROM eventos e WHERE ${fl.sql}
-     ORDER BY COALESCE(e.inicio, e.fecha_tentativa::timestamptz) DESC, e.created_at DESC LIMIT 500`,
-    fl.valor === null ? [] : [fl.valor]
-  );
-  return rows.map((e) => resumenFila(viewer, e, { observaciones: e.obs }));
+  let sql;
+  let params;
+  if (viewer.role === 'superadmin') [sql, params] = ['true', []];
+  else if (viewer.role === 'coord_promocion') [sql, params] = ['e.cpv_id = $1', [viewer.id]];
+  else [sql, params] = ['e.publicado_at IS NOT NULL AND e.reporta_id = $1', [viewer.id]];
+  const { rows } = await query(`SELECT e.* FROM eventos e WHERE ${sql} ORDER BY COALESCE(e.inicio, e.created_at) DESC LIMIT 500`, params);
+  return rows.map((e) => resumenFila(viewer, e));
 }
 
-// Agenda del mes (eventos programados o realizados de la rama)
+// Agenda del mes: eventos publicados (programados o realizados) que le tocan a la cuenta
 async function agenda(viewer, mes) {
   if (!/^\d{4}-\d{2}$/.test(String(mes || ''))) mes = hoyKey().slice(0, 7);
-  const fl = filtro(viewer);
-  const params = fl.valor === null ? [] : [fl.valor];
-  const n = params.length;
+  let filtro;
+  if (viewer.role === 'superadmin') filtro = { sql: 'true', params: [] };
+  else if (viewer.role === 'coord_promocion') filtro = { sql: 'e.cpv_id = $1', params: [viewer.id] };
+  else filtro = filtroRed(viewer);
+  const n = filtro.params.length;
   const { rows } = await query(
     `SELECT e.* FROM eventos e
-     WHERE ${fl.sql} AND e.estado IN ('programado', 'realizado')
+     WHERE ${filtro.sql} AND e.estado IN ('programado', 'realizado') AND e.inicio IS NOT NULL
        AND (e.inicio AT TIME ZONE '${TZ}') >= ($${n + 1} || '-01')::date
        AND (e.inicio AT TIME ZONE '${TZ}') < (($${n + 1} || '-01')::date + interval '1 month')
      ORDER BY e.inicio`,
-    [...params, mes]
+    [...filtro.params, mes]
   );
-  return { mes, hoy: hoyKey(), eventos: rows.map((e) => resumenFila(viewer, e, { lat: e.lat, lng: e.lng })) };
+  // Pendientes de reportar de cualquier mes (para quien reporta)
+  const pendientes =
+    viewer.role === 'superadmin'
+      ? []
+      : (await query("SELECT e.* FROM eventos e WHERE e.reporta_id = $1 AND e.estado = 'programado' AND e.inicio <= now() ORDER BY e.inicio", [viewer.id])).rows;
+  return { mes, hoy: hoyKey(), eventos: rows.map((e) => resumenFila(viewer, e)), porReportar: pendientes.map((e) => resumenFila(viewer, e)) };
 }
 
 async function detalle(viewer, id) {
   const { e, rol } = await cargar(viewer, id);
   const fotos = await query('SELECT id, clase FROM evento_fotos WHERE evento_id = $1 ORDER BY id', [id]);
-  const esP = participa(rol);
   const dia = e.inicio ? diaDe(e.inicio) : null;
-  // Lista de asistencia: el detalle y el cotejo solo para los involucrados (y el super administrador)
-  const verLista = e.estado === 'realizado' && (esP || rol === 'sa');
+  const esCPV = rol === 'cpv';
+  const yo = reporta(viewer, e);
+  // La lista de asistencia y su cotejo: el CPV, quien reporta y el super administrador
+  const verLista = e.estado === 'realizado' && (esCPV || yo || rol === 'sa');
   return {
     ...resumenFila(viewer, e),
-    asistencia: verLista && e.asistencia ? { ...e.asistencia, cotejo: await cotejoLista(e) } : null,
     lat: e.lat,
     lng: e.lng,
     ruta: e.ruta,
     necesidades: e.necesidades,
     notas: e.notas,
-    zonaNombre: nombre(e.zona_id),
+    zonas: e.zonas || [],
+    reportaId: e.reporta_id,
     cpv: nombre(e.cpv_id),
-    programadoPor: e.programado_por ? nombre(e.programado_por) : null,
+    publicadoAt: e.publicado_at ? e.publicado_at.toISOString() : null,
     reporte: e.reporte,
     reportadoAt: e.reportado_at ? e.reportado_at.toISOString() : null,
+    asistencia: verLista && e.asistencia ? { ...e.asistencia, cotejo: await cotejoLista(e) } : null,
     fotosLugar: fotos.rows.filter((f) => f.clase === 'lugar').map((f) => String(f.id)),
     fotosTestimonio: fotos.rows.filter((f) => f.clase === 'testimonio').map((f) => String(f.id)),
     rol,
-    necesidadesCatalogo: NECESIDADES,
     puede: {
-      editar: esP && EDITABLE.has(e.estado),
-      observar: esP,
-      pasar: rol === 'zona' && e.estado === 'revision_zona',
-      enviar: rol === 'rs' && e.estado === 'ajustes',
-      ajustes: (rol === 'zona' && e.estado === 'revision_zona') || (rol === 'cpv' && e.estado === 'revision_cpv'),
-      rechazar: (rol === 'zona' && e.estado === 'revision_zona') || (rol === 'cpv' && e.estado === 'revision_cpv'),
-      programar: rol === 'cpv' && ['revision_cpv', 'programado'].includes(e.estado),
-      cancelar: (rol === 'rs' && EDITABLE.has(e.estado)) || (rol === 'cpv' && (EDITABLE.has(e.estado) || e.estado === 'programado')),
-      reportar: rol === 'rs' && e.estado === 'programado' && hoyKey() >= dia,
-      corregirLista: esP && e.estado === 'realizado',
+      editar: esCPV && EDITABLE.has(e.estado),
+      publicar: esCPV && e.estado === 'borrador',
+      cancelar: esCPV && e.estado === 'programado',
+      eliminar: esCPV && e.estado === 'borrador',
+      reportar: yo && e.estado === 'programado' && hoyKey() >= dia,
+      corregirLista: e.estado === 'realizado' && (esCPV || yo),
+      historial: esCPV || rol === 'sa' || yo,
     },
     reportarDesde: dia,
   };
 }
 
 async function historialDe(viewer, id) {
-  const { rol } = await cargar(viewer, id);
-  if (!participa(rol) && rol !== 'sa') throw new EventoError('No disponible.', 403);
+  const { e, rol } = await cargar(viewer, id);
+  if (rol !== 'cpv' && rol !== 'sa' && !reporta(viewer, e)) throw new EventoError('No disponible.', 403);
   const { rows } = await query('SELECT user_name, accion, detalle, cambios, at FROM evento_historial WHERE evento_id = $1 ORDER BY at DESC, id DESC', [id]);
   return rows.map((r) => ({ autor: r.user_name, accion: r.accion, detalle: r.detalle, cambios: r.cambios, at: r.at.toISOString() }));
-}
-
-async function observaciones(viewer, id) {
-  const { rol } = await cargar(viewer, id);
-  if (!participa(rol) && rol !== 'sa') throw new EventoError('No disponible.', 403);
-  const { rows } = await query('SELECT id, user_id, user_name, texto, at FROM evento_observaciones WHERE evento_id = $1 ORDER BY at, id', [id]);
-  return rows.map((r) => ({ id: String(r.id), autor: r.user_name, texto: r.texto, at: r.at.toISOString(), propia: r.user_id === viewer.id }));
-}
-
-async function agregarObservacion(viewer, id, texto) {
-  const { e, rol } = await cargar(viewer, id);
-  if (!participa(rol)) throw new EventoError('No puedes dejar observaciones en este evento.', 403);
-  const t = String(texto || '').trim().slice(0, 1000);
-  if (!t) throw new EventoError('Escribe la observación.', 422, { texto: 'Escribe la observación.' });
-  await observar({ query }, e, viewer, t);
-  await notificar(involucrados(e), {
-    tipo: 'evento.observacion',
-    titulo: `${viewer.name} comentó en ${titulo(e)}`,
-    cuerpo: t.slice(0, 200),
-    url: url(id),
-    autorId: viewer.id,
-  });
-  return { ok: true };
 }
 
 async function foto(viewer, fotoId) {
@@ -684,23 +647,37 @@ async function foto(viewer, fotoId) {
   return rows[0].image;
 }
 
+// Datos para el formulario del CPV: entidad (mapa), sus zonas y quiénes pueden reportar
+function contexto(viewer) {
+  if (viewer.role !== 'coord_promocion') throw new EventoError('Solo el CPV crea asambleas y recorridos.', 403);
+  const ctx = require('./zonas').contexto(viewer);
+  const zonas = hijos(viewer.id, 'coord_zona').map((z) => ({
+    id: z.id,
+    nombre: z.name,
+    codigo: z.zona?.codigo || '',
+    zona: z.zona?.nombre || '',
+    responsables: hijos(z.id, 'resp_seccion').map((r) => ({ id: r.id, nombre: r.name, seccion: r.territorio?.secciones?.[0] ?? null })),
+  }));
+  return { entidad: ctx?.entidad?.clave ?? null, necesidades: NECESIDADES, yo: { id: viewer.id, nombre: viewer.name }, zonas };
+}
+
 // ---------------------------------------------------------------------------
-// Recordatorios: el día del evento al responsable; al día siguiente, si no reportó, a zona y CPV
+// Recordatorios: el día del evento a quien reporta; al día siguiente, si no reportó, a él y al CPV
 // ---------------------------------------------------------------------------
 async function recordatorios() {
   const hoy = hoyKey();
   const { rows: porReportar } = await query(
     `UPDATE eventos SET recordatorio_at = now()
-     WHERE estado = 'programado' AND recordatorio_at IS NULL AND inicio <= now()
+     WHERE estado = 'programado' AND recordatorio_at IS NULL AND inicio <= now() AND reporta_id IS NOT NULL
        AND to_char(inicio AT TIME ZONE '${TZ}', 'YYYY-MM-DD') = $1
      RETURNING *`,
     [hoy]
   );
   for (const e of porReportar)
-    await notificar([e.rs_id], {
+    await notificar([e.reporta_id], {
       tipo: 'evento.recordatorio',
       titulo: `Hoy reporta: ${titulo(e)}`,
-      cuerpo: 'Al terminar, captura asistentes y resultados. Debe reportarse hoy mismo.',
+      cuerpo: 'Al terminar, captura los resultados y sube la lista de asistencia. Debe reportarse hoy mismo.',
       url: url(e.id),
     });
   const { rows: sinReporte } = await query(
@@ -711,10 +688,10 @@ async function recordatorios() {
     [hoy]
   );
   for (const e of sinReporte)
-    await notificar([e.rs_id, e.zona_id, e.cpv_id], {
+    await notificar([e.reporta_id, e.cpv_id].filter(Boolean), {
       tipo: 'evento.sin_reporte',
       titulo: `Sin reporte: ${titulo(e)}`,
-      cuerpo: `${nombre(e.rs_id)} no reportó el evento el mismo día.`,
+      cuerpo: `${e.reporta_id ? nombre(e.reporta_id) : 'Nadie'} no reportó el evento el mismo día.`,
       url: url(e.id),
     });
 }
@@ -750,31 +727,20 @@ async function rutaPorCalles(puntos) {
   }
 }
 
-// Datos para el formulario: sección del responsable y entidad (para dibujar la sección en el mapa)
-function contexto(viewer) {
-  const rs = viewer.role === 'resp_seccion' ? viewer : null;
-  const zona = rs ? users.get(rs.parentId) : viewer.role === 'coord_zona' ? viewer : null;
-  const cpv = viewer.role === 'coord_promocion' ? viewer : zona ? users.get(zona.parentId) : null;
-  const ctx = cpv ? require('./zonas').contexto(cpv) : null;
-  return { seccion: rs?.territorio?.secciones?.[0] ?? null, entidad: ctx?.entidad?.clave ?? null, necesidades: NECESIDADES };
-}
-
 module.exports = {
   EventoError,
-  actualizarLista,
-  exportarLista,
-  contexto,
   NECESIDADES,
+  contexto,
   crear,
   editar,
-  accion,
+  cancelar,
   reportar,
+  actualizarLista,
+  exportarLista,
   lista,
   agenda,
   detalle,
   historialDe,
-  observaciones,
-  agregarObservacion,
   foto,
   recordatorios,
   rutaPorCalles,

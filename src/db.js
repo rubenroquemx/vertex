@@ -451,6 +451,34 @@ const MIGRATIONS = [
       ALTER TABLE eventos ADD COLUMN asistencia jsonb;
     `,
   },
+  {
+    id: 13,
+    name: 'agenda: el CPV crea y publica los eventos (destinatarios y responsable del reporte)',
+    sql: `
+      -- Ya nadie propone: el CPV crea en borrador y publica. Los estados de revisión pasan a borrador.
+      ALTER TABLE eventos DROP CONSTRAINT IF EXISTS eventos_estado_check;
+      UPDATE eventos SET estado = 'borrador' WHERE estado IN ('revision_zona', 'revision_cpv', 'ajustes');
+      UPDATE eventos SET estado = 'cancelado' WHERE estado = 'rechazado';
+      ALTER TABLE eventos ADD CONSTRAINT eventos_estado_check CHECK (estado IN ('borrador', 'programado', 'realizado', 'cancelado'));
+      ALTER TABLE eventos ALTER COLUMN estado SET DEFAULT 'borrador';
+      ALTER TABLE eventos ALTER COLUMN rs_id DROP NOT NULL;
+      ALTER TABLE eventos ALTER COLUMN fecha_tentativa DROP NOT NULL;
+
+      -- Destinatarios: toda la red del CPV o algunas zonas (con sus responsables y promotores)
+      ALTER TABLE eventos ADD COLUMN alcance text NOT NULL DEFAULT 'red' CHECK (alcance IN ('red', 'zonas'));
+      ALTER TABLE eventos ADD COLUMN zonas uuid[] NOT NULL DEFAULT '{}';
+      -- Quién reporta el evento (lo elige el CPV: él mismo, un Coordinador de Zona o un Responsable)
+      ALTER TABLE eventos ADD COLUMN reporta_id uuid REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE eventos ADD COLUMN creado_por uuid REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE eventos ADD COLUMN publicado_at timestamptz;
+      CREATE INDEX eventos_zonas_idx ON eventos USING gin (zonas);
+      CREATE INDEX eventos_reporta_idx ON eventos(reporta_id);
+
+      -- Eventos que ya existían: dirigidos a la zona de quien los propuso, y los reporta él
+      UPDATE eventos SET alcance = 'zonas', zonas = ARRAY[zona_id], reporta_id = rs_id WHERE zona_id IS NOT NULL;
+      UPDATE eventos SET publicado_at = updated_at WHERE estado IN ('programado', 'realizado');
+    `,
+  },
 ];
 
 async function migrate() {

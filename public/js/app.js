@@ -2231,17 +2231,17 @@ async function boot() {
     state.routes.set('/material/entregar', { path: '/material/entregar', title: 'Nueva orden de entrega', view: (r, p) => viewEntregar(r, p, state), mount: mountEntregar });
     state.patternRoutes.push({ pattern: /^\/material\/ordenes\/([0-9a-f-]{36})$/, title: 'Orden de entrega', view: viewOrden, mount: mountOrden });
   }
-  // Asambleas y recorridos: ficha para toda la rama; lista y ajustes para la estructura; alta y reporte del Responsable
+  // Asambleas y recorridos: el CPV los crea y edita; la ficha la ven los destinatarios; el reporte, quien lo tenga asignado
   if (state.me.role.key !== 'superadmin') {
     state.patternRoutes.push({ pattern: /^\/agenda\/eventos\/([0-9a-f-]{36})$/, title: 'Asamblea o recorrido', view: viewEvento, mount: mountEvento });
   }
-  if (['coord_promocion', 'coord_zona', 'resp_seccion'].includes(state.me.role.key)) {
+  if (state.me.role.key === 'coord_promocion') {
     state.routes.set('/agenda/eventos', { path: '/agenda/eventos', title: 'Asambleas y recorridos', view: (r, p) => viewEventos(r, p, state) });
-    state.patternRoutes.push({ pattern: /^\/agenda\/eventos\/([0-9a-f-]{36})\/editar$/, title: 'Ajustar propuesta', view: viewFormEvento, mount: mountFormEvento });
+    state.routes.set('/agenda/nueva/asamblea', { path: '/agenda/nueva/asamblea', title: 'Nueva asamblea', view: viewFormEvento, mount: mountFormEvento });
+    state.routes.set('/agenda/nueva/recorrido', { path: '/agenda/nueva/recorrido', title: 'Nuevo recorrido', view: viewFormEvento, mount: mountFormEvento });
+    state.patternRoutes.push({ pattern: /^\/agenda\/eventos\/([0-9a-f-]{36})\/editar$/, title: 'Editar evento', view: viewFormEvento, mount: mountFormEvento });
   }
-  if (state.me.role.key === 'resp_seccion') {
-    state.routes.set('/agenda/nueva/asamblea', { path: '/agenda/nueva/asamblea', title: 'Proponer asamblea', view: viewFormEvento, mount: mountFormEvento });
-    state.routes.set('/agenda/nueva/recorrido', { path: '/agenda/nueva/recorrido', title: 'Proponer recorrido', view: viewFormEvento, mount: mountFormEvento });
+  if (['coord_promocion', 'coord_zona', 'resp_seccion'].includes(state.me.role.key)) {
     state.patternRoutes.push({ pattern: /^\/agenda\/eventos\/([0-9a-f-]{36})\/reporte$/, title: 'Reportar evento', view: viewReporte, mount: mountReporte });
   }
   // Listas de estructuras externas y de ciudadanos sin promover (CPV y super administrador)

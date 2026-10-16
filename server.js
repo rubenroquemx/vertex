@@ -789,7 +789,7 @@ app.get('/api/escritorio/zona', requireUser, requireRole('coord_zona'), async (r
 app.get('/api/escritorio/cpv', requireUser, requireCPV, async (req, res) => res.json(await memo(`cpv:${req.user.id}`, 20000, () => escritorio.cpv(req.user))));
 
 // ---------------------------------------------------------------------------
-// Agenda: asambleas y recorridos (propone el Responsable de Sección, pasa la zona, programa el CPV)
+// Agenda: asambleas y recorridos (los crea y publica el CPV; los reporta quien él designe)
 // ---------------------------------------------------------------------------
 function eventoError(res, err) {
   if (!(err instanceof eventos.EventoError)) throw err;
@@ -811,10 +811,10 @@ app.get('/api/eventos', requireUser, conEventos(async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await eventos.lista(req.user));
 }));
-app.post('/api/eventos', requireUser, soloRoles('resp_seccion'), express.json({ limit: '20mb' }), conEventos(async (req, res) => {
+app.post('/api/eventos', requireUser, soloRoles('coord_promocion'), express.json({ limit: '20mb' }), conEventos(async (req, res) => {
   res.status(201).json(await eventos.crear(req.user, req.body || {}));
 }));
-app.get('/api/eventos/contexto', requireUser, soloRoles(...ESTRUCTURA), (req, res) => res.json(eventos.contexto(req.user)));
+app.get('/api/eventos/contexto', requireUser, soloRoles('coord_promocion'), (req, res) => res.json(eventos.contexto(req.user)));
 app.get('/api/eventos/fotos/:id', requireUser, conEventos(async (req, res) => {
   const img = await eventos.foto(req.user, req.params.id);
   res.set({ 'Content-Type': fotos.tipo(img), 'Cache-Control': 'private, max-age=86400' });
@@ -824,13 +824,14 @@ app.get('/api/eventos/:id', requireUser, conEventos(async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await eventos.detalle(req.user, req.params.id));
 }));
-app.put('/api/eventos/:id', requireUser, soloRoles(...ESTRUCTURA), express.json({ limit: '20mb' }), conEventos(async (req, res) => {
+app.put('/api/eventos/:id', requireUser, soloRoles('coord_promocion'), express.json({ limit: '20mb' }), conEventos(async (req, res) => {
   res.json(await eventos.editar(req.user, req.params.id, req.body || {}));
 }));
-app.post('/api/eventos/:id/accion', requireUser, soloRoles(...ESTRUCTURA), conEventos(async (req, res) => {
-  res.json(await eventos.accion(req.user, req.params.id, req.body || {}));
+// Cancelar un evento publicado (con motivo) o eliminar un borrador
+app.post('/api/eventos/:id/cancelar', requireUser, soloRoles('coord_promocion'), conEventos(async (req, res) => {
+  res.json(await eventos.cancelar(req.user, req.params.id, req.body?.motivo));
 }));
-app.post('/api/eventos/:id/reporte', requireUser, soloRoles('resp_seccion'), express.json({ limit: '40mb' }), conEventos(async (req, res) => {
+app.post('/api/eventos/:id/reporte', requireUser, soloRoles(...ESTRUCTURA), express.json({ limit: '40mb' }), conEventos(async (req, res) => {
   res.json(await eventos.reportar(req.user, req.params.id, req.body || {}));
 }));
 // Lista de asistencia: corregirla después del reporte (Excel) y descargarla
@@ -855,15 +856,8 @@ app.get('/api/listas/plantilla', requireUser, conEventos(async (req, res) => {
   res.send(await listas.plantilla('Personas'));
 }));
 app.get('/api/eventos/:id/historial', requireUser, conEventos(async (req, res) => res.json(await eventos.historialDe(req.user, req.params.id))));
-app.get('/api/eventos/:id/observaciones', requireUser, conEventos(async (req, res) => {
-  res.set('Cache-Control', 'no-store');
-  res.json(await eventos.observaciones(req.user, req.params.id));
-}));
-app.post('/api/eventos/:id/observaciones', requireUser, soloRoles(...ESTRUCTURA), conEventos(async (req, res) => {
-  res.status(201).json(await eventos.agregarObservacion(req.user, req.params.id, req.body?.texto));
-}));
 // Trazo por calles para el diseño de recorridos (consulta el servidor de rutas público)
-app.get('/api/rutas', requireUser, soloRoles(...ESTRUCTURA), conEventos(async (req, res) => {
+app.get('/api/rutas', requireUser, soloRoles('coord_promocion'), conEventos(async (req, res) => {
   res.set('Cache-Control', 'private, max-age=3600');
   res.json(await eventos.rutaPorCalles(req.query.puntos));
 }));

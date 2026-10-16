@@ -423,6 +423,34 @@ const MIGRATIONS = [
       CREATE INDEX externa_cargas_idx ON estructura_externa_cargas(estructura_id, at);
     `,
   },
+  {
+    id: 12,
+    name: 'lista de asistencia de asambleas y recorridos; sección en estructuras externas',
+    sql: `
+      ALTER TABLE estructura_externa_personas ADD COLUMN seccion integer;
+
+      -- Personas que asistieron a cada evento (Excel con el mismo formato que las estructuras externas).
+      -- Se cotejan al consultar contra los promovidos del árbol del CPV y sus estructuras externas.
+      CREATE TABLE evento_asistentes (
+        id             bigserial PRIMARY KEY,
+        evento_id      uuid NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
+        clave_elector  text,
+        curp           text,
+        paterno        text NOT NULL DEFAULT '',
+        materno        text NOT NULL DEFAULT '',
+        nombres        text NOT NULL DEFAULT '',
+        telefono       text NOT NULL DEFAULT '',
+        seccion        integer,
+        CHECK (clave_elector IS NOT NULL OR curp IS NOT NULL)
+      );
+      CREATE UNIQUE INDEX evento_asistentes_clave_uq ON evento_asistentes(evento_id, clave_elector) WHERE clave_elector IS NOT NULL;
+      CREATE UNIQUE INDEX evento_asistentes_curp_uq ON evento_asistentes(evento_id, curp) WHERE curp IS NOT NULL;
+      CREATE INDEX evento_asistentes_clave_idx ON evento_asistentes(clave_elector);
+      CREATE INDEX evento_asistentes_curp_idx ON evento_asistentes(curp);
+
+      ALTER TABLE eventos ADD COLUMN asistencia jsonb;
+    `,
+  },
 ];
 
 async function migrate() {

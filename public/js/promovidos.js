@@ -1,5 +1,6 @@
 // Promovidos del Promotor Territorial: captura (INE + datos + domicilio) y lista.
 // La sección y la vigencia se validan aquí para avisar al momento, y de nuevo en el servidor.
+import { indicador } from './asistencias.js';
 import { ICONS, $, esc, fmtNum, fmtSeccion, fmtDate, fmtDateTime, fmtPhone, api, fieldErrorSetter, toast, navigate } from './lib.js';
 import { I, debounce } from './coordinador.js';
 import { camaraDisponible, abrirCamara, ajustarEnGuia } from './ine-camara.js';
@@ -845,7 +846,7 @@ export async function viewPromovido(route, params, state) {
       <a class="back-link" href="${volver.href}" data-link>${ICONS.back}<span>${volver.texto}</span></a>
       <div class="page-head page-head--actions">
         <div>
-          <h2>${esc(p.nombre)}</h2>
+          <h2>${esc(p.nombre)}${p.asistencias ? ` ${indicador(p.asistencias, { vacio: '<span class="asis-vacio">Sin asistencias a eventos</span>' })}` : ''}</h2>
           ${p.bloqueadoPorAprobacion ? '<p class="promo-bloqueado">Aprobado: ya no se puede modificar. Si hay que corregir algo, pídeselo a tu Responsable de Sección.</p>' : ''}
           <p>${chipEstatus(p)} Sección ${fmtSeccion(p.seccion)} · registrado el ${fmtDate(p.createdAt)}${p.promotor ? ` por ${esc(p.promotor)}` : ''}${p.revisadoPor ? ` · revisado por ${esc(p.revisadoPor)}` : ''}</p>
         </div>

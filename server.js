@@ -21,6 +21,7 @@ const escritorioPromotor = require('./src/escritorio-promotor');
 const informe = require('./src/informe');
 const eventos = require('./src/eventos');
 const externas = require('./src/externas');
+const listas = require('./src/listas');
 const responsables = require('./src/responsables');
 const metas = require('./src/metas');
 const panelSeccion = require('./src/panel-seccion');
@@ -663,6 +664,8 @@ app.get('/api/promovidos/:id', requireUser, async (req, res) => {
   const p = await promovidos.detalle(req.user, req.params.id);
   if (!p) return res.status(404).json({ error: 'Promovido no encontrado' });
   p.fotosOcultas = inePrivada(req);
+  // Indicador de asistencias a asambleas y recorridos: solo lo ve el CPV
+  if (req.user.role === 'coord_promocion') p.asistencias = await externas.asistenciasDe(req.user.id, p.claveElector, p.curp);
   await audit.add({ action: 'promovido.view', by: req.realUser.id, as: req.user.id, promovido: p.id });
   res.json(p);
 });
@@ -830,6 +833,27 @@ app.post('/api/eventos/:id/accion', requireUser, soloRoles(...ESTRUCTURA), conEv
 app.post('/api/eventos/:id/reporte', requireUser, soloRoles('resp_seccion'), express.json({ limit: '40mb' }), conEventos(async (req, res) => {
   res.json(await eventos.reportar(req.user, req.params.id, req.body || {}));
 }));
+// Lista de asistencia: corregirla después del reporte (Excel) y descargarla
+app.put(
+  '/api/eventos/:id/asistencia',
+  requireUser,
+  soloRoles(...ESTRUCTURA),
+  express.raw({ type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream'], limit: '40mb' }),
+  conEventos(async (req, res) => {
+    const archivo = decodeURIComponent(String(req.get('X-File-Name') || 'asistencia.xlsx')).slice(0, 200);
+    res.json(await eventos.actualizarLista(req.user, req.params.id, req.body, archivo));
+  })
+);
+app.get('/api/eventos/:id/asistencia.xlsx', requireUser, conEventos(async (req, res) => {
+  const r = await eventos.exportarLista(req.user, req.params.id);
+  res.set({ 'Content-Type': listas.xlsxTipo, 'Content-Disposition': `attachment; filename="${r.nombre}"` });
+  res.send(r.buffer);
+}));
+// Plantilla de listas (asistencia y estructuras externas: mismo formato)
+app.get('/api/listas/plantilla', requireUser, conEventos(async (req, res) => {
+  res.set({ 'Content-Type': listas.xlsxTipo, 'Content-Disposition': 'attachment; filename="plantilla-lista.xlsx"' });
+  res.send(await listas.plantilla('Personas'));
+}));
 app.get('/api/eventos/:id/historial', requireUser, conEventos(async (req, res) => res.json(await eventos.historialDe(req.user, req.params.id))));
 app.get('/api/eventos/:id/observaciones', requireUser, conEventos(async (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -883,6 +907,14 @@ app.post('/api/externas/confirmar', requireUser, soloRoles('coord_promocion'), c
   const r = await externas.confirmar(req.user, req.body?.token);
   await audit.add({ action: 'externa.carga', by: req.realUser.id, as: req.user.id, estructura: r.estructuraId, nombre: r.nombre, nuevas: r.nuevas });
   res.status(201).json(r);
+}));
+app.get('/api/externas/huerfanos', requireUser, soloRoles(...CPV_O_SA), conExternas(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await externas.huerfanos(req.user, { cpv: req.query.cpv, q: req.query.q, p: req.query.p }));
+}));
+app.get('/api/externas/:id/personas', requireUser, soloRoles(...CPV_O_SA), conExternas(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await externas.personasDe(req.user, req.params.id, { q: req.query.q, p: req.query.p }));
 }));
 app.get('/api/externas/:id/cargas', requireUser, soloRoles(...CPV_O_SA), conExternas(async (req, res) => res.json(await externas.cargasDe(req.user, req.params.id))));
 app.delete('/api/externas/:id', requireUser, soloRoles(...CPV_O_SA), conExternas(async (req, res) => {

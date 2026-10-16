@@ -35,7 +35,7 @@ import { viewEscritorioSeccion, mountEscritorioSeccion } from './escritorio-secc
 import { viewRevision, mountRevision } from './revision.js';
 import { viewEscritorioPromotor } from './escritorio-promotor.js';
 import { viewInforme, mountInforme } from './informe.js';
-import { viewExternas, mountExternas } from './externas.js';
+import { viewExternas, mountExternas, viewListaPersonas, mountListaPersonas } from './externas.js';
 import { viewAgenda, viewEventos, viewFormEvento, mountFormEvento, viewEvento, mountEvento, viewReporte, mountReporte } from './agenda.js';
 import { viewPendientes, mountPendientes } from './pendientes.js';
 import { sesion, pendientes as pendientesLocales, iniciarSincronizacion, prepararSinConexion, borrarDatosLocales, esErrorDeRed } from './offline.js';
@@ -2243,6 +2243,11 @@ async function boot() {
     state.routes.set('/agenda/nueva/asamblea', { path: '/agenda/nueva/asamblea', title: 'Proponer asamblea', view: viewFormEvento, mount: mountFormEvento });
     state.routes.set('/agenda/nueva/recorrido', { path: '/agenda/nueva/recorrido', title: 'Proponer recorrido', view: viewFormEvento, mount: mountFormEvento });
     state.patternRoutes.push({ pattern: /^\/agenda\/eventos\/([0-9a-f-]{36})\/reporte$/, title: 'Reportar evento', view: viewReporte, mount: mountReporte });
+  }
+  // Listas de estructuras externas y de ciudadanos sin promover (CPV y super administrador)
+  if (['coord_promocion', 'superadmin'].includes(state.me.role.key)) {
+    state.routes.set('/estructuras-externas/sin-promover', { path: '/estructuras-externas/sin-promover', title: 'Ciudadanos sin promover', view: viewListaPersonas, mount: mountListaPersonas });
+    state.patternRoutes.push({ pattern: /^\/estructuras-externas\/([0-9a-f-]{36})$/, title: 'Estructura externa', view: viewListaPersonas, mount: mountListaPersonas });
   }
   if (state.me.role.key === 'coord_promocion') {
     state.routes.set('/zonas/nueva', { path: '/zonas/nueva', title: 'Nueva zona', view: viewZona, mount: mountZona });

@@ -8,6 +8,8 @@ const { query, tx } = require('./db');
 const { users } = require('./store');
 const fotosLib = require('./fotos');
 const { notificar } = require('./notificaciones');
+const listas = require('./listas');
+const cotejo = require('./cotejo');
 
 const TZ = 'America/Mexico_City';
 const FMT_DIA = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -424,7 +426,15 @@ async function reportar(viewer, id, body) {
     if (!f.casas && !f.tiempoMin) rep.casasHora = Math.round((rep.casas / (rep.tiempoMin / 60)) * 10) / 10;
   }
   rep.observaciones = String(body.observaciones ?? '').trim().slice(0, 2000);
-  if (Object.keys(f).length) throw new EventoError('Revisa los datos del reporte.', 422, f);
+  // Lista de asistencia (obligatoria): Excel con el mismo formato que las estructuras externas
+  let lista = null;
+  try {
+    lista = await leerLista(body.lista, body.listaNombre);
+  } catch (err) {
+    if (!(err instanceof EventoError)) throw err;
+    f.lista = err.message;
+  }
+  if (Object.keys(f).length) throw new EventoError(f.lista && Object.keys(f).length === 1 ? f.lista : 'Revisa los datos del reporte.', 422, f);
   const tardio = hoyKey() > dia;
   await tx(async (c) => {
     const r = await c.query(
@@ -433,7 +443,8 @@ async function reportar(viewer, id, body) {
     );
     if (!r.rows.length) throw new EventoError('Este evento ya fue reportado.', 409);
     await guardarFotos(c, id, fotos, 'testimonio');
-    await historial(c, e, viewer, 'reportado', tardio ? 'Reportó el evento (reporte tardío).' : 'Reportó el evento.');
+    await guardarLista(c, id, lista, viewer);
+    await historial(c, e, viewer, 'reportado', `${tardio ? 'Reportó el evento (reporte tardío)' : 'Reportó el evento'} con una lista de ${lista.unicas.length} asistentes.`);
   });
   const resumen =
     e.tipo === 'asamblea'
@@ -446,7 +457,87 @@ async function reportar(viewer, id, body) {
     url: url(id),
     autorId: viewer.id,
   });
-  return { ok: true, tardio };
+  return { ok: true, tardio, lista: resumenLista(lista) };
+}
+
+// ---------------------------------------------------------------------------
+// Lista de asistencia
+// ---------------------------------------------------------------------------
+async function leerLista(dataUrl, nombre) {
+  const buf = Buffer.isBuffer(dataUrl) ? dataUrl : listas.desdeDataUrl(dataUrl);
+  if (!buf || !buf.length) throw new EventoError('Sube la lista de asistencia (Excel con la plantilla).', 422, { lista: 'Sube la lista de asistencia (Excel con la plantilla).' });
+  let r;
+  try {
+    r = await listas.leer(buf);
+  } catch (err) {
+    if (err instanceof listas.ListaError) throw new EventoError(err.message, 422, { lista: err.message });
+    throw err;
+  }
+  if (!r.unicas.length) {
+    const msg = 'La lista no tiene personas con clave de elector o CURP válida.';
+    throw new EventoError(msg, 422, { lista: msg });
+  }
+  return { ...r, archivo: String(nombre || 'asistencia.xlsx').slice(0, 200) };
+}
+const resumenLista = (l) => ({ archivo: l.archivo, filas: l.leidas, asistentes: l.unicas.length, repetidas: l.repetidas, errores: l.errores.length, filasConError: l.errores.slice(0, 30) });
+
+// Reemplaza la lista del evento (al reportar o al corregirla)
+async function guardarLista(c, eventoId, l, viewer) {
+  await c.query('DELETE FROM evento_asistentes WHERE evento_id = $1', [eventoId]);
+  for (let i = 0; i < l.unicas.length; i += 5000) {
+    const lote = l.unicas.slice(i, i + 5000);
+    await c.query(
+      `INSERT INTO evento_asistentes (evento_id, clave_elector, curp, paterno, materno, nombres, telefono, seccion)
+       SELECT $1, f.c, f.u, f.p, f.m, f.n, f.t, f.s FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::int[]) AS f(c, u, p, m, n, t, s)
+       ON CONFLICT DO NOTHING`,
+      [eventoId, lote.map((x) => x.c), lote.map((x) => x.u), lote.map((x) => x.paterno), lote.map((x) => x.materno), lote.map((x) => x.nombres), lote.map((x) => x.tel), lote.map((x) => x.seccion)]
+    );
+  }
+  await c.query('UPDATE eventos SET asistencia = $2 WHERE id = $1', [eventoId, JSON.stringify({ ...resumenLista(l), at: new Date().toISOString(), por: viewer.name })]);
+}
+
+// Corregir la lista después del reporte (Responsable, Coordinador de Zona o CPV)
+async function actualizarLista(viewer, id, buffer, archivo) {
+  const { e, rol } = await cargar(viewer, id);
+  if (!participa(rol)) throw new EventoError('No puedes modificar la lista de este evento.', 403);
+  if (e.estado !== 'realizado') throw new EventoError('La lista de asistencia se sube con el reporte del evento.', 409);
+  const l = await leerLista(buffer, archivo);
+  const antes = e.asistencia?.asistentes ?? 0;
+  await tx(async (c) => {
+    await guardarLista(c, id, l, viewer);
+    await historial(c, e, viewer, 'asistencia', `Actualizó la lista de asistencia: ${antes} → ${l.unicas.length} asistentes.`);
+  });
+  await notificar(involucrados(e), {
+    tipo: 'evento.asistencia',
+    titulo: `${viewer.name} actualizó la lista de asistencia de ${titulo(e)}`,
+    cuerpo: `${l.unicas.length} asistentes${l.errores.length ? ` · ${l.errores.length} filas con error` : ''}.`,
+    url: url(id),
+    autorId: viewer.id,
+  });
+  return resumenLista(l);
+}
+
+// Cuántos asistentes son de la estructura del CPV, de sus estructuras externas, de ambas o de ninguna
+async function cotejoLista(e) {
+  const { rows } = await query(
+    `SELECT count(*)::int AS total,
+            count(*) FILTER (WHERE n)::int AS nuestra,
+            count(*) FILTER (WHERE x)::int AS paralelas,
+            count(*) FILTER (WHERE n AND x)::int AS ambas,
+            count(*) FILTER (WHERE NOT n AND NOT x)::int AS sin_estructura
+     FROM (SELECT ${cotejo.enArbol('a', '$2')} AS n, ${cotejo.enExternas('a', '$2')} AS x
+           FROM evento_asistentes a WHERE a.evento_id = $1) t`,
+    [e.id, e.cpv_id]
+  );
+  const r = rows[0];
+  return { total: r.total, nuestra: r.nuestra, paralelas: r.paralelas, ambas: r.ambas, sinEstructura: r.sin_estructura };
+}
+
+async function exportarLista(viewer, id) {
+  const { e, rol } = await cargar(viewer, id);
+  if (!participa(rol) && rol !== 'sa') throw new EventoError('No disponible.', 403);
+  const { rows } = await query('SELECT * FROM evento_asistentes WHERE evento_id = $1 ORDER BY paterno, materno, nombres', [id]);
+  return { buffer: await listas.exportar(rows, 'Asistencia'), nombre: `asistencia-${String(e.folio).padStart(5, '0')}.xlsx` };
 }
 
 // ---------------------------------------------------------------------------
@@ -520,8 +611,11 @@ async function detalle(viewer, id) {
   const fotos = await query('SELECT id, clase FROM evento_fotos WHERE evento_id = $1 ORDER BY id', [id]);
   const esP = participa(rol);
   const dia = e.inicio ? diaDe(e.inicio) : null;
+  // Lista de asistencia: el detalle y el cotejo solo para los involucrados (y el super administrador)
+  const verLista = e.estado === 'realizado' && (esP || rol === 'sa');
   return {
     ...resumenFila(viewer, e),
+    asistencia: verLista && e.asistencia ? { ...e.asistencia, cotejo: await cotejoLista(e) } : null,
     lat: e.lat,
     lng: e.lng,
     ruta: e.ruta,
@@ -546,6 +640,7 @@ async function detalle(viewer, id) {
       programar: rol === 'cpv' && ['revision_cpv', 'programado'].includes(e.estado),
       cancelar: (rol === 'rs' && EDITABLE.has(e.estado)) || (rol === 'cpv' && (EDITABLE.has(e.estado) || e.estado === 'programado')),
       reportar: rol === 'rs' && e.estado === 'programado' && hoyKey() >= dia,
+      corregirLista: esP && e.estado === 'realizado',
     },
     reportarDesde: dia,
   };
@@ -666,6 +761,8 @@ function contexto(viewer) {
 
 module.exports = {
   EventoError,
+  actualizarLista,
+  exportarLista,
   contexto,
   NECESIDADES,
   crear,

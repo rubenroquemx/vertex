@@ -1,7 +1,8 @@
 // Estructuras externas: el CPV carga en Excel las listas de otras estructuras que corren en paralelo y ve,
 // solo con conteos, cuántas personas ya están en su árbol o se repiten entre esas estructuras.
 // El super administrador ve las de todos los CPV. Nada de esto toca metas ni promovidos.
-import { ICONS, $, esc, fmtNum, fmtDateTime, api, toast, uploadFile, navigate } from './lib.js';
+import { ICONS, $, esc, fmtNum, fmtSeccion, fmtDateTime, api, toast, uploadFile, navigate } from './lib.js';
+import { indicador, leyendaAsistencias } from './asistencias.js';
 
 const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—');
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -11,8 +12,8 @@ export async function viewExternas(route, _p, state) {
   route.data = d;
   const esCPV = d.rol === 'cpv';
   const intro = esCPV
-    ? 'Carga en Excel las listas de otras estructuras que corren en paralelo. Solo verás cuántas personas ya están en tu estructura o se repiten entre ellas: no se convierten en promovidos ni cambian tus metas.'
-    : 'Estructuras externas que cada CPV ha cargado y sus coincidencias, solo con conteos. Cada CPV las coteja únicamente contra su propio árbol.';
+    ? 'Carga en Excel las listas de otras estructuras que corren en paralelo. Verás cuántas personas ya están en tu estructura o se repiten entre ellas, y podrás consultar cada lista con sus asistencias a asambleas y recorridos. No se convierten en promovidos ni cambian tus metas.'
+    : 'Estructuras externas que cada CPV ha cargado, sus coincidencias y sus listas. Cada CPV las coteja únicamente contra su propio árbol.';
 
   const carga = esCPV
     ? `<section class="card form-card ext-carga" aria-labelledby="extCT">
@@ -37,7 +38,7 @@ export async function viewExternas(route, _p, state) {
           <div class="field">
             <label for="extArchivo">Archivo de Excel (.xlsx)</label>
             <input class="input" type="file" id="extArchivo" accept=".xlsx,${XLSX}">
-            <p class="field__help">Columnas: CLAVE_ELECTOR, CURP, APELLIDO_PATERNO, APELLIDO_MATERNO, NOMBRES, TELEFONO. Cada persona necesita al menos su clave de elector o su CURP.</p>
+            <p class="field__help">Columnas: CLAVE_ELECTOR, CURP, APELLIDO_PATERNO, APELLIDO_MATERNO, NOMBRES, TELEFONO, SECCION. Cada persona necesita al menos su clave de elector o su CURP.</p>
             <p class="field__error" id="extArchivo-err"></p>
           </div>
           <p class="form-error" id="extErr" role="alert"></p>
@@ -62,8 +63,14 @@ export async function viewExternas(route, _p, state) {
 function bloqueCPV(c, esCPV) {
   const t = c.total;
   const tu = esCPV ? 'tu estructura' : 'su estructura';
+  // Ciudadanos sin promover: asistieron a eventos y no están en ninguna estructura
+  const sinPromover = `<a class="ext-sinp" href="/estructuras-externas/sin-promover${esCPV ? '' : `?cpv=${c.id}`}" data-link>
+      <span><strong>Ciudadanos sin promover</strong><span class="muted">Asistieron a asambleas o recorridos y no están en ${tu} ni en una estructura externa</span></span>
+      <span class="ext-sinp__n">${fmtNum(c.huerfanos || 0)}</span></a>`;
   if (!c.estructuras.length)
-    return esCPV ? `<div class="empty"><span aria-hidden="true">${ICONS.users}</span><strong>Aún no cargas estructuras externas</strong><span>Descarga la plantilla, llénala y cárgala arriba.</span></div>` : '';
+    return `${esCPV ? '' : `<h3 class="ext-cpv__t">${esc(c.nombre)}</h3>`}${sinPromover}${
+      esCPV ? `<div class="empty"><span aria-hidden="true">${ICONS.users}</span><strong>Aún no cargas estructuras externas</strong><span>Descarga la plantilla, llénala y cárgala arriba.</span></div>` : ''
+    }`;
   const kpi = (label, valor, sub) => `<div class="ec-kpi"><span class="ec-kpi__label">${label}</span><span class="ec-kpi__valor">${valor}</span><span class="ec-kpi__sub">${sub}</span></div>`;
   const kpis = `
     <div class="ec-kpis ext-kpis">
@@ -80,6 +87,7 @@ function bloqueCPV(c, esCPV) {
         <div class="ext-est__top">
           <div><h4>${esc(e.nombre)}</h4>
             <p class="muted">${fmtNum(e.personas)} personas${e.ultimaCarga ? ` · última carga ${esc(fmtDateTime(e.ultimaCarga.at))} por ${esc(e.ultimaCarga.por)}` : ''}</p></div>
+          <a class="btn btn--secondary btn--sm" href="/estructuras-externas/${e.id}" data-link>Ver lista</a>
         </div>
         <dl class="ext-cifras">
           <div><dt>También en ${tu}</dt><dd>${fmtNum(e.enNuestra)} <small>${pct(e.enNuestra, e.personas)}</small></dd>${barra(e.enNuestra, e.personas)}</div>
@@ -124,6 +132,7 @@ function bloqueCPV(c, esCPV) {
     <section class="ext-cpv" aria-label="${esc(c.nombre)}">
       ${esCPV ? '' : `<h3 class="ext-cpv__t">${esc(c.nombre)}</h3>`}
       ${kpis}
+      ${sinPromover}
       <ul class="ext-lista">${filas}</ul>
       ${cruce}
     </section>`;
@@ -248,5 +257,75 @@ export function mountExternas(root, route) {
       btn.disabled = false;
       btn.textContent = 'Revisar archivo';
     }
+  });
+}
+
+// ===========================================================================
+// Lista de una estructura externa o de ciudadanos sin promover, con su indicador de asistencias
+// ===========================================================================
+export async function viewListaPersonas(route, params) {
+  const sinPromover = !params[0];
+  const q = new URLSearchParams(location.search);
+  const busca = q.get('q') || '';
+  const pag = Math.max(1, Number(q.get('p')) || 1);
+  const qs = new URLSearchParams({ q: busca, p: String(pag), ...(q.get('cpv') ? { cpv: q.get('cpv') } : {}) });
+  const d = await api(sinPromover ? `/api/externas/huerfanos?${qs}` : `/api/externas/${params[0]}/personas?${qs}`);
+  const titulo = sinPromover ? 'Ciudadanos sin promover' : d.estructura.nombre;
+  const paginas = Math.max(1, Math.ceil(d.total / d.porPagina));
+  const enlace = (p) => {
+    const u = new URLSearchParams(qs);
+    u.set('p', String(p));
+    return `${location.pathname}?${u}`;
+  };
+  const filas = d.personas
+    .map(
+      (x) => `<tr>
+        <td data-label="Nombre"><strong>${esc(x.nombre)}</strong>${!sinPromover && x.enNuestra ? ' <span class="ext-tag" title="También está en tu estructura">En tu estructura</span>' : ''}</td>
+        <td data-label="Sección">${x.seccion ? fmtSeccion(x.seccion) : '—'}</td>
+        <td data-label="Clave de elector" class="mono">${esc(x.claveElector || x.curp || '—')}</td>
+        <td data-label="Teléfono">${x.telefono ? `<a href="tel:+52${esc(x.telefono)}">${esc(x.telefono)}</a>` : '—'}</td>
+        <td data-label="Asistencias">${indicador(x, { vacio: '<span class="muted">—</span>' })}</td>
+      </tr>`
+    )
+    .join('');
+  return `
+    <div class="ext">
+      <a class="back-link" href="/estructuras-externas" data-link>${ICONS.back}<span>Estructuras externas</span></a>
+      <div class="page-head"><h2>${esc(titulo)}</h2>
+        <p>${
+          sinPromover
+            ? 'Personas que asistieron a asambleas o recorridos y no están en la estructura del CPV ni en sus estructuras externas.'
+            : `${fmtNum(d.total)} personas en la estructura.`
+        }</p></div>
+      <form class="ext-buscar" id="extBuscar" role="search">
+        <label class="sr-only" for="extQ">Buscar</label>
+        <input class="input" id="extQ" type="search" value="${esc(busca)}" placeholder="Buscar por nombre, clave de elector, CURP o sección">
+        <button class="btn btn--secondary" type="submit">${ICONS.search}<span>Buscar</span></button>
+      </form>
+      ${leyendaAsistencias()}
+      ${
+        d.personas.length
+          ? `<div class="card"><div class="table-wrap"><table class="table table--cards ext-tabla">
+              <thead><tr><th scope="col">Nombre</th><th scope="col">Sección</th><th scope="col">Clave de elector</th><th scope="col">Teléfono</th><th scope="col">Asistencias</th></tr></thead>
+              <tbody>${filas}</tbody></table></div>
+              <nav class="ext-pag" aria-label="Páginas">
+                <span class="muted">${fmtNum((pag - 1) * d.porPagina + 1)}–${fmtNum(Math.min(pag * d.porPagina, d.total))} de ${fmtNum(d.total)}</span>
+                ${pag > 1 ? `<a class="btn btn--secondary btn--sm" href="${enlace(pag - 1)}" data-link>Anterior</a>` : ''}
+                ${pag < paginas ? `<a class="btn btn--secondary btn--sm" href="${enlace(pag + 1)}" data-link>Siguiente</a>` : ''}
+              </nav></div>`
+          : `<div class="empty"><span aria-hidden="true">${ICONS.users}</span><strong>${busca ? 'Sin resultados' : sinPromover ? 'Aún no hay ciudadanos sin promover' : 'Lista vacía'}</strong>
+              <span>${busca ? 'Prueba con otro nombre, clave o sección.' : sinPromover ? 'Aparecen cuando una lista de asistencia trae personas que no están en ninguna estructura.' : ''}</span></div>`
+      }
+    </div>`;
+}
+
+export function mountListaPersonas(root) {
+  const form = $('#extBuscar', root);
+  form?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const u = new URLSearchParams(location.search);
+    u.set('q', $('#extQ', root).value.trim());
+    u.delete('p');
+    navigate(`${location.pathname}?${u}`);
   });
 }

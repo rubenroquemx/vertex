@@ -570,6 +570,7 @@ const HIST = {
   reprogramado: 'Reprogramó',
   cancelado: 'Canceló',
   reportado: 'Reportó',
+  asistencia: 'Actualizó la lista de asistencia',
 };
 const mensaje = (m) => `
   <li class="obs__msg ${m.propia ? 'is-propia' : ''}" data-id="${m.id}">
@@ -658,6 +659,35 @@ export async function viewEvento(route, params) {
       </section>`
     : '';
 
+  // Lista de asistencia: cotejo contra la estructura del CPV y sus estructuras paralelas
+  const as = e.asistencia;
+  const asistencia = as
+    ? `<section class="card form-card ev-asis" aria-labelledby="evAsT">
+        <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.users}</span><h3 id="evAsT">Lista de asistencia</h3>
+          <a class="btn btn--secondary btn--sm" href="/api/eventos/${e.id}/asistencia.xlsx" download>Descargar</a></header>
+        <div class="ev-metricas">
+          <div><span>Personas en la lista</span><strong>${fmtNum(as.cotejo.total)}</strong></div>
+          <div><span>De nuestra estructura</span><strong>${fmtNum(as.cotejo.nuestra)}</strong></div>
+          <div><span>De estructuras paralelas</span><strong>${fmtNum(as.cotejo.paralelas)}</strong></div>
+          <div><span>En ambas</span><strong>${fmtNum(as.cotejo.ambas)}</strong></div>
+          <div><span>Sin estructura</span><strong>${fmtNum(as.cotejo.sinEstructura)}</strong></div>
+        </div>
+        <p class="muted ev-reporte__pie">Archivo «${esc(as.archivo)}» · ${esc(fmtDateTime(as.at))} por ${esc(as.por)}${
+          as.errores ? ` · ${fmtNum(as.errores)} ${as.errores === 1 ? 'fila' : 'filas'} sin clave ni CURP válida (no se tomaron)` : ''
+        }. Las personas sin estructura pasan a «Ciudadanos sin promover».</p>
+        ${
+          p.corregirLista
+            ? `<div class="ev-asis__acc">
+                <input type="file" id="evLista" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+                <button class="btn btn--secondary btn--sm" type="button" id="evListaBtn">${ICONS.upload}<span>Actualizar lista</span></button>
+                <span class="field__help">La nueva lista reemplaza a la anterior y queda en el historial.</span>
+              </div>
+              <p class="field__error" id="evLista-err"></p>`
+            : ''
+        }
+      </section>`
+    : '';
+
   const comoLlegar = e.lat ? `https://www.google.com/maps/search/?api=1&query=${e.lat},${e.lng}` : e.ruta ? `https://www.google.com/maps/search/?api=1&query=${e.ruta.puntos[0][0]},${e.ruta.puntos[0][1]}` : null;
   const cambios = (h) =>
     h.cambios?.length
@@ -680,6 +710,7 @@ export async function viewEvento(route, params) {
       }
       ${acciones}
       ${reporte}
+      ${asistencia}
       <div class="promo-ficha__grid ${e.puede.observar ? '' : 'is-sola'}">
         <div class="promo-ficha__main">
           <section class="card form-card" aria-labelledby="evMapT">
@@ -749,6 +780,38 @@ export function mountEvento(root, route) {
     L.marker(e.ruta.puntos[0], { icon: puntoIcono('A', '#16a34a'), interactive: false }).addTo(map);
     L.marker(e.ruta.puntos.at(-1), { icon: puntoIcono('B', '#171717'), interactive: false }).addTo(map);
     map.fitBounds(L.latLngBounds(e.ruta.trazo), { padding: [24, 24] });
+  }
+
+  // ---- Corregir la lista de asistencia (reemplaza la anterior)
+  const listaBtn = $('#evListaBtn', root);
+  if (listaBtn) {
+    const input = $('#evLista', root);
+    listaBtn.addEventListener('click', () => input.click());
+    input.addEventListener('change', async () => {
+      const f = input.files[0];
+      input.value = '';
+      if (!f) return;
+      const err = $('#evLista-err', root);
+      err.textContent = '';
+      if (!/\.xlsx$/i.test(f.name)) return (err.textContent = 'La lista debe ser un archivo de Excel (.xlsx).');
+      listaBtn.disabled = true;
+      listaBtn.querySelector('span').textContent = 'Subiendo…';
+      try {
+        const res = await fetch(`/api/eventos/${e.id}/asistencia`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-File-Name': encodeURIComponent(f.name) },
+          body: f,
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.error || 'No se pudo actualizar la lista.');
+        toast(`Lista actualizada: ${fmtNum(j.asistentes)} asistentes${j.errores ? ` (${fmtNum(j.errores)} filas con error)` : ''}`);
+        navigate(location.pathname);
+      } catch (x) {
+        err.textContent = navigator.onLine ? x.message : 'Sin conexión. Intenta de nuevo.';
+        listaBtn.disabled = false;
+        listaBtn.querySelector('span').textContent = 'Actualizar lista';
+      }
+    });
   }
 
   // ---- Acciones del flujo
@@ -925,6 +988,16 @@ export async function viewReporte(route, params) {
         <div class="field"><label for="repObs">Observaciones</label>
           <textarea class="input" id="repObs" rows="4" maxlength="2000" placeholder="¿Cómo estuvo? Peticiones de la gente, incidentes, compromisos…"></textarea></div>
       </section>
+      <section class="card form-card">
+        <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.users}</span><h3>Lista de asistencia <span class="req" aria-hidden="true">*</span></h3>
+          <a class="btn btn--secondary btn--sm" href="/api/listas/plantilla" download>Descargar plantilla</a></header>
+        <div class="field">
+          <label for="repLista">Excel (.xlsx) con las personas que asistieron</label>
+          <input class="input" type="file" id="repLista" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+          <p class="field__help">Mismo formato que las estructuras externas: CLAVE_ELECTOR, CURP, APELLIDO_PATERNO, APELLIDO_MATERNO, NOMBRES, TELEFONO, SECCION. Cada persona necesita su clave de elector o su CURP. Podrás corregir la lista después.</p>
+          <p class="field__error" id="repLista-err"></p>
+        </div>
+      </section>
       <p class="form-error" id="repErr" role="alert"></p>
       <div class="ev-form__acc">
         <a class="btn btn--secondary" href="/agenda/eventos/${e.id}" data-link>Cancelar</a>
@@ -988,6 +1061,7 @@ export function mountReporte(root, route) {
       km: 'repKm-err',
       tiempoMin: 'repTiempo-err',
       fotos: 'repFotos-err',
+      lista: 'repLista-err',
     };
     for (const id of Object.values(errs)) $(`#${id}`, root) && ($(`#${id}`, root).textContent = '');
     $('#repErr', root).textContent = '';
@@ -1000,11 +1074,29 @@ export function mountReporte(root, route) {
       body.km = $('#repKm', root).value;
       body.tiempoMin = mins('repTiempo');
     }
+    // Lista de asistencia (obligatoria): viaja como data URL dentro del reporte
+    const archivo = $('#repLista', root).files[0];
+    if (!archivo) {
+      $('#repLista-err', root).textContent = 'Sube la lista de asistencia (Excel con la plantilla).';
+      $('#repLista', root).focus();
+      return;
+    }
+    if (!/\.xlsx$/i.test(archivo.name)) {
+      $('#repLista-err', root).textContent = 'La lista debe ser un archivo de Excel (.xlsx).';
+      return;
+    }
+    body.listaNombre = archivo.name;
+    body.lista = await new Promise((ok, fail) => {
+      const fr = new FileReader();
+      fr.onload = () => ok(fr.result);
+      fr.onerror = fail;
+      fr.readAsDataURL(archivo);
+    });
     btn.disabled = true;
     btn.textContent = 'Enviando…';
     try {
       const r = await api(`/api/eventos/${e.id}/reporte`, { method: 'POST', body });
-      toast(r.tardio ? 'Reporte enviado (tardío)' : 'Reporte enviado');
+      toast(`${r.tardio ? 'Reporte enviado (tardío)' : 'Reporte enviado'} · lista de ${fmtNum(r.lista.asistentes)} asistentes${r.lista.errores ? ` (${fmtNum(r.lista.errores)} filas con error)` : ''}`);
       navigate(`/agenda/eventos/${e.id}`);
     } catch (x) {
       const f = x.data?.fields || {};

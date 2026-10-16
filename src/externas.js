@@ -4,14 +4,12 @@
 // Cada CPV ve solo las suyas; el super administrador ve las de todos. No son promovidos ni tocan métricas.
 // La persona se identifica por su clave de elector o por su CURP (basta con que coincida una de las dos).
 const crypto = require('crypto');
-const ExcelJS = require('exceljs');
+const listas = require('./listas');
+const cotejo = require('./cotejo');
 const { query, tx } = require('./db');
 const { users } = require('./store');
-const { CLAVE_ELECTOR_RE, CURP_RE } = require('./promovidos');
 
-const MAX_FILAS = 200000;
 const VIGENCIA_REVISION = 30 * 60 * 1000;
-const COLUMNAS = ['CLAVE_ELECTOR', 'CURP', 'APELLIDO_PATERNO', 'APELLIDO_MATERNO', 'NOMBRES', 'TELEFONO'];
 
 class ExternaError extends Error {
   constructor(message, status = 422, fields = null) {
@@ -21,81 +19,14 @@ class ExternaError extends Error {
   }
 }
 
-// Encabezados aceptados (sin acentos, espacios ni guiones)
-const llave = (s) =>
-  String(s ?? '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z]/g, '');
-const SINONIMOS = {
-  clave: ['CLAVEELECTOR', 'CLAVEDEELECTOR', 'CLAVE', 'CVEELECTOR', 'CLAVEINE'],
-  curp: ['CURP'],
-  paterno: ['APELLIDOPATERNO', 'PATERNO', 'APPATERNO', 'APATERNO'],
-  materno: ['APELLIDOMATERNO', 'MATERNO', 'APMATERNO', 'AMATERNO'],
-  nombres: ['NOMBRES', 'NOMBRE', 'NOMBRESS'],
-  telefono: ['TELEFONO', 'NOTELEFONICO', 'NUMEROTELEFONICO', 'TEL', 'CELULAR', 'NOTELEFONO', 'NUMTELEFONO'],
-};
-const texto = (v) => {
-  if (v === null || v === undefined) return '';
-  if (typeof v === 'object') {
-    if ('result' in v) return String(v.result ?? '');
-    if (Array.isArray(v.richText)) return v.richText.map((t) => t.text).join('');
-    if ('text' in v) return String(v.text);
-  }
-  return String(v);
-};
-const limpio = (v) => texto(v).trim().replace(/\s+/g, ' ').toUpperCase().slice(0, 120);
-const sinEspacios = (v) => texto(v).toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-// ---------------------------------------------------------------------------
-// Lectura del Excel (la primera hoja; los encabezados pueden estar en cualquier fila antes de los datos)
-// ---------------------------------------------------------------------------
+// Lectura del Excel con el formato compartido (src/listas.js)
 async function leer(buffer) {
-  const wb = new ExcelJS.Workbook();
   try {
-    await wb.xlsx.load(buffer);
-  } catch {
-    throw new ExternaError('No se pudo leer el archivo. Verifica que sea un Excel (.xlsx) con la plantilla.');
+    return await listas.leer(buffer);
+  } catch (err) {
+    if (err instanceof listas.ListaError) throw new ExternaError(err.message);
+    throw err;
   }
-  const hoja = wb.worksheets[0];
-  if (!hoja) throw new ExternaError('El archivo no tiene hojas.');
-  let col = null;
-  const filas = [];
-  const errores = [];
-  let leidas = 0;
-  hoja.eachRow({ includeEmpty: false }, (row) => {
-    const vals = row.values;
-    if (!col) {
-      // Primera fila con encabezados reconocibles
-      const mapa = {};
-      vals.forEach((v, i) => {
-        const k = llave(texto(v));
-        for (const [campo, sin] of Object.entries(SINONIMOS)) if (sin.includes(k) && !(campo in mapa)) mapa[campo] = i;
-      });
-      if ('clave' in mapa || 'curp' in mapa) col = mapa;
-      return;
-    }
-    const val = (c) => (col[c] === undefined ? '' : vals[col[c]]);
-    const clave = sinEspacios(val('clave'));
-    const curp = sinEspacios(val('curp'));
-    const paterno = limpio(val('paterno'));
-    const materno = limpio(val('materno'));
-    const nombres = limpio(val('nombres'));
-    if (!clave && !curp && !paterno && !materno && !nombres) return; // fila vacía
-    leidas += 1;
-    if (leidas > MAX_FILAS) return;
-    const c = CLAVE_ELECTOR_RE.test(clave) ? clave : null;
-    const u = CURP_RE.test(curp) ? curp : null;
-    if (!c && !u) {
-      errores.push(row.number);
-      return;
-    }
-    filas.push({ c, u, paterno, materno, nombres, tel: texto(val('telefono')).replace(/\D/g, '').slice(-10) });
-  });
-  if (!col) throw new ExternaError('No se encontraron los encabezados. Usa la plantilla: debe tener al menos la columna CLAVE_ELECTOR o CURP.');
-  if (leidas > MAX_FILAS) throw new ExternaError(`El archivo tiene más de ${MAX_FILAS.toLocaleString('es-MX')} filas; divídelo en varias cargas.`);
-  return { leidas, filas, errores };
 }
 
 // ---------------------------------------------------------------------------
@@ -138,21 +69,7 @@ async function revisar(viewer, buffer, { archivo, estructuraId, nombre }) {
   if (Object.keys(f).length) throw new ExternaError(Object.values(f)[0], 422, f);
   if (!Buffer.isBuffer(buffer) || !buffer.length) throw new ExternaError('Elige el archivo de Excel.', 422, { archivo: 'Elige el archivo de Excel.' });
 
-  const { leidas, filas, errores } = await leer(buffer);
-  // Repetidas dentro del mismo archivo (por clave o por CURP)
-  const vistasC = new Set();
-  const vistasU = new Set();
-  const unicas = [];
-  let repetidasArchivo = 0;
-  for (const r of filas) {
-    if ((r.c && vistasC.has(r.c)) || (r.u && vistasU.has(r.u))) {
-      repetidasArchivo += 1;
-      continue;
-    }
-    if (r.c) vistasC.add(r.c);
-    if (r.u) vistasU.add(r.u);
-    unicas.push(r);
-  }
+  const { leidas, validas, unicas, repetidas: repetidasArchivo, errores } = await leer(buffer);
   // Ya existentes en la estructura elegida
   let existentes = 0;
   if (destino && unicas.length) {
@@ -171,7 +88,7 @@ async function revisar(viewer, buffer, { archivo, estructuraId, nombre }) {
     nueva: !destino,
     archivo,
     filas: leidas,
-    validas: filas.length,
+    validas,
     repetidasArchivo,
     existentes,
     nuevas: unicas.length - existentes,
@@ -201,10 +118,10 @@ async function confirmar(viewer, token) {
     for (let i = 0; i < r.unicas.length; i += 5000) {
       const lote = r.unicas.slice(i, i + 5000);
       const res = await c.query(
-        `INSERT INTO estructura_externa_personas (estructura_id, clave_elector, curp, paterno, materno, nombres, telefono)
-         SELECT $1, f.c, f.u, f.p, f.m, f.n, f.t FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) AS f(c, u, p, m, n, t)
+        `INSERT INTO estructura_externa_personas (estructura_id, clave_elector, curp, paterno, materno, nombres, telefono, seccion)
+         SELECT $1, f.c, f.u, f.p, f.m, f.n, f.t, f.s FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::int[]) AS f(c, u, p, m, n, t, s)
          ON CONFLICT DO NOTHING`,
-        [estructuraId, lote.map((x) => x.c), lote.map((x) => x.u), lote.map((x) => x.paterno), lote.map((x) => x.materno), lote.map((x) => x.nombres), lote.map((x) => x.tel)]
+        [estructuraId, lote.map((x) => x.c), lote.map((x) => x.u), lote.map((x) => x.paterno), lote.map((x) => x.materno), lote.map((x) => x.nombres), lote.map((x) => x.tel), lote.map((x) => x.seccion)]
       );
       nuevas += res.rowCount;
     }
@@ -229,7 +146,7 @@ async function eliminar(viewer, id) {
 // ---------------------------------------------------------------------------
 // Cotejo (se calcula al consultar, así refleja los promovidos de hoy)
 // ---------------------------------------------------------------------------
-async function cotejo(cpvId) {
+async function cruce(cpvId) {
   const { rows: estructuras } = await query(
     `SELECT e.id, e.nombre, e.created_at, e.updated_at,
             (SELECT count(*)::int FROM estructura_externa_personas p WHERE p.estructura_id = e.id) AS personas
@@ -308,12 +225,16 @@ async function cotejo(cpvId) {
 }
 
 async function resumen(viewer) {
-  if (viewer.role === 'coord_promocion') return { rol: 'cpv', cpvs: [{ id: viewer.id, nombre: viewer.name, ...(await cotejo(viewer.id)) }] };
+  if (viewer.role === 'coord_promocion')
+    return { rol: 'cpv', cpvs: [{ id: viewer.id, nombre: viewer.name, huerfanos: await contarHuerfanos(viewer.id), ...(await cruce(viewer.id)) }] };
   if (viewer.role === 'superadmin') {
-    const { rows } = await query('SELECT DISTINCT cpv_id FROM estructuras_externas');
+    // CPV con estructuras externas o con asistentes en sus eventos
+    const { rows } = await query(
+      `SELECT cpv_id FROM estructuras_externas UNION SELECT ev.cpv_id FROM evento_asistentes a JOIN eventos ev ON ev.id = a.evento_id`
+    );
     const conDatos = new Set(rows.map((r) => r.cpv_id));
     const cpvs = users.all().filter((u) => u.role === 'coord_promocion' && conDatos.has(u.id));
-    return { rol: 'sa', cpvs: await Promise.all(cpvs.map(async (c) => ({ id: c.id, nombre: c.name, ...(await cotejo(c.id)) }))) };
+    return { rol: 'sa', cpvs: await Promise.all(cpvs.map(async (c) => ({ id: c.id, nombre: c.name, huerfanos: await contarHuerfanos(c.id), ...(await cruce(c.id)) }))) };
   }
   throw new ExternaError('No disponible para tu nivel.', 403);
 }
@@ -325,23 +246,93 @@ async function cargasDe(viewer, id) {
   return rows.map((r) => ({ archivo: r.archivo, filas: r.filas, nuevas: r.nuevas, repetidas: r.repetidas, errores: r.errores, por: r.user_name, at: r.at.toISOString() }));
 }
 
-// Plantilla vacía con los encabezados y una fila de ejemplo explicativa
-async function plantilla() {
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Estructura');
-  ws.columns = COLUMNAS.map((h) => ({ header: h, key: h, width: h === 'CURP' || h === 'CLAVE_ELECTOR' ? 24 : 20 }));
-  ws.getRow(1).font = { bold: true };
-  ws.views = [{ state: 'frozen', ySplit: 1 }];
-  const ins = wb.addWorksheet('Instrucciones');
-  [
-    'Llena la hoja «Estructura» con una persona por fila, a partir de la fila 2.',
-    'Cada persona debe tener al menos su CLAVE_ELECTOR (18 caracteres) o su CURP (18 caracteres).',
-    'Las filas sin clave de elector ni CURP válidas no se pueden cotejar y se reportan como error.',
-    'Si una persona aparece dos veces, se guarda una sola vez en la estructura.',
-    'El cotejo solo da conteos: no convierte a estas personas en promovidos ni cambia tus metas.',
-  ].forEach((t, i) => (ins.getCell(`A${i + 1}`).value = t));
-  ins.getColumn(1).width = 110;
-  return wb.xlsx.writeBuffer();
+// Plantilla (mismo formato que la lista de asistencia de los eventos)
+const plantilla = () => listas.plantilla('Estructura', ['Cada persona se guarda una sola vez por estructura.', 'Estas personas no se convierten en promovidos ni cambian tus metas.']);
+
+// ---------------------------------------------------------------------------
+// Listas consultables (CPV y super administrador) con el indicador de asistencias
+// ---------------------------------------------------------------------------
+const POR_PAGINA = 50;
+const persona = (r) => ({
+  nombre: [r.nombres, r.paterno, r.materno].filter(Boolean).join(' ') || 'Sin nombre',
+  claveElector: r.clave_elector,
+  curp: r.curp,
+  telefono: r.telefono,
+  seccion: r.seccion,
+  asambleas: r.asambleas || 0,
+  recorridos: r.recorridos || 0,
+});
+const busqueda = (q, alias = 'p') =>
+  `($2 = '' OR (${alias}.nombres || ' ' || ${alias}.paterno || ' ' || ${alias}.materno) ILIKE '%' || $2 || '%'
+     OR ${alias}.clave_elector LIKE upper($2) || '%' OR ${alias}.curp LIKE upper($2) || '%' OR ${alias}.seccion::text = $2)`;
+const pagina = (n) => Math.max(0, (Number.parseInt(n, 10) || 1) - 1);
+
+async function personasDe(viewer, id, { q = '', p = 1 } = {}) {
+  const e = await estructuraDe(viewer, id);
+  if (!e) throw new ExternaError('Estructura no encontrada', 404);
+  const texto = String(q || '').trim().slice(0, 60);
+  const { rows } = await query(
+    `SELECT p.*, a.asambleas, a.recorridos, ${cotejo.enArbol('p', '$3')} AS en_nuestra, count(*) OVER () AS total
+     FROM estructura_externa_personas p
+     LEFT JOIN LATERAL ${cotejo.asistencias('p', '$3')} a ON true
+     WHERE p.estructura_id = $1 AND ${busqueda(texto)}
+     ORDER BY p.paterno, p.materno, p.nombres, p.id
+     LIMIT ${POR_PAGINA} OFFSET $4`,
+    [id, texto, e.cpv_id, pagina(p) * POR_PAGINA]
+  );
+  return {
+    estructura: { id: e.id, nombre: e.nombre },
+    total: rows[0] ? Number(rows[0].total) : 0,
+    porPagina: POR_PAGINA,
+    personas: rows.map((r) => ({ ...persona(r), enNuestra: r.en_nuestra })),
+  };
 }
 
-module.exports = { ExternaError, revisar, confirmar, eliminar, resumen, cargasDe, plantilla };
+// Ciudadanos sin promover («huérfanos»): asistieron a eventos del CPV y no están en su árbol ni en sus
+// estructuras externas. Se agrupan por clave de elector (o CURP si no tiene).
+const HUERFANOS = (cpv) => `
+  WITH h AS (
+    SELECT a.*, ev.tipo FROM evento_asistentes a JOIN eventos ev ON ev.id = a.evento_id
+    WHERE ev.cpv_id = ${cpv} AND NOT ${cotejo.enArbol('a', cpv)} AND NOT ${cotejo.enExternas('a', cpv)}),
+  g AS (
+    SELECT COALESCE(h.clave_elector, h.curp) AS persona, max(h.clave_elector) AS clave_elector, max(h.curp) AS curp,
+           max(h.paterno) AS paterno, max(h.materno) AS materno, max(h.nombres) AS nombres, max(h.telefono) AS telefono, max(h.seccion) AS seccion,
+           count(DISTINCT h.evento_id) FILTER (WHERE h.tipo = 'asamblea')::int AS asambleas,
+           count(DISTINCT h.evento_id) FILTER (WHERE h.tipo = 'recorrido')::int AS recorridos
+    FROM h GROUP BY 1)`;
+
+function cpvDeConsulta(viewer, cpvId) {
+  if (viewer.role === 'coord_promocion') return viewer.id;
+  if (viewer.role === 'superadmin' && users.get(cpvId)?.role === 'coord_promocion') return cpvId;
+  throw new ExternaError('Elige un CPV.', 422);
+}
+
+async function huerfanos(viewer, { cpv, q = '', p = 1 } = {}) {
+  const cpvId = cpvDeConsulta(viewer, cpv);
+  const texto = String(q || '').trim().slice(0, 60);
+  const { rows } = await query(
+    `${HUERFANOS('$1')}
+     SELECT g.*, count(*) OVER () AS total FROM g
+     WHERE ${busqueda(texto, 'g')}
+     ORDER BY g.paterno, g.materno, g.nombres, g.persona
+     LIMIT ${POR_PAGINA} OFFSET $3`,
+    [cpvId, texto, pagina(p) * POR_PAGINA]
+  );
+  return { cpv: { id: cpvId, nombre: users.get(cpvId)?.name || '' }, total: rows[0] ? Number(rows[0].total) : 0, porPagina: POR_PAGINA, personas: rows.map(persona) };
+}
+
+async function contarHuerfanos(cpvId) {
+  const { rows } = await query(`${HUERFANOS('$1')} SELECT count(*)::int AS n FROM g`, [cpvId]);
+  return rows[0].n;
+}
+
+// Asistencias de un promovido a los eventos de su CPV (para su ficha; solo la ve el CPV)
+async function asistenciasDe(cpvId, claveElector, curp) {
+  const { rows } = await query(
+    `SELECT r.* FROM (SELECT $2::text AS clave_elector, $3::text AS curp) x, LATERAL ${cotejo.asistencias('x', '$1')} r`,
+    [cpvId, claveElector, curp]
+  );
+  return { asambleas: rows[0]?.asambleas || 0, recorridos: rows[0]?.recorridos || 0 };
+}
+
+module.exports = { ExternaError, revisar, confirmar, eliminar, resumen, cargasDe, plantilla, personasDe, huerfanos, asistenciasDe };

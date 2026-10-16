@@ -2926,3 +2926,37 @@ a.tabs__tab { display: inline-flex; align-items: center; min-height: 40px; text-
   .ext-acc .btn { width: 100%; justify-content: center; }
   .ext-carga .form-card__head .btn { margin-left: 0; }
 }
+
+/* ==========================================================================
+   Asistencias (puntito azul: asambleas · verde: recorridos) y listas de personas
+   ========================================================================== */
+.asis { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; font-size: 13px; font-weight: 700; letter-spacing: 0; }
+h2 .asis { margin-left: var(--space-md); font-size: 14px; }
+.asis__i { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; color: var(--color-foreground); }
+.asis__i::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+.asis__i--asam::before { background: #2a78d6; }
+.asis__i--rec::before { background: #16a34a; }
+.asis-vacio { margin-left: var(--space-md); font-size: 13px; font-weight: 500; color: var(--color-muted-foreground); vertical-align: middle; }
+.asis-ley { margin: 0; font-size: 13px; color: var(--color-muted-foreground); }
+.asis-ley .asis__i { font-weight: 700; margin: 0 2px; }
+.ext-buscar { display: flex; gap: var(--space-md); }
+.ext-buscar .input { flex: 1; min-width: 0; background: var(--color-card); box-shadow: inset 0 0 0 1px var(--color-border); }
+.ext-tabla td { vertical-align: middle; }
+.ext-tag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--color-muted); font-size: 11.5px; font-weight: 700; color: var(--color-muted-foreground); }
+.ext-pag { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-md); padding-top: var(--space-lg); }
+.ext-pag .muted { margin-right: auto; font-size: 13px; }
+.ext-sinp { display: flex; align-items: center; justify-content: space-between; gap: var(--space-lg); padding: var(--space-lg) var(--space-xl); border-radius: var(--radius-lg); background: var(--color-card); box-shadow: var(--shadow-card); color: inherit; text-decoration: none; }
+.ext-sinp:hover { box-shadow: inset 0 0 0 1px var(--color-foreground), var(--shadow-card); }
+.ext-sinp > span:first-child { display: grid; gap: 2px; }
+.ext-sinp .muted { font-size: 13px; }
+.ext-sinp__n { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ext-est__top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-lg); }
+.ev-asis { margin-bottom: var(--space-xl); }
+.ev-asis .form-card__head { flex-wrap: wrap; }
+.ev-asis .form-card__head .btn { margin-left: auto; }
+.ev-asis__acc { display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap; margin-top: var(--space-lg); }
+.ev-asis__acc .btn svg { width: 16px; height: 16px; }
+@media (max-width: 767px) {
+  .ext-buscar .btn span { display: none; }
+  .ext-est__top { flex-direction: column; }
+}

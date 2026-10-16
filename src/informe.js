@@ -220,31 +220,6 @@ async function generar(user, periodo) {
     query(`SELECT to_char(min(p.created_at) AT TIME ZONE '${TZ}', 'YYYY-MM-DD') AS dia FROM promovidos p WHERE ${a.filtro.sql}`, [a.filtro.valor]),
   ]);
 
-  // ---- Personas registradas más de una vez (solo CPV y super administrador; nadie más lo sabe).
-  // Se evalúan dentro del árbol de cada CPV, nunca contra otro CPV. La persona se identifica por su
-  // clave de elector, con lo registrado hasta el cierre del periodo.
-  let duplicados = null;
-  if (a.rol === 'cpv' || a.rol === 'sa') {
-    const { rows } = await query(
-      `${B},
-       g AS (
-         SELECT z.parent_id AS cpv, p.clave_elector, count(*) AS total, count(DISTINCT z.id) AS zonas
-         FROM promovidos p
-         JOIN users rs ON rs.id = p.responsable_id
-         JOIN users z ON z.id = rs.parent_id, b
-         WHERE ${a.filtro.sql} AND p.created_at < b.fin
-         GROUP BY 1, 2 HAVING count(*) > 1)
-       SELECT count(*)::int AS personas,
-              count(*) FILTER (WHERE zonas > 1)::int AS zonas,
-              count(*) FILTER (WHERE zonas = 1)::int AS misma,
-              COALESCE(sum(total - 1), 0)::int AS extra
-       FROM g`,
-      P
-    );
-    const r = rows[0];
-    duplicados = { personas: r.personas, distintasZonas: r.zonas, mismaZona: r.misma, registrosExtra: r.extra };
-  }
-
   // ---- Totales y unidades
   const tot = { capturados: 0, acumulado: 0, anterior: 0, aprobados: 0, rechazados: 0, seg: 0, enRevision: 0, viejos: 0 };
   const activos = new Set();
@@ -337,7 +312,7 @@ async function generar(user, periodo) {
       }
     : null;
 
-  const ctx = { a, kpis, unidades, dias, total, len, motivos: motivos.rows, mat, revisados, duplicados };
+  const ctx = { a, kpis, unidades, dias, total, len, motivos: motivos.rows, mat, revisados };
   const foda = analizar(ctx);
   return {
     generado: new Date().toISOString(),
@@ -349,7 +324,6 @@ async function generar(user, periodo) {
     serie: { dias, total },
     motivos: motivos.rows,
     material: mat,
-    duplicados,
     unidades: unidades.sort((x, y) => (y.avance ?? -1) - (x.avance ?? -1) || y.capturados - x.capturados),
     foda,
     acciones: [...foda.amenazas, ...foda.debilidades, ...foda.oportunidades].filter((x) => x.accion).slice(0, 5).map((x) => x.accion),
@@ -357,7 +331,7 @@ async function generar(user, periodo) {
   };
 }
 
-function resumir({ kpis: k, duplicados: dup }, desde, hasta, len) {
+function resumir({ kpis: k }, desde, hasta, len) {
   const partes = [];
   partes.push(
     `Del ${largo(desde)} al ${largo(hasta)} (${n(len)} ${plural(len, 'día', 'días')}) se capturaron ${n(k.capturados)} promovidos` +
@@ -371,14 +345,6 @@ function resumir({ kpis: k, duplicados: dup }, desde, hasta, len) {
       k.llegaATiempo
         ? `Al ritmo del periodo (${dec(k.ritmo)} al día) la meta se alcanzaría el ${FMT_LARGO.format(new Date(k.llegada))}, antes de la elección.`
         : `Al ritmo del periodo (${dec(k.ritmo)} al día) la meta no se alcanza antes de la elección: se necesitan ${dec(k.necesario)} al día.`
-    );
-  if (dup?.personas)
-    partes.push(
-      `${n(dup.personas)} ${plural(dup.personas, 'persona está registrada', 'personas están registradas')} con más de un promotor del mismo árbol de CPV${
-        dup.registrosExtra
-          ? `; sin los ${n(dup.registrosExtra)} registros repetidos de tu conteo, son ${n(k.acumulado - dup.registrosExtra)} personas únicas${k.meta ? ` (${pc((k.acumulado - dup.registrosExtra) / k.meta)} de la meta)` : ''}`
-          : ''
-      }.`
     );
   return partes.join(' ');
 }

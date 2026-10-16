@@ -191,23 +191,6 @@ function reporte(d) {
       </section>`
     : '';
 
-  // Personas registradas con más de un promotor dentro del mismo árbol de CPV (solo CPV y super administrador)
-  const dp = d.duplicados;
-  const sa = d.ambito.nivel === 'Super administrador';
-  const duplicados = dp
-    ? `<section class="card" aria-labelledby="infDpT">
-        <header class="dash-card__head"><h3 id="infDpT">Personas en más de una estructura</h3><span class="muted">${sa ? 'Dentro del árbol de cada CPV' : 'Dentro de tu árbol'} · por clave de elector, al cierre del periodo</span></header>
-        <dl class="inf-dl">
-          ${fila('Personas registradas por más de un promotor', fmtNum(dp.personas))}
-          ${fila('En distintas zonas', fmtNum(dp.distintasZonas))}
-          ${fila('En la misma zona', fmtNum(dp.mismaZona))}
-          ${fila('Registros repetidos en el conteo', fmtNum(dp.registrosExtra))}
-          ${k.meta ? fila('Personas únicas al cierre', `${fmtNum(k.acumulado - dp.registrosExtra)} <small>(${pc((k.acumulado - dp.registrosExtra) / k.meta)} de la meta)</small>`) : ''}
-        </dl>
-        <p class="inf-nota">No se cruza con los promovidos de otros CPV. Los promotores y responsables no saben que la persona también está registrada con alguien más; solo aparece en este informe.</p>
-      </section>`
-    : '';
-
   return `
     <article class="inf" aria-labelledby="infT">
       <header class="inf-head">
@@ -228,7 +211,6 @@ function reporte(d) {
       ${grafica}
       ${tabla}
       <div class="ec-row ${material ? 'ec-row--2' : ''}">${revision}${material}</div>
-      ${duplicados}
       <p class="inf-nota">La meta es la vigente al generar el informe. Las cifras marcadas «hoy» o «al generar el informe» corresponden al momento de generarlo, no al cierre del periodo. El informe no incluye datos personales de promovidos.</p>
     </article>`;
 }

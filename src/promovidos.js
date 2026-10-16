@@ -150,17 +150,16 @@ async function validar(promotor, body, { excluirId = null } = {}) {
 
   if (Object.keys(errors).length) throw new PromovidoError('Revisa los datos marcados', 422, errors);
 
-  // Duplicados: una persona puede estar con varios promotores (nadie se entera de los registros ajenos;
-  // el CPV ve cuántas personas están en más de una estructura en su informe), pero solo una vez por promotor
+  // Duplicados: una persona solo una vez en todo el sistema
   const dup = await query(
-    'SELECT clave_elector, curp FROM promovidos WHERE promotor_id = $4 AND (clave_elector = $1 OR curp = $2) AND id IS DISTINCT FROM $3 LIMIT 1',
-    [claveElector, curp, excluirId, promotor.id]
+    'SELECT clave_elector, curp FROM promovidos WHERE (clave_elector = $1 OR curp = $2) AND id IS DISTINCT FROM $3 LIMIT 1',
+    [claveElector, curp, excluirId]
   );
   if (dup.rows.length) {
     const f = {};
-    if (dup.rows[0].clave_elector === claveElector) f.claveElector = 'Ya registraste esta clave de elector.';
-    if (dup.rows[0].curp === curp) f.curp = 'Ya registraste esta CURP.';
-    throw new PromovidoError('Ya registraste a esta persona como promovido.', 409, f);
+    if (dup.rows[0].clave_elector === claveElector) f.claveElector = 'Esta clave de elector ya está registrada como promovido.';
+    if (dup.rows[0].curp === curp) f.curp = 'Esta CURP ya está registrada como promovido.';
+    throw new PromovidoError('Esta persona ya está registrada como promovido.', 409, f);
   }
 
   return {
@@ -237,7 +236,7 @@ async function crear(promotor, body) {
       ]);
     });
   } catch (err) {
-    if (err.code === '23505') throw new PromovidoError('Ya registraste a esta persona como promovido.', 409);
+    if (err.code === '23505') throw new PromovidoError('Esta persona ya está registrada como promovido.', 409);
     throw err;
   }
   cachePromovidos.remember({ id, promotorId: promotor.id, responsableId: v.ctx.responsable.id, seccion: v.seccion, estatus: 'en_revision', createdAt });
@@ -421,7 +420,7 @@ async function actualizar(viewer, id, body) {
       ]);
     });
   } catch (err) {
-    if (err.code === '23505') throw new PromovidoError('Ya registraste a esta persona como promovido.', 409);
+    if (err.code === '23505') throw new PromovidoError('Esta persona ya está registrada como promovido.', 409);
     throw err;
   }
   if (regresa) {

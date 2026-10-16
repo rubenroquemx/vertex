@@ -2880,3 +2880,49 @@ a.tabs__tab { display: inline-flex; align-items: center; min-height: 40px; text-
   .ev-acc__confirm { flex-direction: column-reverse; }
   .ev-acc__confirm .btn { width: 100%; justify-content: center; }
 }
+
+/* ==========================================================================
+   Estructuras externas (cotejo con otras estructuras; solo conteos)
+   ========================================================================== */
+.ext { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-xl); }
+.ext .page-head { margin-bottom: 0; }
+.ext .page-head p { max-width: 80ch; }
+.ext-carga { margin: 0; }
+.ext-carga .form-card__head { flex-wrap: wrap; }
+.ext-carga .form-card__head .btn { margin-left: auto; }
+.ext-acc { display: flex; justify-content: flex-end; gap: var(--space-md); }
+.ext-prev { margin-top: var(--space-xl); padding-top: var(--space-xl); border-top: 1px solid var(--color-border); }
+.ext-prev h4 { margin: 0 0 var(--space-md); font-size: 15px; }
+.ext-prev .ext-acc { margin-top: var(--space-lg); }
+.ext-prev__total dt, .ext-prev__total dd { font-weight: 800; color: var(--color-foreground) !important; }
+.ext-cpv { display: grid; gap: var(--space-xl); }
+.ext-cpv__t { margin: var(--space-md) 0 0; font-size: 18px; }
+.ext-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.ext-lista { display: grid; gap: var(--space-md); margin: 0; padding: 0; list-style: none; }
+.ext-est { padding: var(--space-xl); background: var(--color-card); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); }
+.ext-est h4 { margin: 0; font-size: 17px; }
+.ext-est__top p { margin: 2px 0 0; font-size: 13px; }
+.ext-cifras { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-xl); margin: var(--space-lg) 0 0; }
+.ext-cifras div { display: grid; gap: 4px; min-width: 0; }
+.ext-cifras dt { font-size: 12px; font-weight: 700; color: var(--color-muted-foreground); }
+.ext-cifras dd { margin: 0; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ext-cifras small { font-size: 13px; font-weight: 600; color: var(--color-muted-foreground); }
+.ext-det { margin-top: var(--space-lg); border-top: 1px solid var(--color-border); padding-top: var(--space-md); }
+.ext-det summary { cursor: pointer; font-weight: 700; font-size: 14px; min-height: 32px; display: flex; align-items: center; }
+.ext-det h5 { margin: var(--space-lg) 0 var(--space-sm); font-size: 13px; }
+.ext-otras, .ext-hist { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 14px; }
+.ext-otras li { display: flex; justify-content: space-between; gap: var(--space-lg); padding: 6px 0; border-bottom: 1px solid var(--color-border); }
+.ext-otras strong { font-variant-numeric: tabular-nums; }
+.ext-hist li { padding: 6px 0; border-bottom: 1px solid var(--color-border); }
+.ext-det__acc { margin-top: var(--space-lg); }
+.ext-cruce tbody th[scope="row"] { white-space: nowrap; text-transform: none; letter-spacing: normal; font-size: 14px; font-weight: 700; color: var(--color-foreground); }
+.ext-cifras .ec-bar span { background: var(--color-foreground); }
+.ext-cruce small { font-size: 12px; }
+@media (max-width: 1100px) { .ext-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 767px) {
+  .ext-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ext-cifras { grid-template-columns: minmax(0, 1fr); gap: var(--space-lg); }
+  .ext-acc { flex-direction: column-reverse; }
+  .ext-acc .btn { width: 100%; justify-content: center; }
+  .ext-carga .form-card__head .btn { margin-left: 0; }
+}

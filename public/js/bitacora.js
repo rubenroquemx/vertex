@@ -21,6 +21,8 @@ const NOMBRES = {
   'promovido.rechazar': 'Rechazó un promovido',
   'material.articulo': 'Agregó un artículo de material',
   'material.orden': 'Creó una orden de material',
+  'externa.carga': 'Cargó una estructura externa',
+  'externa.eliminar': 'Eliminó una estructura externa',
   'config.update': 'Cambió el factor de conversión',
   'settings.whatsapp': 'Cambió la configuración de WhatsApp',
   'settings.whatsapp_test': 'Probó WhatsApp',

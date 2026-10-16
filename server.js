@@ -20,6 +20,7 @@ const escritorioZona = require('./src/escritorio-zona');
 const escritorioPromotor = require('./src/escritorio-promotor');
 const informe = require('./src/informe');
 const eventos = require('./src/eventos');
+const externas = require('./src/externas');
 const responsables = require('./src/responsables');
 const metas = require('./src/metas');
 const panelSeccion = require('./src/panel-seccion');
@@ -841,6 +842,53 @@ app.post('/api/eventos/:id/observaciones', requireUser, soloRoles(...ESTRUCTURA)
 app.get('/api/rutas', requireUser, soloRoles(...ESTRUCTURA), conEventos(async (req, res) => {
   res.set('Cache-Control', 'private, max-age=3600');
   res.json(await eventos.rutaPorCalles(req.query.puntos));
+}));
+
+// ---------------------------------------------------------------------------
+// Estructuras externas: el CPV carga listas de otras estructuras y ve, solo con conteos, cuántas personas
+// coinciden con su árbol o entre ellas. El super administrador ve las de todos los CPV.
+// ---------------------------------------------------------------------------
+const conExternas = (fn) => async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (err) {
+    if (!(err instanceof externas.ExternaError)) throw err;
+    res.status(err.status).json(err.fields ? { error: err.message, fields: err.fields } : { error: err.message });
+  }
+};
+const CPV_O_SA = ['coord_promocion', 'superadmin'];
+app.get('/api/externas', requireUser, soloRoles(...CPV_O_SA), conExternas(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await externas.resumen(req.user));
+}));
+app.get('/api/externas/plantilla', requireUser, soloRoles(...CPV_O_SA), conExternas(async (req, res) => {
+  const buf = await externas.plantilla();
+  res.set({
+    'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'Content-Disposition': 'attachment; filename="plantilla-estructura-externa.xlsx"',
+  });
+  res.send(Buffer.from(buf));
+}));
+app.post(
+  '/api/externas/revisar',
+  requireUser,
+  soloRoles('coord_promocion'),
+  express.raw({ type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream'], limit: '40mb' }),
+  conExternas(async (req, res) => {
+    const archivo = decodeURIComponent(String(req.get('X-File-Name') || 'estructura.xlsx')).slice(0, 200);
+    res.json(await externas.revisar(req.user, req.body, { archivo, estructuraId: req.query.estructura || null, nombre: req.query.nombre || '' }));
+  })
+);
+app.post('/api/externas/confirmar', requireUser, soloRoles('coord_promocion'), conExternas(async (req, res) => {
+  const r = await externas.confirmar(req.user, req.body?.token);
+  await audit.add({ action: 'externa.carga', by: req.realUser.id, as: req.user.id, estructura: r.estructuraId, nombre: r.nombre, nuevas: r.nuevas });
+  res.status(201).json(r);
+}));
+app.get('/api/externas/:id/cargas', requireUser, soloRoles(...CPV_O_SA), conExternas(async (req, res) => res.json(await externas.cargasDe(req.user, req.params.id))));
+app.delete('/api/externas/:id', requireUser, soloRoles(...CPV_O_SA), conExternas(async (req, res) => {
+  const r = await externas.eliminar(req.user, req.params.id);
+  await audit.add({ action: 'externa.eliminar', by: req.realUser.id, as: req.user.id, nombre: r.nombre, personas: r.personas, cpv: r.cpvId });
+  res.json(r);
 }));
 
 // Informe por periodo de cada nivel (cifras del periodo, unidades a cargo y FODA)

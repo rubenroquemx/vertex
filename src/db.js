@@ -374,6 +374,55 @@ const MIGRATIONS = [
       CREATE INDEX evento_historial_idx ON evento_historial(evento_id, at);
     `,
   },
+  {
+    id: 11,
+    name: 'estructuras externas para cotejo',
+    sql: `
+      -- Listas de otras estructuras que corren en paralelo: cada CPV carga las suyas (Excel) solo para
+      -- saber cuántas personas coinciden con su árbol o entre ellas. No son promovidos ni afectan metas.
+      CREATE TABLE estructuras_externas (
+        id          uuid PRIMARY KEY,
+        cpv_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        nombre      text NOT NULL,
+        created_by  uuid REFERENCES users(id) ON DELETE SET NULL,
+        created_at  timestamptz NOT NULL DEFAULT now(),
+        updated_at  timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE UNIQUE INDEX estructuras_externas_nombre_uq ON estructuras_externas(cpv_id, lower(nombre));
+
+      -- Cada persona una sola vez por estructura (por clave de elector o por CURP)
+      CREATE TABLE estructura_externa_personas (
+        id             bigserial PRIMARY KEY,
+        estructura_id  uuid NOT NULL REFERENCES estructuras_externas(id) ON DELETE CASCADE,
+        clave_elector  text,
+        curp           text,
+        paterno        text NOT NULL DEFAULT '',
+        materno        text NOT NULL DEFAULT '',
+        nombres        text NOT NULL DEFAULT '',
+        telefono       text NOT NULL DEFAULT '',
+        created_at     timestamptz NOT NULL DEFAULT now(),
+        CHECK (clave_elector IS NOT NULL OR curp IS NOT NULL)
+      );
+      CREATE UNIQUE INDEX externa_personas_clave_uq ON estructura_externa_personas(estructura_id, clave_elector) WHERE clave_elector IS NOT NULL;
+      CREATE UNIQUE INDEX externa_personas_curp_uq ON estructura_externa_personas(estructura_id, curp) WHERE curp IS NOT NULL;
+      CREATE INDEX externa_personas_clave_idx ON estructura_externa_personas(clave_elector);
+      CREATE INDEX externa_personas_curp_idx ON estructura_externa_personas(curp);
+
+      CREATE TABLE estructura_externa_cargas (
+        id             uuid PRIMARY KEY,
+        estructura_id  uuid NOT NULL REFERENCES estructuras_externas(id) ON DELETE CASCADE,
+        archivo        text NOT NULL DEFAULT '',
+        filas          integer NOT NULL,
+        nuevas         integer NOT NULL,
+        repetidas      integer NOT NULL,
+        errores        integer NOT NULL,
+        user_id        uuid REFERENCES users(id) ON DELETE SET NULL,
+        user_name      text NOT NULL,
+        at             timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX externa_cargas_idx ON estructura_externa_cargas(estructura_id, at);
+    `,
+  },
 ];
 
 async function migrate() {

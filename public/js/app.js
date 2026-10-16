@@ -35,6 +35,7 @@ import { viewEscritorioSeccion, mountEscritorioSeccion } from './escritorio-secc
 import { viewRevision, mountRevision } from './revision.js';
 import { viewEscritorioPromotor } from './escritorio-promotor.js';
 import { viewInforme, mountInforme } from './informe.js';
+import { viewExternas, mountExternas } from './externas.js';
 import { viewAgenda, viewEventos, viewFormEvento, mountFormEvento, viewEvento, mountEvento, viewReporte, mountReporte } from './agenda.js';
 import { viewPendientes, mountPendientes } from './pendientes.js';
 import { sesion, pendientes as pendientesLocales, iniciarSincronizacion, prepararSinConexion, borrarDatosLocales, esErrorDeRed } from './offline.js';
@@ -73,6 +74,9 @@ const DASHBOARDS = {
 const MATERIAL = { path: '/material', title: 'Material electoral', icon: 'box', view: (r, p) => viewMaterial(r, p, state), mount: mountMaterial };
 // Agenda de asambleas y recorridos: toda la estructura (el Promotor solo ve lo programado)
 const AGENDA = { path: '/agenda', title: 'Agenda', icon: 'calendar', view: (r, p) => viewAgenda(r, p, state) };
+// Estructuras externas: listas de otras estructuras para cotejar (solo CPV y super administrador)
+// `dock: false`: no va en la barra inferior del celular (tarea de computadora); sí en el menú lateral
+const EXTERNAS = { path: '/estructuras-externas', title: 'Estructuras externas', icon: 'users', dock: false, view: (r, p) => viewExternas(r, p, state), mount: mountExternas };
 
 function buildMenu(me) {
   const key = me.role.key;
@@ -104,6 +108,7 @@ function buildMenu(me) {
           view: (r, p) => viewZonas(r, p, state),
           mount: (root, r, p) => mountZonas(root, r, p, state, { enterGodMode, openDeleteFlow }),
         },
+        EXTERNAS,
       ],
     });
     groups.push({ label: 'Operación', items: [AGENDA, MATERIAL] });
@@ -167,7 +172,7 @@ function buildMenu(me) {
     groups.push(
       {
         label: 'Datos',
-        items: [{ path: '/bases-de-datos', title: 'Bases de datos', icon: 'database', view: viewBasesDatos, mount: mountBasesDatos }],
+        items: [{ path: '/bases-de-datos', title: 'Bases de datos', icon: 'database', view: viewBasesDatos, mount: mountBasesDatos }, EXTERNAS],
       },
       {
         label: 'Sistema',
@@ -1547,6 +1552,7 @@ const CORTO = {
   '/promovidos': 'Promovidos',
   '/material': 'Material',
   '/agenda': 'Agenda',
+  '/estructuras-externas': 'Externas',
   '/zonas': 'Zonas',
   '/responsables': 'Responsables',
   '/usuarios': 'Usuarios',
@@ -1556,7 +1562,8 @@ const CORTO = {
 };
 const corto = (r) => CORTO[r.path] || r.title.split(' ')[0];
 
-function renderDock(menu) {
+function renderDock(menuCompleto) {
+  const menu = menuCompleto.map((g) => ({ ...g, items: g.items.filter((r) => r.dock !== false) })).filter((g) => g.items.length);
   const items = menu.flatMap((g) => g.items);
   const fab = items.find((r) => r.fab);
   if (fab) {

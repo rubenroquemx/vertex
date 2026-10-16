@@ -549,6 +549,8 @@ async function bandeja(rs) {
 }
 
 module.exports = {
+  CLAVE_ELECTOR_RE,
+  CURP_RE,
   catalogoCP,
   revisar,
   bandeja,

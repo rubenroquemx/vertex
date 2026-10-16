@@ -27,6 +27,8 @@ const ACCIONES = {
   'config.update': 'cambió su factor de conversión',
   'material.articulo': 'agregó un artículo de material',
   'material.orden': 'creó una orden de entrega de material',
+  'externa.carga': 'cargó una estructura externa',
+  'externa.eliminar': 'eliminó una estructura externa',
   'settings.whatsapp': 'cambió la configuración de WhatsApp',
   'password.reset': 'restableció su contraseña',
   'god_mode.start': 'entró en modo dios',

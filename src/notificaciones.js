@@ -11,8 +11,9 @@ async function notificar(destinos, { tipo, titulo, cuerpo = '', url = null, auto
   if (!ids.length) return;
   try {
     await query(
+      // Solo cuentas que existen: una cuenta recién eliminada no debe impedir que avisen los demás
       `INSERT INTO notificaciones (user_id, tipo, titulo, cuerpo, url)
-       SELECT unnest($1::uuid[]), $2, $3, $4, $5`,
+       SELECT u.id, $2, $3, $4, $5 FROM users u WHERE u.id = ANY($1::uuid[])`,
       [ids, tipo, String(titulo).slice(0, 200), String(cuerpo).slice(0, 300), url]
     );
     // También al celular (sin esperar: no frena la operación que la origina)

@@ -1332,6 +1332,8 @@ async function start() {
     setTimeout(() => fotos.compactarExistentes(), 10000);
     // Asambleas y recorridos: recordatorio de reporte el mismo día y aviso de los no reportados
     const avisarEventos = () => eventos.recordatorios().catch((err) => console.error('Recordatorios de eventos:', err.message));
+    // Datos de ejemplo de agenda y estructuras paralelas: una sola vez, solo si esas tablas están vacías
+    setTimeout(() => require('./src/ejemplo-agenda').sembrar().catch((err) => console.error('Datos de ejemplo de agenda:', err.message)), 15000);
     setTimeout(avisarEventos, 20000);
     setInterval(avisarEventos, 10 * 60 * 1000);
     console.log(`VERTEX escuchando en http://localhost:${PORT}`);

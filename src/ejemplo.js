@@ -4,14 +4,17 @@
 const { query, tx } = require('./db');
 const { users, promovidos: cachePromovidos } = require('./store');
 const MATERIAL = require('./ejemplo-material.json');
+const agenda = require('./ejemplo-agenda');
 
 async function contar() {
   const { rows } = await query(
     `SELECT (SELECT count(*)::int FROM users WHERE data->>'ejemplo' = 'true') AS cuentas,
             (SELECT count(*)::int FROM promovidos WHERE data->>'ejemplo' = 'true') AS promovidos,
             (SELECT count(*)::int FROM material_articulos WHERE id = ANY($1::uuid[])) AS articulos,
-            (SELECT count(*)::int FROM material_ordenes WHERE id = ANY($2::uuid[])) AS ordenes`,
-    [MATERIAL.articulos, MATERIAL.ordenes]
+            (SELECT count(*)::int FROM material_ordenes WHERE id = ANY($2::uuid[])) AS ordenes,
+            (SELECT count(*)::int FROM eventos WHERE id = ANY($3::uuid[])) AS eventos,
+            (SELECT count(*)::int FROM estructuras_externas WHERE id = ANY($4::uuid[])) AS externas`,
+    [MATERIAL.articulos, MATERIAL.ordenes, agenda.ids().eventos, agenda.ids().externas]
   );
   return rows[0];
 }
@@ -24,6 +27,11 @@ async function borrar() {
     borrados = p.rows.map((r) => r.id);
     await c.query('DELETE FROM material_ordenes WHERE id = ANY($1::uuid[])', [MATERIAL.ordenes]);
     await c.query('DELETE FROM material_articulos WHERE id = ANY($1::uuid[])', [MATERIAL.articulos]);
+    // Agenda y estructuras paralelas de ejemplo (con sus fotos, listas de asistencia e historial)
+    const { eventos, externas } = agenda.ids();
+    await c.query('DELETE FROM eventos WHERE id = ANY($1::uuid[])', [eventos]);
+    await c.query('DELETE FROM estructuras_externas WHERE id = ANY($1::uuid[])', [externas]);
+    await c.query('DELETE FROM notificaciones WHERE url = ANY($1)', [eventos.map((id) => `/agenda/eventos/${id}`)]);
     // Notificaciones que apuntaban a lo borrado
     await c.query("DELETE FROM notificaciones WHERE url = ANY($1)", [borrados.map((id) => `/promovidos/${id}`)]);
   });

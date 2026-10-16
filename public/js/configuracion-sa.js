@@ -32,7 +32,7 @@ export async function viewConfiguracionSA(route) {
 
 // ---------- General: aviso de privacidad y datos de ejemplo ----------
 function panelGeneral(aviso, ej) {
-  const hayEjemplo = ej.cuentas + ej.promovidos + ej.articulos + ej.ordenes > 0;
+  const hayEjemplo = ej.cuentas + ej.promovidos + ej.articulos + ej.ordenes + (ej.eventos || 0) + (ej.externas || 0) > 0;
   return `
     <div class="cfg-general">
       <form class="card form-card" id="avisoForm" novalidate aria-labelledby="avT">
@@ -59,6 +59,7 @@ function panelGeneral(aviso, ej) {
             <div><dt>Cuentas de ejemplo</dt><dd>${fmtNum(ej.cuentas)}</dd></div>
             <div><dt>Promovidos de ejemplo</dt><dd>${fmtNum(ej.promovidos)}</dd></div>
             <div><dt>Artículos y órdenes de material</dt><dd>${fmtNum(ej.articulos)} · ${fmtNum(ej.ordenes)}</dd></div>
+            <div><dt>Asambleas y recorridos · estructuras paralelas</dt><dd>${fmtNum(ej.eventos || 0)} · ${fmtNum(ej.externas || 0)}</dd></div>
           </dl>
           <form id="ejForm" novalidate class="ej-form">
             <div class="field"><label for="ejPass">Tu contraseña para confirmar</label>

@@ -1584,6 +1584,55 @@ function renderDock(menuCompleto) {
     .join('<span class="dock__sep" aria-hidden="true"></span>');
 }
 
+// Barra inferior tipo «isla dinámica»: mientras hay actividad en el área de trabajo
+// (desplazamiento) se encoge a una cápsula con la sección actual; al detenerse se expande.
+const ISLA_ESPERA = 700;
+let islaLista = false;
+function montarIsla() {
+  const dock = $('#dock');
+  if (!dock) return;
+  if (!$('.dock__isla', dock)) {
+    dock.insertAdjacentHTML('beforeend', '<button class="dock__isla" type="button" aria-label="Mostrar el menú" tabindex="-1"><span class="dock__isla-in"></span></button>');
+  }
+  if (islaLista) return;
+  islaLista = true;
+  const movil = matchMedia('(max-width: 767px)');
+  let timer = 0;
+  let ultimoY = scrollY;
+  const expandir = () => {
+    clearTimeout(timer);
+    dock.classList.remove('is-isla');
+    $('.dock__isla', dock)?.setAttribute('tabindex', '-1');
+  };
+  const encoger = () => {
+    const isla = $('.dock__isla', dock);
+    if (!isla || dock.contains(document.activeElement)) return;
+    if (!dock.classList.contains('is-isla')) {
+      const actual = $('[aria-current="page"]', dock);
+      $('.dock__isla-in', isla).innerHTML = actual
+        ? `${actual.querySelector('svg')?.outerHTML || ''}<span>${esc(actual.getAttribute('aria-label') || '')}</span>`
+        : `<span>${esc($('#pageTitle')?.textContent || 'Menú')}</span>`;
+      isla.setAttribute('tabindex', '0');
+      dock.classList.add('is-isla');
+    }
+    clearTimeout(timer);
+    timer = setTimeout(expandir, ISLA_ESPERA);
+  };
+  addEventListener('scroll', () => {
+    if (!movil.matches) return;
+    const y = scrollY;
+    const delta = Math.abs(y - ultimoY);
+    ultimoY = y;
+    // Rebotes del navegador y desplazamientos mínimos no cuentan como actividad
+    if (delta < 4 || y < 8) return;
+    encoger();
+  }, { passive: true });
+  dock.addEventListener('click', (ev) => {
+    if (ev.target.closest('.dock__isla')) expandir();
+  });
+  movil.addEventListener('change', expandir);
+}
+
 const NOT_AVAILABLE = {
   title: 'No disponible',
   view: () => `<div class="empty"><strong>Página no disponible</strong><span>La página no existe o no está disponible para tu nivel.</span></div>`,
@@ -2266,6 +2315,7 @@ async function boot() {
   }
   renderNav(menu);
   renderDock(menu);
+  montarIsla();
   if (!state.campana) {
     state.campana = true;
     iniciarCampana();

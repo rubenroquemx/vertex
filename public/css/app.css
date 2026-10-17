@@ -3003,3 +3003,36 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
   .table--personas td.cell-action { grid-column: 3; grid-row: 1 / span 3; align-self: start; display: flex; flex-direction: column; gap: var(--space-sm); }
   .table--personas td.mono { font-size: 13px; color: var(--color-muted-foreground); }
 }
+
+/* ---------- Barra inferior tipo isla dinámica (celular) ----------
+   Cápsula negra flotante. Con actividad en el área de trabajo se encoge a una isla
+   con la sección actual; al detenerse vuelve a su tamaño. Una sola forma que cambia
+   de tamaño (ancho, alto y radio) con una curva de resorte suave. */
+@media (max-width: 767px) {
+  :root { --isla-margen: 10px; --dock-space: calc(var(--dock-h) + var(--isla-margen) + env(safe-area-inset-bottom)); }
+  .dock {
+    left: 50%; right: auto; bottom: calc(var(--isla-margen) + env(safe-area-inset-bottom));
+    width: calc(100% - 2 * var(--isla-margen)); max-width: 520px; height: var(--dock-h);
+    padding: 8px; border-radius: 28px; transform: translateX(-50%);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .28), 0 0 0 1px rgba(255, 255, 255, .06);
+    transition: width 420ms cubic-bezier(.32, 1.25, .5, 1), height 420ms cubic-bezier(.32, 1.25, .5, 1), border-radius 420ms var(--ease);
+  }
+  .dock > :not(.dock__isla) { transition: opacity 180ms var(--ease) 120ms, transform 300ms var(--ease) 60ms; }
+  .dock__isla {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: 0 16px; border: 0; border-radius: inherit; background: transparent; color: #fafafa;
+    opacity: 0; pointer-events: none; transition: opacity 160ms var(--ease);
+  }
+  .dock__isla-in { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 14px; font-weight: 700; white-space: nowrap; }
+  .dock__isla-in span { overflow: hidden; text-overflow: ellipsis; }
+  .dock__isla svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+  .dock.is-isla { width: 168px; height: 40px; border-radius: 20px; overflow: hidden; }
+  .dock.is-isla > :not(.dock__isla) { opacity: 0; transform: scale(.6); pointer-events: none; transition: opacity 120ms var(--ease), transform 200ms var(--ease); }
+  .dock.is-isla .dock__isla { opacity: 1; pointer-events: auto; transition: opacity 200ms var(--ease) 140ms; }
+  /* El dock del promotor deja salir el botón +; como isla se recorta */
+  .dock.has-fab.is-isla { overflow: hidden; }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .dock, .dock > *, .dock__isla { transition: none !important; }
+}

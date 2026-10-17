@@ -36,7 +36,7 @@ import { viewRevision, mountRevision } from './revision.js';
 import { viewEscritorioPromotor } from './escritorio-promotor.js';
 import { viewInforme, mountInforme } from './informe.js';
 import { viewExternas, mountExternas, viewListaPersonas, mountListaPersonas } from './externas.js';
-import { viewAgenda, viewEventos, viewFormEvento, mountFormEvento, viewEvento, mountEvento, viewReporte, mountReporte } from './agenda.js';
+import { viewAgenda, mountAgenda, viewEventos, viewFormEvento, mountFormEvento, viewEvento, mountEvento, viewReporte, mountReporte } from './agenda.js';
 import { viewPendientes, mountPendientes } from './pendientes.js';
 import { sesion, pendientes as pendientesLocales, iniciarSincronizacion, prepararSinConexion, borrarDatosLocales, esErrorDeRed } from './offline.js';
 import { viewNotificaciones, mountNotificaciones, iniciarCampana, actualizarContador } from './notificaciones.js';
@@ -73,7 +73,7 @@ const DASHBOARDS = {
 // Material electoral: CPV, Coordinador de Zona y Responsable de Sección (el Promotor no participa)
 const MATERIAL = { path: '/material', title: 'Material electoral', icon: 'box', view: (r, p) => viewMaterial(r, p, state), mount: mountMaterial };
 // Agenda de asambleas y recorridos: toda la estructura (el Promotor solo ve lo programado)
-const AGENDA = { path: '/agenda', title: 'Agenda', icon: 'calendar', view: (r, p) => viewAgenda(r, p, state) };
+const AGENDA = { path: '/agenda', title: 'Agenda', icon: 'calendar', view: (r, p) => viewAgenda(r, p, state), mount: mountAgenda };
 // Estructuras externas: listas de otras estructuras para cotejar (solo CPV y super administrador)
 // `dock: false`: no va en la barra inferior del celular (tarea de computadora); sí en el menú lateral
 const EXTERNAS = { path: '/estructuras-externas', title: 'Estructuras externas', icon: 'users', dock: false, view: (r, p) => viewExternas(r, p, state), mount: mountExternas };

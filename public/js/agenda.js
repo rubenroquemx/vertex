@@ -81,6 +81,7 @@ export async function viewAgenda(route, _p, state) {
     const evs = porDia.get(k) || [];
     celdas.push(`<div class="ag-dia ${k === d.hoy ? 'is-hoy' : ''} ${evs.length ? 'con-eventos' : ''}">
       <span class="ag-dia__n">${dia}</span>
+      ${evs.length ? `<button type="button" class="ag-dia__ir" data-dia="${k}" aria-label="${esc(`${fechaDe(k)}: ${evs.length} ${evs.length === 1 ? 'evento' : 'eventos'}`)}"></button>` : ''}
       ${evs
         .map(
           (e) => `<a class="ag-ev ag-ev--${e.tipo} ${e.estado === 'realizado' ? 'is-hecho' : ''}" href="/agenda/eventos/${e.id}" data-link title="${esc(`${TIPO[e.tipo]} · ${e.lugar} · ${HORA.format(new Date(e.inicio))}`)}">
@@ -93,7 +94,7 @@ export async function viewAgenda(route, _p, state) {
   const lista = dias.length
     ? dias
         .map(
-          (k) => `<section class="ag-grupo" aria-label="${esc(fechaDe(k))}">
+          (k) => `<section class="ag-grupo" id="agd-${k}" tabindex="-1" aria-label="${esc(fechaDe(k))}">
           <h3 class="ag-grupo__dia ${k === d.hoy ? 'is-hoy' : ''}">${esc(fechaDe(k))}${k === d.hoy ? ' · hoy' : ''}</h3>
           <ul class="ev-lista">${porDia.get(k).map((e) => filaEvento(e, rol)).join('')}</ul>
         </section>`
@@ -126,6 +127,18 @@ export async function viewAgenda(route, _p, state) {
       </div>
       <div class="ag-listado">${lista}</div>
     </div>`;
+}
+
+// En celular la celda completa del día es el área de toque: lleva a sus eventos en la lista
+export function mountAgenda(root) {
+  root.addEventListener('click', (ev) => {
+    const b = ev.target.closest('.ag-dia__ir');
+    if (!b) return;
+    const g = root.querySelector(`#agd-${b.dataset.dia}`);
+    if (!g) return;
+    g.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    g.focus({ preventScroll: true });
+  });
 }
 
 // ===========================================================================

@@ -2478,6 +2478,10 @@ a.ec-kpi:hover { box-shadow: var(--shadow-card), inset 0 0 0 1px var(--color-bor
   .topbar__notif::after, .topbar__pend::after, .promo-contacto__btn::after, .mat-previas .icon-btn::after, .topbar__user::after { content: ""; position: absolute; inset: -6px; }
   .topbar__user { position: relative; }
   .promo-contacto__btn, .ez-contacto .promo-contacto__btn { width: 44px; height: 44px; }
+  /* Áreas de toque de 44px sin cambiar el aspecto compacto */
+  .btn, .btn--sm { min-height: 44px; }
+  .seg__btn { min-height: 40px; }
+  .table a[href^="tel:"] { display: inline-block; padding: 12px 0; margin: -12px 0; }
 }
 /* U4: en celular, «Cerrar sesión» vive en Mi perfil (no junto al avatar) */
 @media (max-width: 767px) { .topbar__logout { display: none !important; } }
@@ -2762,6 +2766,7 @@ a.tabs__tab { display: inline-flex; align-items: center; min-height: 40px; text-
 .ag-sem span { padding: 4px 6px; font-size: 12px; font-weight: 700; color: var(--color-muted-foreground); }
 .ag-dia { min-height: 96px; padding: 6px; border-radius: 10px; background: var(--color-surface-alt, #fafafa); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .ag-dia.is-fuera { background: transparent; }
+.ag-dia__ir { display: none; }
 .ag-dia__n { font-size: 13px; font-weight: 700; color: var(--color-muted-foreground); }
 .ag-dia.is-hoy { box-shadow: inset 0 0 0 2px var(--color-foreground); }
 .ag-dia.is-hoy .ag-dia__n { color: var(--color-foreground); }
@@ -2771,7 +2776,7 @@ a.tabs__tab { display: inline-flex; align-items: center; min-height: 40px; text-
 .ag-ev__ico svg { width: 12px; height: 12px; }
 .ag-ev__t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ag-ev.is-hecho .ag-ev__t { color: var(--color-muted-foreground); text-decoration: line-through; text-decoration-color: transparent; }
-.ag-ev.is-hecho { opacity: .75; }
+.ag-ev.is-hecho .ag-ev__ico { opacity: .6; }
 
 .ag-listado { display: grid; gap: var(--space-xl); }
 .ag-grupo__dia { margin: 0 0 var(--space-md); font-size: 15px; }
@@ -2869,6 +2874,12 @@ a.tabs__tab { display: inline-flex; align-items: center; min-height: 40px; text-
   .ag-dia .ag-ev { padding: 0; background: none; box-shadow: none; }
   .ag-dia .ag-ev__t { display: none; }
   .ag-dia .ag-ev__ico { width: 16px; height: 16px; }
+  .ag-dia.con-eventos { position: relative; }
+  .ag-dia .ag-ev { pointer-events: none; }
+  .ag-dia__ir { display: block; position: absolute; inset: 0; z-index: 1; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
+  .ag-dia__ir:active { background: rgba(10, 10, 10, .06); }
+  .ag-grupo { scroll-margin-top: var(--space-xl); }
+  .ag-grupo:focus { outline: none; }
   .ev-item { padding: var(--space-lg); gap: var(--space-md); }
   .ev-item__ico { width: 34px; height: 34px; }
   .ev-proponer .btn { flex: 1 1 100%; justify-content: center; }
@@ -2895,7 +2906,7 @@ a.tabs__tab { display: inline-flex; align-items: center; min-height: 40px; text-
 .ext-prev h4 { margin: 0 0 var(--space-md); font-size: 15px; }
 .ext-prev .ext-acc { margin-top: var(--space-lg); }
 .ext-prev__total dt, .ext-prev__total dd { font-weight: 800; color: var(--color-foreground) !important; }
-.ext-cpv { display: grid; gap: var(--space-xl); }
+.ext-cpv { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-xl); }
 .ext-cpv__t { margin: var(--space-md) 0 0; font-size: 18px; }
 .ext-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .ext-lista { display: grid; gap: var(--space-md); margin: 0; padding: 0; list-style: none; }

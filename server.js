@@ -32,7 +32,7 @@ const notificaciones = require('./src/notificaciones');
 const fotos = require('./src/fotos');
 const privacidad = require('./src/privacidad');
 const ELECCION = require('./src/eleccion');
-const { memo } = require('./src/memo');
+const { memo, olvidar: olvidarPaneles } = require('./src/memo');
 const push = require('./src/push');
 const ejemplo = require('./src/ejemplo');
 const material = require('./src/material');
@@ -486,6 +486,8 @@ app.put('/api/configuracion/cpv', requireUser, requireCPV, async (req, res) => {
       before: { participacion: before.participacion, conversion: before.conversion, factor: before.factor },
       after,
     });
+    // Las metas cambian en todos los paneles (CPV, zonas, secciones, promotores y super administrador)
+    olvidarPaneles();
   }
   const cpv = users.get(req.user.id);
   res.json({ cambio, config: metas.configDe(cpv), metas: metas.resumen(cpv), historial: await historialConfig(cpv.id) });

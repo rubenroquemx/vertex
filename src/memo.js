@@ -22,4 +22,10 @@ setInterval(() => {
   for (const [k, x] of cache) if (ahora - x.t > 5 * 60 * 1000) cache.delete(k);
 }, 60 * 1000).unref();
 
-module.exports = { memo };
+// Descarta lo guardado cuando cambia algo que altera los cálculos (p. ej. el factor de conversión),
+// para que los paneles muestren el dato nuevo al momento y no después de que venza la caché
+function olvidar() {
+  cache.clear();
+}
+
+module.exports = { memo, olvidar };

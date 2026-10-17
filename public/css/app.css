@@ -812,7 +812,8 @@ fieldset.field legend { padding: 0; margin-bottom: var(--space-sm); font-size: 1
   .topbar__mark { display: block; }
   .nav__link { min-height: 44px; }
   .split { grid-template-columns: minmax(0, 1fr); }
-  .split__map { order: -1; position: relative; top: 0; height: 45vh; min-height: 280px; padding: var(--space-lg) var(--space-lg) 0; }
+  .split__map, .god-banner:not([hidden]) ~ .content .split__map { order: -1; position: relative; top: 0; height: auto; padding: var(--space-lg) var(--space-lg) 0; }
+  .map--split { flex: none; height: 45vh; min-height: 260px; }
   .split__form { padding: var(--space-xl); }
   .form-footer { margin: 0 calc(-1 * var(--space-xl)) calc(-1 * var(--space-xl)); padding-left: var(--space-xl); padding-right: var(--space-xl); }
   .uploads { grid-template-columns: minmax(0, 1fr); }
@@ -2986,3 +2987,19 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
 .ev-ficha__grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-xl); max-width: 900px; }
 .ev-ficha__grid .card { margin: 0; }
 @media (max-width: 767px) { .ev-zonas { padding-left: 0; } }
+
+/* Listas de personas (zonas, responsables, cuentas): tarjetas en celular.
+   Nombre arriba, datos en columnas debajo y acciones a la derecha. Depende del ancho
+   de la lista (no de la pantalla): también aplica en la columna angosta junto al mapa */
+.table-wrap:has(.table--personas) { container-type: inline-size; }
+@container (max-width: 620px) {
+  .table--personas thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .table--personas, .table--personas tbody { display: block; width: 100%; }
+  .table--personas tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--space-sm) var(--space-lg); padding: var(--space-lg); border-bottom: 1px solid var(--color-border); }
+  .table--personas tr:last-child { border-bottom: 0; }
+  .split--list .table--personas td, .table--personas td { display: block; grid-column: 1 / 3; padding: 0; border: 0; text-align: left; min-width: 0; }
+  .split--list .table--personas td[data-label], .table--personas td[data-label] { grid-column: auto; margin-top: var(--space-sm); font-size: 15px; font-weight: 700; }
+  .table--personas td[data-label]::before { content: attr(data-label); display: block; font-size: 12px; font-weight: 700; color: var(--color-muted-foreground); }
+  .table--personas td.cell-action { grid-column: 3; grid-row: 1 / span 3; align-self: start; display: flex; flex-direction: column; gap: var(--space-sm); }
+  .table--personas td.mono { font-size: 13px; color: var(--color-muted-foreground); }
+}

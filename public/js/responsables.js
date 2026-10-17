@@ -57,7 +57,7 @@ export async function viewResponsables(route, _params, state) {
 
         ${
           data.responsables.length
-            ? `<div class="table-wrap"><table class="table">
+            ? `<div class="table-wrap"><table class="table table--personas">
                 <thead><tr><th scope="col">Responsable</th><th scope="col">Secciones</th><th scope="col" class="num">Electores</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
                 <tbody>
                   ${data.responsables
@@ -65,7 +65,7 @@ export async function viewResponsables(route, _params, state) {
                       (r) => `<tr data-rs="${r.id}" tabindex="0">
                         <td>${esc(r.name)}<small class="muted-block mono">${r.username ? `@${esc(r.username)}` : ''}</small></td>
                         <td><div class="secchips secchips--static">${r.secciones.map((s) => `<span class="secchip">${fmtSeccion(s)}</span>`).join('')}</div></td>
-                        <td class="num num--r">${num(r.electores)}</td>
+                        <td class="num num--r" data-label="Electores">${num(r.electores)}</td>
                         <td class="cell-action">
                           <button class="icon-btn icon-btn--table" type="button" data-action="edit" data-id="${r.id}" title="Editar ${esc(r.name)}" aria-label="Editar ${esc(r.name)}">${ICONS.edit}</button>${
                             state.me.godMode

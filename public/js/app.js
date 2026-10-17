@@ -651,7 +651,7 @@ function renderUsersTable(root, list, avance) {
   const canDelete = Boolean(state.me.canDelete);
 
   $('#usersTable', root).innerHTML = rows.length
-    ? `<table class="table">
+    ? `<table class="table table--personas">
         <thead><tr><th scope="col">Nombre</th><th scope="col">Usuario</th><th scope="col">Teléfono</th><th scope="col">Alta</th>${canGod || canDelete ? '<th scope="col"><span class="sr-only">Acciones</span></th>' : ''}</tr></thead>
         <tbody>
           ${rows
@@ -659,8 +659,8 @@ function renderUsersTable(root, list, avance) {
               (u) => `<tr>
                 <td><div class="cell-user"><span class="avatar" aria-hidden="true">${avatarInner(u)}</span><span>${esc(u.name)}${u.email ? `<small>${esc(u.email)}</small>` : ''}</span></div></td>
                 <td class="mono">${u.username ? esc(u.username) : '<span class="muted">Sin acceso</span>'}</td>
-                <td class="num">${esc(fmtPhone(u.phone))}</td>
-                <td class="num">${fmtDate(u.createdAt)}</td>
+                <td class="num" data-label="Teléfono">${esc(fmtPhone(u.phone))}</td>
+                <td class="num" data-label="Alta">${fmtDate(u.createdAt)}</td>
                 ${canGod || canDelete ? `<td class="cell-action">${canEdit && u.role === 'coord_promocion' ? `<button class="icon-btn icon-btn--table" type="button" data-action="edit" data-id="${u.id}" title="Editar ${esc(u.name)}" aria-label="Editar ${esc(u.name)}">${ICONS.edit}</button>` : ''}${canGod ? `<button class="icon-btn icon-btn--table" type="button" data-action="god" data-id="${u.id}" data-role="${u.role}" title="Entrar a la cuenta de ${esc(u.name)}" aria-label="Entrar a la cuenta de ${esc(u.name)} (modo dios)">${ICONS.eye}</button>` : ''}${canDelete ? `<button class="icon-btn icon-btn--table icon-btn--danger" type="button" data-action="delete" data-id="${u.id}" title="Eliminar ${esc(u.name)}" aria-label="Eliminar ${esc(u.name)} y su rama">${ICONS.trash}</button>` : ''}</td>` : ''}
               </tr>`
             )

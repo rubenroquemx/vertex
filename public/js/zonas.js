@@ -78,7 +78,7 @@ export async function viewZonas(route, _params, state) {
 
         ${
           data.zonas.length
-            ? `<div class="table-wrap"><table class="table">
+            ? `<div class="table-wrap"><table class="table table--personas">
                 <thead><tr><th scope="col">Zona</th><th scope="col">Coordinador</th><th scope="col" class="num">Secciones</th><th scope="col" class="num">Electores</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
                 <tbody>
                   ${data.zonas
@@ -86,8 +86,8 @@ export async function viewZonas(route, _params, state) {
                       (z) => `<tr data-zona="${z.id}" tabindex="0">
                         <td><div class="zcell"><span class="zswatch" style="background:${z.color}" aria-hidden="true"></span><span><strong>${esc(z.codigo)}</strong><small>${esc(z.nombre)}</small></span></div></td>
                         <td>${esc(z.coordinador.name)}<small class="muted-block mono">${z.coordinador.username ? `@${esc(z.coordinador.username)}` : ''}</small></td>
-                        <td class="num num--r">${fmtNum(z.secciones)}</td>
-                        <td class="num num--r">${num(z.electores)}</td>
+                        <td class="num num--r" data-label="Secciones">${fmtNum(z.secciones)}</td>
+                        <td class="num num--r" data-label="Electores">${num(z.electores)}</td>
                         <td class="cell-action">
                           <button class="icon-btn icon-btn--table" type="button" data-action="edit" data-id="${z.id}" title="Editar ${esc(z.codigo)}" aria-label="Editar zona ${esc(z.codigo)}">${ICONS.edit}</button>${
                             state.me.godMode

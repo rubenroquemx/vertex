@@ -17,7 +17,6 @@ export async function viewConfiguracionSA(route) {
   route.tab = TABS.some((t) => t.key === tab) ? tab : 'whatsapp';
   return `
     <div class="page-head">
-      <h2>Configuración</h2>
       <p>Ajustes generales del sistema e integraciones.</p>
     </div>
     <div class="tabs" role="tablist" aria-label="Secciones de configuración">

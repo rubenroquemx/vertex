@@ -37,8 +37,7 @@ export async function seccionesGeo(entidad, claves) {
 }
 
 const sinTerritorio = `
-  <div class="page-head"><h2>Zonas</h2></div>
-  <div class="empty">
+    <div class="empty">
     <span aria-hidden="true">${ICONS.database}</span>
     <strong>Tu cuenta aún no tiene territorio asignado</strong>
     <span>El administrador debe asignarte un territorio para que puedas repartirlo en zonas.</span>
@@ -59,7 +58,6 @@ export async function viewZonas(route, _params, state) {
     <div class="split split--list">
       <div class="split__form">
         <div class="page-head">
-          <h2>Zonas</h2>
           <p>Reparte tu territorio en ${esc(data.entidad.nombre)} en zonas, cada una con su Coordinador de Zona.${
             state.me.godMode ? ' Para ver los niveles inferiores, entra a la cuenta de cada coordinador.' : ''
           }</p>
@@ -223,7 +221,7 @@ export async function viewZona(route, params = []) {
       <div class="split__form">
         <a class="back-link" href="/zonas" data-link>${ICONS.back}<span>Zonas</span></a>
         <div class="page-head">
-          <h2>${editing ? `Editar ${esc(z.codigo)} · ${esc(z.nombre)}` : 'Nueva zona electoral'}</h2>
+          ${editing ? `<h2>${esc(z.codigo)} · ${esc(z.nombre)}</h2>` : ''}
           <p>${editing ? 'Edita la zona, su coordinador o sus secciones.' : `Hay ${fmtNum(libres)} secciones vacantes en tu territorio.`}</p>
         </div>
 

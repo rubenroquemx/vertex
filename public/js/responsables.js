@@ -15,8 +15,7 @@ const styleCubierta = (strong) => ({ color: C_CUBIERTA, weight: strong ? 2 : 0.6
 const styleVacante = { color: '#3f3f46', weight: 0.7, opacity: 0.9, fillColor: '#71717a', fillOpacity: 0.25 };
 
 const sinSecciones = `
-  <div class="page-head"><h2>Responsables de sección</h2></div>
-  <div class="empty">
+    <div class="empty">
     <span aria-hidden="true">${ICONS.map}</span>
     <strong>Tu zona aún no tiene secciones asignadas</strong>
     <span>Tu Coordinador de Promoción del Voto debe asignarte secciones para que puedas repartirlas.</span>
@@ -38,7 +37,6 @@ export async function viewResponsables(route, _params, state) {
     <div class="split split--list">
       <div class="split__form">
         <div class="page-head">
-          <h2>Responsables de sección</h2>
           <p>${z ? `<span class="zswatch zswatch--inline" style="background:${z.color}"></span>${esc(z.codigo)} · ${esc(z.nombre)}. ` : ''}Asigna un responsable a cada sección de tu zona.${
             state.me.godMode ? ' Para ver los niveles inferiores, entra a la cuenta de cada responsable.' : ''
           }</p>
@@ -189,7 +187,7 @@ export async function viewResponsable(route, params = []) {
       <div class="split__form">
         <a class="back-link" href="/responsables" data-link>${ICONS.back}<span>Responsables</span></a>
         <div class="page-head">
-          <h2>${editing ? esc(current.name) : 'Nuevo responsable de sección'}</h2>
+          ${editing ? `<h2>${esc(current.name)}</h2>` : ''}
           <p>${editing ? 'Responsable de Sección · edita sus datos, acceso o secciones.' : `Hay ${fmtNum(libres)} secciones sin responsable en ${esc(op.zona.codigo)} · ${esc(op.zona.nombre)}.`}</p>
         </div>
 

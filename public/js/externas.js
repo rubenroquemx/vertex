@@ -54,7 +54,7 @@ export async function viewExternas(route, _p, state) {
 
   return `
     <div class="ext">
-      <div class="page-head"><h2>Estructuras externas</h2><p>${esc(intro)}</p></div>
+      <div class="page-head"><p>${esc(intro)}</p></div>
       ${carga}
       ${bloques}
     </div>`;
@@ -291,7 +291,7 @@ export async function viewListaPersonas(route, params) {
   return `
     <div class="ext">
       <a class="back-link" href="/estructuras-externas" data-link>${ICONS.back}<span>Estructuras externas</span></a>
-      <div class="page-head"><h2>${esc(titulo)}</h2>
+      <div class="page-head">${sinPromover ? '' : `<h2>${esc(titulo)}</h2>`}
         <p>${
           sinPromover
             ? 'Personas que asistieron a asambleas o recorridos y no están en la estructura del CPV ni en sus estructuras externas.'

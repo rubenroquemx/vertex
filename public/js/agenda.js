@@ -198,11 +198,10 @@ export async function viewFormEvento(route, params) {
   const hIni = v.inicio ? HHMM.format(new Date(v.inicio)) : '';
   const hFin = v.fin ? HHMM.format(new Date(v.fin)) : '';
   const op = (id, txt) => `<option value="${id}" ${v.reportaId === id ? 'selected' : ''}>${esc(txt)}</option>`;
-  const titulo = editando ? `Editar ${tipo === 'asamblea' ? 'asamblea' : 'recorrido'}` : tipo === 'asamblea' ? 'Nueva asamblea' : 'Nuevo recorrido';
   return `
     <form class="ev-form" id="evForm" novalidate>
       <a class="back-link" href="${volver}" data-link>${ICONS.back}<span>${editando ? 'Volver al evento' : 'Asambleas y recorridos'}</span></a>
-      <div class="page-head"><h2>${titulo}</h2>
+      <div class="page-head">
         <p>${tipo === 'asamblea' ? 'Encuentro multitudinario en el que el candidato habla con los asistentes.' : 'Recorrido por la comunidad para saludar y platicar del proyecto.'}${
           publicado ? ' Ya está publicado: si cambias la fecha, el lugar o los destinatarios, se avisará a la red.' : ' Guárdalo como borrador o publícalo para que aparezca en la agenda de los destinatarios.'
         }</p></div>

@@ -128,7 +128,7 @@ export async function viewCoordinador(route, params = []) {
       <div class="split__form">
         <a class="back-link" href="/usuarios" data-link>${ICONS.back}<span>Usuarios</span></a>
         <div class="page-head">
-          <h2>${editing ? esc(c.name) : 'Nuevo Coordinador de Promoción del Voto'}</h2>
+          ${editing ? `<h2>${esc(c.name)}</h2>` : ''}
           <p>${editing ? 'Coordinador de Promoción del Voto · edita sus datos, acceso o territorio.' : 'Captura los datos del titular, su acceso y el territorio que coordinará.'}</p>
         </div>
 

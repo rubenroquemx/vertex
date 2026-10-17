@@ -50,7 +50,6 @@ const state = { me: null, routes: new Map() };
 // ---------------------------------------------------------------------------
 const pendingDashboard = (me) => `
   <div class="page-head">
-    <h2>Panel</h2>
     <p>${esc(me.role.name)}</p>
   </div>
   <div class="empty">
@@ -193,7 +192,6 @@ function buildMenu(me) {
 function placeholder(desc) {
   return (route) => `
     <div class="page-head">
-      <h2>${route.title}</h2>
       <p>${desc}</p>
     </div>
     <div class="empty">
@@ -219,7 +217,6 @@ async function viewEstructura(route) {
   return `
     ${esRS ? '' : `<div class="page-head page-head--actions">
       <div>
-        <h2>${route.title}</h2>
         <p>${esc(child.plural)} ${isSA ? 'registrados en el sistema' : 'que dependen de ti'}.${
           me.godMode || isSA ? ' Para ver los niveles inferiores, entra a la cuenta de cada uno.' : ''
         }</p>
@@ -927,7 +924,6 @@ async function viewBasesDatos(route) {
   route.data = { states, pad };
   return `
     <div class="page-head">
-      <h2>Bases de datos</h2>
       <p>Cartografía electoral y padrón del INE. Se cruzan por la clave de sección.</p>
     </div>
 
@@ -1300,7 +1296,6 @@ function viewPerfil() {
   const hasPw = u.hasPassword;
   return `
     <div class="page-head">
-      <h2>Mi perfil</h2>
       <p>Administra tu información personal y tu contraseña.</p>
     </div>
 

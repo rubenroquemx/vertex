@@ -18,7 +18,6 @@ export async function viewConfiguracionCPV(route) {
   const { config: c } = route.data;
   return `
     <div class="page-head">
-      <h2>Configuración</h2>
       <p>Estos valores aplican a todo tu territorio y definen las metas de cada sección.</p>
     </div>
 

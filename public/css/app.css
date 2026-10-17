@@ -246,6 +246,7 @@ a { color: inherit; }
 .page-head { margin-bottom: var(--space-2xl); }
 .page-head h2 { font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
 .page-head p { color: var(--color-muted-foreground); margin: var(--space-sm) 0 0; font-size: 15px; }
+.page-head p:first-child, .page-head > div > p:first-child { margin-top: 0; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--space-md);

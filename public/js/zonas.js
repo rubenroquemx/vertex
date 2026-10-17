@@ -181,7 +181,7 @@ export function mountZonas(root, route, _params, state, { enterGodMode, openDele
     if (action === 'edit') navigate(`/zonas/${id}/editar`);
     if (action === 'god') {
       btn.disabled = true;
-      enterGodMode(id, '/responsables').catch((err) => {
+      enterGodMode(id).catch((err) => {
         btn.disabled = false;
         toast(err.message);
       });

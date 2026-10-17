@@ -401,7 +401,7 @@ function mountFichaCpv(root, route) {
     if (a === 'delete') openDeleteFlow(u, state.me, () => navigate('/usuarios'));
     if (a === 'god') {
       btn.disabled = true;
-      enterGodMode(u.id, landingFor(u.role)).catch((err) => {
+      enterGodMode(u.id).catch((err) => {
         btn.disabled = false;
         toast(err.message);
       });
@@ -789,7 +789,7 @@ function mountEstructura(root, route) {
     if (action === 'god') {
       const btn = e.target.closest('[data-action]');
       btn.disabled = true;
-      enterGodMode(btn.dataset.id, landingFor(btn.dataset.role)).catch((err) => {
+      enterGodMode(btn.dataset.id).catch((err) => {
         btn.disabled = false;
         toast(err.message);
       });
@@ -1809,17 +1809,16 @@ function renderUser(me) {
 // ---------------------------------------------------------------------------
 // Modo dios (super administrador)
 // ---------------------------------------------------------------------------
-// Página inicial al entrar a una cuenta: su lista de subordinados (o el panel si no tiene)
-const landingFor = (role) => ({ coord_promocion: '/zonas', coord_zona: '/responsables', promotor: '/' })[role] || '/estructura';
-
-async function enterGodMode(userId, landing = '/') {
+// Al cambiar de cuenta (entrar, regresar a un nivel superior o salir) siempre se abre el panel
+// de esa cuenta, con los datos recién cargados, sin importar la sección en la que estabas
+async function enterGodMode(userId) {
   await api('/api/god-mode', { method: 'POST', body: { userId } });
-  location.href = landing;
+  location.href = '/';
 }
 
 async function exitGodMode() {
   await api('/api/god-mode', { method: 'DELETE' });
-  location.href = '/usuarios';
+  location.href = '/';
 }
 
 function renderGodBanner(me) {
@@ -1848,7 +1847,7 @@ function renderGodBanner(me) {
     const target = e.target.closest('[data-god]');
     if (!target) return;
     banner.querySelectorAll('button').forEach((b) => (b.disabled = true));
-    const go = target.dataset.god === 'exit' ? exitGodMode() : enterGodMode(target.dataset.god, landingFor(target.dataset.role));
+    const go = target.dataset.god === 'exit' ? exitGodMode() : enterGodMode(target.dataset.god);
     go.catch((err) => {
       banner.querySelectorAll('button').forEach((b) => (b.disabled = false));
       toast(err.message);

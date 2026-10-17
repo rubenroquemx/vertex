@@ -151,7 +151,7 @@ export function mountResponsables(root, route, _params, state, { enterGodMode, o
     if (action === 'edit') navigate(`/responsables/${id}/editar`);
     if (action === 'god') {
       btn.disabled = true;
-      enterGodMode(id, '/estructura').catch((err) => {
+      enterGodMode(id).catch((err) => {
         btn.disabled = false;
         toast(err.message);
       });

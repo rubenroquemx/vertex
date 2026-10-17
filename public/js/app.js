@@ -239,7 +239,7 @@ async function viewEstructura(route) {
     <dialog class="dialog" id="newUserDialog" aria-labelledby="newUserTitle">
       <form class="dialog__body" id="newUserForm" novalidate>
         <div class="dialog__head">
-          <h3 id="newUserTitle">Nuevo ${esc(child.name)}</h3>
+          <h3 class="sr-only" id="newUserTitle">Nuevo ${esc(child.name)}</h3>
           <button class="icon-btn icon-btn--always" type="button" data-action="close" aria-label="Cerrar">${ICONS.close}</button>
         </div>
         <p class="dialog__meta">Dependerá de: <strong>${esc(me.user.name)}</strong></p>

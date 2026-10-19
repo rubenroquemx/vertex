@@ -42,15 +42,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const hero = $('.hero');
   const flota = $('.wa-flota');
   let ultimoY = scrollY;
+  let ancla = scrollY;
+  let direccion = 0;
   let pendiente = false;
+  // Solo toca el DOM cuando el estado cambia (sin recalcular estilos en cada cuadro)
+  const poner = (el, cls, on) => {
+    if (el.classList.contains(cls) !== on) el.classList.toggle(cls, on);
+  };
   const alDesplazar = () => {
     pendiente = false;
     const y = scrollY;
-    nav.classList.toggle('is-solid', y > 24);
+    poner(nav, 'is-solid', y > 24);
     const pasadoHero = y > hero.offsetHeight * 0.6;
-    nav.classList.toggle('is-oculta', pasadoHero && y > ultimoY + 4);
-    if (y < ultimoY - 4 || !pasadoHero) nav.classList.remove('is-oculta');
-    flota.classList.toggle('is-on', pasadoHero);
+    // Solo cambia tras recorrer una distancia clara en un sentido (evita que parpadee
+    // con desplazamientos lentos o el rebote del final de la página)
+    const sentido = Math.sign(y - ultimoY);
+    if (sentido && sentido !== direccion) {
+      direccion = sentido;
+      ancla = ultimoY;
+    }
+    if (!pasadoHero) poner(nav, 'is-oculta', false);
+    else if (direccion > 0 && y - ancla > 24) poner(nav, 'is-oculta', true);
+    else if (direccion < 0 && ancla - y > 24) poner(nav, 'is-oculta', false);
+    poner(flota, 'is-on', pasadoHero);
     ultimoY = y;
     if (!QUIETO) {
       for (const el of $$('[data-parallax]')) {

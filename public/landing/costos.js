@@ -35,7 +35,6 @@ async function api(path, body) {
 }
 
 const tipo = () => document.querySelector('input[name="tipo"]:checked')?.value || null;
-const modo = () => document.querySelector('input[name="modo"]:checked').value;
 
 function pintarTipos() {
   $('#czTipos').innerHTML = Object.entries(datos.tipos)
@@ -69,31 +68,23 @@ function pintarTerritorios() {
     ? `<option value="">Elige…</option>${lista.map((x) => `<option value="${x.clave}">${esc(x.nombre)} · ${NUM.format(x.ln)}</option>`).join('')}`
     : '<option value="">No hay datos de este nivel para la entidad</option>';
   if (lista.some((x) => String(x.clave) === previo)) sel.value = previo;
-  if (!lista.length) ayuda.textContent = `No hay ${ETIQUETA[t].toLowerCase()}s cargados para ${ent.nombre}. Usa «Capturar lista nominal».`;
+  if (!lista.length) ayuda.textContent = `Por ahora no hay ${ETIQUETA[t].toLowerCase()}s disponibles para ${ent.nombre}.`;
 }
 
 function limpiarErrores() {
-  for (const id of ['tipo', 'entidad', 'clave', 'ln']) $(`#${id}-err`).textContent = '';
+  for (const id of ['tipo', 'entidad', 'clave']) $(`#${id}-err`).textContent = '';
   $('#czErr').textContent = '';
 }
 
 function cuerpo() {
-  const c = { tipo: tipo() };
-  if (modo() === 'manual') {
-    c.ln = $('#czLn').value.replace(/[^\d]/g, '');
-    c.nombre = $('#czNombre').value.trim();
-  } else {
-    c.entidad = $('#czEntidad').value;
-    if (c.tipo !== 'estatal') c.clave = $('#czClave').value;
-  }
+  const c = { tipo: tipo(), entidad: $('#czEntidad').value };
+  if (c.tipo !== 'estatal') c.clave = $('#czClave').value;
   return c;
 }
 
 // ¿Hay lo mínimo para cotizar? (evita errores mientras la persona todavía está eligiendo)
 function completo(c) {
-  if (!c.tipo) return false;
-  if (modo() === 'manual') return Number(c.ln) >= 100;
-  if (!c.entidad) return false;
+  if (!c.tipo || !c.entidad) return false;
   return c.tipo === 'estatal' || Boolean(c.clave);
 }
 
@@ -163,13 +154,6 @@ function mostrar(r) {
   $('#rWa').href = `https://wa.me/${WA}?text=${encodeURIComponent(texto)}`;
 }
 
-function cambiarModo() {
-  const manual = modo() === 'manual';
-  $('#modoLista').hidden = manual;
-  $('#modoManual').hidden = !manual;
-  calcular();
-}
-
 async function iniciar() {
   try {
     datos = await api('');
@@ -178,30 +162,20 @@ async function iniciar() {
     return;
   }
   pintarTipos();
-  if (datos.territorios.length) {
-    pintarEntidades();
-  } else {
-    // Sin padrón cargado: solo captura manual
-    document.querySelector('input[name="modo"][value="manual"]').checked = true;
-    $('#czModo').hidden = true;
-    cambiarModo();
+  if (!datos.territorios.length) {
+    $('#czApp').innerHTML = '<p class="cz-err">Por ahora no hay territorios disponibles para cotizar. Escríbenos por WhatsApp al 993 220 0146.</p>';
+    return;
   }
+  pintarEntidades();
   $('#czTipos').addEventListener('change', () => {
     pintarTerritorios();
     calcular();
   });
-  $('#czModo').addEventListener('change', cambiarModo);
   $('#czEntidad').addEventListener('change', () => {
     pintarTerritorios();
     calcular();
   });
   $('#czClave').addEventListener('change', calcular);
-  $('#czLn').addEventListener('input', (e) => {
-    const n = e.target.value.replace(/[^\d]/g, '');
-    e.target.value = n ? NUM.format(Number(n)) : '';
-    calcular();
-  });
-  $('#czNombre').addEventListener('input', calcular);
   $('#rPrint').addEventListener('click', () => {
     $('#rCalWrap').open = true;
     window.print();

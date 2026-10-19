@@ -1112,7 +1112,8 @@ app.get('/api/costos/:clave', costosClave, (req, res) => res.json(costos.publico
 app.post('/api/costos/:clave/cotizar', costosClave, (req, res) => {
   try {
     // La cotización pública siempre parte de hoy (contratando hoy)
-    const { fecha: _f, ...cuerpo } = req.body || {};
+    // y solo con territorios de la base de datos (sin lista nominal capturada a mano)
+    const { fecha: _f, ln: _ln, nombre: _n, ...cuerpo } = req.body || {};
     res.json(costos.cotizar(cuerpo));
   } catch (err) {
     if (err instanceof costos.CostosError) return res.status(err.status).json({ error: err.message, fields: err.fields });

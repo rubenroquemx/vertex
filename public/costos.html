@@ -37,10 +37,6 @@
 
       <fieldset class="cz-paso">
         <legend><span class="cz-n" aria-hidden="true">2</span>Territorio</legend>
-        <div class="cz-seg" role="radiogroup" aria-label="Origen de la lista nominal" id="czModo">
-          <label><input type="radio" name="modo" value="lista" checked><span>Elegir de la lista</span></label>
-          <label><input type="radio" name="modo" value="manual"><span>Capturar lista nominal</span></label>
-        </div>
         <div class="cz-modo" id="modoLista">
           <div class="cz-campo">
             <label for="czEntidad">Entidad</label>
@@ -53,18 +49,6 @@
             <p class="cz-err" id="clave-err"></p>
           </div>
           <p class="cz-ayuda" id="czListaAyuda"></p>
-        </div>
-        <div class="cz-modo" id="modoManual" hidden>
-          <div class="cz-campo">
-            <label for="czNombre">Nombre del territorio <span class="cz-opc">(opcional)</span></label>
-            <input id="czNombre" class="cz-input" maxlength="120" placeholder="ej. Distrito 05 de Jalisco" autocomplete="off">
-          </div>
-          <div class="cz-campo">
-            <label for="czLn">Lista nominal</label>
-            <input id="czLn" class="cz-input" inputmode="numeric" autocomplete="off" placeholder="ej. 320,000">
-            <p class="cz-ayuda">Número de ciudadanos en la lista nominal del INE del territorio.</p>
-            <p class="cz-err" id="ln-err"></p>
-          </div>
         </div>
       </fieldset>
 

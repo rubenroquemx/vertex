@@ -1305,8 +1305,18 @@ app.get(['/sw.js', '/manifest.webmanifest'], (req, res, next) => {
 // Leaflet (mapas OpenStreetMap) servido desde node_modules
 app.use('/vendor/leaflet', express.static(path.join(__dirname, 'node_modules', 'leaflet', 'dist'), { maxAge: isProd ? '30d' : 0 }));
 const REVALIDAR = /\.(html|css|js|webmanifest)$/;
+// Raíz del sitio: quien tiene sesión entra directo a la app; los visitantes ven la página
+// informativa (con «Iniciar sesión», que abre la app en /entrar)
+app.get('/', (req, res) => {
+  const token = auth.readCookie(req, 'vx_session');
+  const sesion = token && sessions.get(token);
+  const conSesion = Boolean(sesion && users.get(sesion.userId) && !users.get(sesion.userId).disabled);
+  res.set('Cache-Control', 'no-cache');
+  res.sendFile(path.join(PUBLIC_DIR, conSesion ? 'index.html' : 'landing.html'));
+});
 app.use(
   express.static(PUBLIC_DIR, {
+    index: false,
     maxAge: isProd ? '1h' : 0,
     setHeaders(res, file) {
       if (REVALIDAR.test(file)) res.setHeader('Cache-Control', 'no-cache');

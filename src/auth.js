@@ -187,6 +187,7 @@ async function ensureAdminCredentials() {
 }
 
 module.exports = {
+  readCookie,
   COOKIE,
   USERNAME_RE,
   PASSWORD_HINT,

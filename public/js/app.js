@@ -2114,7 +2114,7 @@ logoutBtn.addEventListener('click', async () => {
   await borrarDatosLocales();
   localStorage.removeItem(ME_LOCAL);
   await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
-  location.href = '/';
+  location.href = '/entrar';
 });
 
 // ---------- Apariencia (clara / oscura / la del sistema) ----------
@@ -2219,6 +2219,8 @@ const leerMe = () => {
 async function boot() {
   try {
     state.me = await api('/api/me');
+    // /entrar es la puerta de inicio de sesión desde la página informativa: con sesión, al panel
+    if (location.pathname === '/entrar') history.replaceState(null, '', '/');
     try {
       localStorage.setItem(ME_LOCAL, JSON.stringify(state.me));
     } catch {}

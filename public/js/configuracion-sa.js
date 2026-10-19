@@ -12,9 +12,10 @@ const I = {
 };
 
 export async function viewConfiguracionSA(route) {
-  const [wa, aviso, ejemplo, cz] = await Promise.all([api('/api/configuracion/whatsapp'), api('/api/privacidad'), api('/api/configuracion/ejemplo'), api('/api/configuracion/costos')]);
+  const [wa, aviso, ejemplo, cz, gen] = await Promise.all([api('/api/configuracion/whatsapp'), api('/api/privacidad'), api('/api/configuracion/ejemplo'), api('/api/configuracion/costos'), api('/api/configuracion/generador')]);
   route.data = wa;
   route.costos = cz;
+  route.gen = gen;
   const tab = new URLSearchParams(location.search).get('tab') || 'whatsapp';
   route.tab = TABS.some((t) => t.key === tab) ? tab : 'whatsapp';
   return `
@@ -28,7 +29,7 @@ export async function viewConfiguracionSA(route) {
     </div>
     <section class="tabs__panel" role="tabpanel" id="panel-whatsapp" aria-labelledby="tab-whatsapp" ${route.tab === 'whatsapp' ? '' : 'hidden'}>${panelWhatsapp(route.data)}</section>
     <section class="tabs__panel" role="tabpanel" id="panel-costos" aria-labelledby="tab-costos" ${route.tab === 'costos' ? '' : 'hidden'}>${panelCostos(route.costos)}</section>
-    <section class="tabs__panel" role="tabpanel" id="panel-general" aria-labelledby="tab-general" ${route.tab === 'general' ? '' : 'hidden'}>${panelGeneral(aviso, ejemplo)}</section>
+    <section class="tabs__panel" role="tabpanel" id="panel-general" aria-labelledby="tab-general" ${route.tab === 'general' ? '' : 'hidden'}>${panelGeneral(aviso, ejemplo)}${panelGenerador(route.gen)}</section>
     <dialog class="dialog" id="waDialog" aria-labelledby="waDlgT"></dialog>`;
 }
 
@@ -223,6 +224,7 @@ export function mountConfiguracionSA(root, route) {
 
   mountWhatsapp(root, route);
   mountCostos(root, route);
+  mountGenerador(root, route);
   mountGeneral(root);
   return undefined;
 }
@@ -527,6 +529,121 @@ function mountCostos(root, route) {
       toast('Enlace listo');
     } catch (err) {
       toast(err.message);
+      b.disabled = false;
+    }
+  });
+}
+
+// ---------- Generador de estructura (servidor de demostración) ----------
+function panelGenerador(g) {
+  const disponibles = g.cpvs.filter((c) => !c.tieneZonas);
+  const lotes = [...g.lotes].reverse();
+  return `
+    <section class="card form-card gen" id="genCard" aria-labelledby="genT">
+      <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.users}</span><h3 id="genT">Generar estructura de demostración</h3></header>
+      <p>Arma la estructura completa de un Coordinador de Promoción del Voto que aún no tiene zonas: reparte su territorio en zonas con su coordinador y crea responsables de sección, promotores y promovidos (con revisiones y observaciones) hasta el porcentaje de su meta que indiques. Se registran como datos normales; cada carga se puede eliminar completa desde aquí.</p>
+      <div class="field gen__pass"><label for="genPass">Tu contraseña para confirmar</label>
+        <input class="input" id="genPass" type="password" autocomplete="current-password"><p class="field__error" id="genPass-err"></p></div>
+      ${
+        disponibles.length
+          ? `<form id="genForm" novalidate class="gen__form">
+              <div class="field-row">
+                <div class="field"><label for="genCpv">Coordinador de Promoción del Voto</label>
+                  <select class="input" id="genCpv">${disponibles.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}${c.territorio ? ` · ${esc(c.territorio)}` : ''}</option>`).join('')}</select>
+                  <p class="field__error" id="genCpv-err"></p></div>
+                <div class="field"><label for="genPct">Avance de la meta (%)</label>
+                  <input class="input" id="genPct" inputmode="numeric" value="20">
+                  <p class="field__error" id="genPct-err"></p></div>
+              </div>
+              <p class="form-error" id="genErr" role="alert"></p>
+              <div class="mat-form__acc"><button class="btn" type="submit">Generar estructura</button></div>
+            </form>`
+          : '<p class="muted">Todos los Coordinadores de Promoción del Voto ya tienen zonas. El generador solo trabaja con cuentas sin estructura.</p>'
+      }
+      <div id="genRes" aria-live="polite"></div>
+      ${
+        lotes.length
+          ? `<h4 class="gen__sub">Cargas generadas</h4>
+            <ul class="gen__lotes">${lotes
+              .map(
+                (l) => `<li>
+                  <div><strong>${esc(l.cpv)}</strong> · ${fmtNum(l.porcentaje)} % de ${fmtNum(l.meta)}
+                    <span class="muted-block">${esc(fmtDateTime(l.at))} · ${fmtNum(l.conteo.zonas)} zonas · ${fmtNum(l.conteo.responsables)} responsables · ${fmtNum(l.conteo.promotores)} promotores · ${fmtNum(l.conteo.promovidos)} promovidos</span></div>
+                  <button class="btn btn--secondary btn--sm btn--danger" type="button" data-eliminar="${esc(l.id)}">Eliminar carga</button>
+                </li>`
+              )
+              .join('')}</ul>
+            <p class="field__help">Para eliminar una carga escribe tu contraseña en el campo de arriba. Se borran sus cuentas y promovidos; lo capturado por personas no se toca.</p>`
+          : ''
+      }
+    </section>`;
+}
+
+function mountGenerador(root, route) {
+  const card = $('#genCard', root);
+  if (!card) return;
+  const setErrors = fieldErrorSetter(root, { cpvId: 'genCpv', porcentaje: 'genPct', password: 'genPass' });
+  const recargar = async () => {
+    route.gen = await api('/api/configuracion/generador');
+    const res = $('#genRes', root).innerHTML;
+    card.outerHTML = panelGenerador(route.gen);
+    $('#genRes', root).innerHTML = res;
+    mountGenerador(root, route);
+  };
+  const form = $('#genForm', root);
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setErrors();
+    $('#genErr', root).textContent = '';
+    const pass = $('#genPass', root);
+    if (!pass.value) return setErrors({ password: 'Escribe tu contraseña.' });
+    const btn = form.querySelector('[type="submit"]');
+    btn.disabled = true;
+    btn.textContent = 'Generando… puede tardar un minuto';
+    try {
+      const r = await api('/api/configuracion/generador', { method: 'POST', body: { cpvId: $('#genCpv', root).value, porcentaje: $('#genPct', root).value, password: pass.value } });
+      const c = r.conteo;
+      $('#genRes', root).innerHTML = `<div class="notice notice--ok">${ICONS.check || ''}<div>
+          <strong>Estructura de ${esc(r.cpv)} lista</strong>: ${fmtNum(c.zonas)} zonas, ${fmtNum(c.responsables)} responsables de sección, ${fmtNum(c.promotores)} promotores y ${fmtNum(c.promovidos)} promovidos (${fmtNum(c.validado)} aprobados, ${fmtNum(c.en_revision + c.observaciones)} en revisión, ${fmtNum(c.rechazado)} rechazados) · ${fmtNum(r.porcentaje)} % de una meta de ${fmtNum(r.meta)}.
+          <br>Todas las cuentas nuevas usan la contraseña <code class="mono" id="genClave">${esc(r.password)}</code> <button class="btn btn--secondary btn--sm" type="button" id="genCopiar">Copiar</button>. Guárdala: no se vuelve a mostrar.</div></div>`;
+      $('#genCopiar', root)?.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(r.password);
+          toast('Contraseña copiada');
+        } catch {}
+      });
+      toast('Estructura generada');
+      await recargar();
+    } catch (err) {
+      if (err.data?.fields) setErrors(err.data.fields);
+      else $('#genErr', root).textContent = err.message;
+      btn.disabled = false;
+      btn.textContent = 'Generar estructura';
+    }
+  });
+  card.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-eliminar]');
+    if (!b) return;
+    const pass = $('#genPass', root);
+    if (!pass?.value) {
+      setErrors({ password: 'Escribe tu contraseña para eliminar la carga.' });
+      return pass?.focus();
+    }
+    // Dos toques: el primero pide confirmar
+    if (!b.dataset.confirmar) {
+      b.dataset.confirmar = '1';
+      b.textContent = '¿Seguro? Toca de nuevo para eliminar';
+      return;
+    }
+    b.disabled = true;
+    try {
+      await api(`/api/configuracion/generador/${encodeURIComponent(b.dataset.eliminar)}/eliminar`, { method: 'POST', body: { password: pass.value } });
+      toast('Carga eliminada');
+      $('#genRes', root).innerHTML = '';
+      await recargar();
+    } catch (err) {
+      if (err.data?.fields) setErrors(err.data.fields);
+      else toast(err.message);
       b.disabled = false;
     }
   });

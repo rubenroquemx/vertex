@@ -25,6 +25,7 @@ const listas = require('./src/listas');
 const responsables = require('./src/responsables');
 const metas = require('./src/metas');
 const costos = require('./src/costos');
+const generador = require('./src/generador');
 const panelSeccion = require('./src/panel-seccion');
 const panelSA = require('./src/panel-sa');
 const promovidos = require('./src/promovidos');
@@ -1066,6 +1067,44 @@ app.put('/api/responsables/:id', requireUser, requireCZ, async (req, res) => {
   await users.update(current.id, patch);
   await audit.add({ action: 'responsable.update', by: req.realUser.id, as: req.user.id, user: current.id, password: Boolean(cuenta.password) });
   res.json(rsDetail(users.get(current.id)));
+});
+
+// --- Generador de estructura (servidor de demostración) — Super administrador ---
+// Arma zonas, responsables, promotores y promovidos de un CPV sin zonas hasta un % de su meta.
+app.get('/api/configuracion/generador', requireUser, requireRole('superadmin'), (req, res) => {
+  const all = users.all();
+  const cpvs = all
+    .filter((u) => u.role === 'coord_promocion')
+    .map((u) => ({ id: u.id, name: u.name, territorio: u.territorio ? territory.resolve(u.territorio).resumen || null : null, tieneZonas: all.some((z) => z.role === 'coord_zona' && z.parentId === u.id) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  res.json({ cpvs, lotes: generador.lotes(), confirm: { hasPassword: Boolean(req.realUser.passwordHash) } });
+});
+app.post('/api/configuracion/generador', requireUser, requireRole('superadmin'), async (req, res) => {
+  const check = await auth.confirmPassword(req.realUser, req.body?.password);
+  if (!check.ok) return res.status(check.status).json(check.field ? { error: check.error, fields: { password: check.error } } : { error: check.error });
+  try {
+    const r = await generador.generar({ cpvId: req.body?.cpvId, porcentaje: req.body?.porcentaje, porId: req.realUser.id });
+    olvidarPaneles();
+    const { password: _p, ...sinClave } = r;
+    await audit.add({ action: 'generador.estructura', by: req.realUser.id, as: r.cpvId, after: sinClave });
+    res.json(r);
+  } catch (err) {
+    if (err instanceof generador.GeneradorError) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
+});
+app.post('/api/configuracion/generador/:id/eliminar', requireUser, requireRole('superadmin'), async (req, res) => {
+  const check = await auth.confirmPassword(req.realUser, req.body?.password);
+  if (!check.ok) return res.status(check.status).json(check.field ? { error: check.error, fields: { password: check.error } } : { error: check.error });
+  try {
+    await generador.eliminar(req.params.id, req.realUser.id);
+    olvidarPaneles();
+    await audit.add({ action: 'generador.eliminar', by: req.realUser.id, after: { lote: req.params.id } });
+    res.json({ ok: true, lotes: generador.lotes() });
+  } catch (err) {
+    if (err instanceof generador.GeneradorError) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
 });
 
 // --- Calculadora de costos (semi pública: solo con el enlace que lleva la clave) ---

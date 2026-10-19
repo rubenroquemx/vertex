@@ -3047,3 +3047,13 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
 .field-row--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 767px) { .field-row--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cz-link { flex-direction: column; } }
 .cz-prev td, .cz-prev th { white-space: nowrap; }
+
+/* Configuración › General › Generador de estructura */
+.gen { margin-top: var(--space-xl); }
+.gen__form { margin-top: var(--space-md); }
+.gen__pass { margin-top: var(--space-lg); max-width: 420px; }
+.gen__sub { margin: var(--space-xl) 0 var(--space-md); font-size: 15px; }
+.gen__lotes { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-md); }
+.gen__lotes li { display: flex; justify-content: space-between; align-items: center; gap: var(--space-lg); padding: var(--space-lg); border-radius: var(--radius); background: var(--color-surface-alt); }
+.gen #genClave { padding: 2px 8px; border-radius: 6px; background: var(--color-muted); font-size: 15px; user-select: all; }
+@media (max-width: 767px) { .gen__lotes li { flex-direction: column; align-items: stretch; } }

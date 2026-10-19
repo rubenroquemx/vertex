@@ -74,8 +74,11 @@ function contexto(promotor) {
   const seccion = t?.secciones?.[0] ?? null;
   if (!resp || resp.role !== 'resp_seccion' || seccion === null) return null;
   const state = geo.getState(t.entidad);
+  // CPV dueño de la estructura (responsable → zona → CPV): cada CPV es independiente
+  const zona = users.get(resp.parentId);
   return {
     responsable: { id: resp.id, name: resp.name },
+    cpvId: zona?.parentId || null,
     entidad: { clave: t.entidad, nombre: state?.meta?.nombre || '' },
     seccion,
     vigenciaMin: ELECCION.anio,
@@ -150,10 +153,11 @@ async function validar(promotor, body, { excluirId = null } = {}) {
 
   if (Object.keys(errors).length) throw new PromovidoError('Revisa los datos marcados', 422, errors);
 
-  // Duplicados: una persona solo una vez en todo el sistema
+  // Duplicados: una persona solo una vez dentro de la estructura de cada CPV. Cada CPV es un
+  // cliente independiente: otro CPV puede registrar a la misma persona y ninguno se entera.
   const dup = await query(
-    'SELECT clave_elector, curp FROM promovidos WHERE (clave_elector = $1 OR curp = $2) AND id IS DISTINCT FROM $3 LIMIT 1',
-    [claveElector, curp, excluirId]
+    'SELECT clave_elector, curp FROM promovidos WHERE cpv_id = $4 AND (clave_elector = $1 OR curp = $2) AND id IS DISTINCT FROM $3 LIMIT 1',
+    [claveElector, curp, excluirId, ctx.cpvId]
   );
   if (dup.rows.length) {
     const f = {};
@@ -216,9 +220,9 @@ async function crear(promotor, body) {
   try {
     await tx(async (c) => {
       const r = await c.query(
-        `INSERT INTO promovidos (id, promotor_id, responsable_id, seccion, data, clave_elector, curp)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING created_at`,
-        [id, promotor.id, v.ctx.responsable.id, v.seccion, v.data, v.claveElector, v.curp]
+        `INSERT INTO promovidos (id, promotor_id, responsable_id, seccion, data, clave_elector, curp, cpv_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING created_at`,
+        [id, promotor.id, v.ctx.responsable.id, v.seccion, v.data, v.claveElector, v.curp, v.ctx.cpvId]
       );
       createdAt = r.rows[0].created_at.toISOString();
       await c.query('INSERT INTO promovido_ine (promovido_id, lado, image) VALUES ($1, $2, $3), ($1, $4, $5)', [

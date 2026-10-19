@@ -479,6 +479,25 @@ const MIGRATIONS = [
       UPDATE eventos SET publicado_at = updated_at WHERE estado IN ('programado', 'realizado');
     `,
   },
+  {
+    id: 14,
+    name: 'promovidos: cada CPV es independiente (una persona una vez por CPV, no en todo el sistema)',
+    sql: `
+      -- El CPV dueño de cada promovido (promotor → responsable → zona → CPV)
+      ALTER TABLE promovidos ADD COLUMN cpv_id uuid;
+      UPDATE promovidos p SET cpv_id = z.parent_id
+        FROM users rs JOIN users z ON z.id = rs.parent_id
+        WHERE rs.id = p.responsable_id;
+      -- Unicidad por CPV: dos clientes con territorio compartido pueden registrar a la misma persona
+      DROP INDEX IF EXISTS promovidos_clave_elector_uq;
+      DROP INDEX IF EXISTS promovidos_curp_uq;
+      CREATE UNIQUE INDEX promovidos_cpv_clave_uq ON promovidos(cpv_id, clave_elector);
+      CREATE UNIQUE INDEX promovidos_cpv_curp_uq ON promovidos(cpv_id, curp);
+      -- Los cotejos buscan por clave o CURP dentro del árbol del CPV
+      CREATE INDEX promovidos_clave_idx ON promovidos(clave_elector);
+      CREATE INDEX promovidos_curp_idx ON promovidos(curp);
+    `,
+  },
 ];
 
 async function migrate() {

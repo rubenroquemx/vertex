@@ -3036,3 +3036,14 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
 @media (max-width: 767px) and (prefers-reduced-motion: reduce) {
   .dock, .dock > *, .dock__isla { transition: none !important; }
 }
+
+/* Configuración › Cotizador */
+.cz-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-xl); align-content: start; min-width: 0; }
+.cz-link { display: flex; gap: var(--space-md); margin-top: var(--space-lg); }
+.cz-link .input { flex: 1; min-width: 0; font-size: 13px; }
+.cz-link__acc { display: flex; gap: var(--space-md); margin-top: var(--space-md); flex-wrap: wrap; }
+.cz-factores { border: 0; padding: 0; margin: var(--space-md) 0 0; }
+.cz-factores legend { font-size: 14px; font-weight: 700; margin-bottom: var(--space-md); padding: 0; }
+.field-row--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 767px) { .field-row--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cz-link { flex-direction: column; } }
+.cz-prev td, .cz-prev th { white-space: nowrap; }

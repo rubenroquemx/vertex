@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Cotizador · VERTEX</title>
+  <meta name="theme-color" content="#0f0f0e">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500..900&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+  <link rel="stylesheet" href="/landing/landing.css">
+  <link rel="stylesheet" href="/landing/costos.css">
+  <script src="/landing/costos.js" defer></script>
+</head>
+<body class="cz">
+  <header class="cz-top">
+    <div class="wrap cz-top__in">
+      <a href="/" class="cz-top__logo"><img src="/brand/logo-oscuro.svg" alt="VERTEX" width="132" height="30"></a>
+      <span class="cz-top__tag">Cotizador</span>
+    </div>
+    <div class="wrap cz-hero">
+      <h1 class="cz-hero__t">Cotiza VERTEX para tu campaña</h1>
+      <p class="cz-hero__p">Elige el tipo de elección y el territorio. El precio se calcula con su lista nominal y cubre desde la contratación hasta el cierre del servicio, 30 días después de la elección.</p>
+    </div>
+  </header>
+
+  <main class="wrap cz-main" id="czApp" aria-busy="true">
+    <form class="cz-form" id="czForm" novalidate>
+      <fieldset class="cz-paso">
+        <legend><span class="cz-n" aria-hidden="true">1</span>Tipo de elección</legend>
+        <div class="cz-tipos" id="czTipos"></div>
+        <p class="cz-err" id="tipo-err"></p>
+      </fieldset>
+
+      <fieldset class="cz-paso">
+        <legend><span class="cz-n" aria-hidden="true">2</span>Territorio</legend>
+        <div class="cz-seg" role="radiogroup" aria-label="Origen de la lista nominal" id="czModo">
+          <label><input type="radio" name="modo" value="lista" checked><span>Elegir de la lista</span></label>
+          <label><input type="radio" name="modo" value="manual"><span>Capturar lista nominal</span></label>
+        </div>
+        <div class="cz-modo" id="modoLista">
+          <div class="cz-campo">
+            <label for="czEntidad">Entidad</label>
+            <select id="czEntidad" class="cz-input"></select>
+            <p class="cz-err" id="entidad-err"></p>
+          </div>
+          <div class="cz-campo" id="czClaveCampo" hidden>
+            <label for="czClave" id="czClaveLbl">Distrito</label>
+            <select id="czClave" class="cz-input"></select>
+            <p class="cz-err" id="clave-err"></p>
+          </div>
+          <p class="cz-ayuda" id="czListaAyuda"></p>
+        </div>
+        <div class="cz-modo" id="modoManual" hidden>
+          <div class="cz-campo">
+            <label for="czNombre">Nombre del territorio <span class="cz-opc">(opcional)</span></label>
+            <input id="czNombre" class="cz-input" maxlength="120" placeholder="ej. Distrito 05 de Jalisco" autocomplete="off">
+          </div>
+          <div class="cz-campo">
+            <label for="czLn">Lista nominal</label>
+            <input id="czLn" class="cz-input" inputmode="numeric" autocomplete="off" placeholder="ej. 320,000">
+            <p class="cz-ayuda">Número de ciudadanos en la lista nominal del INE del territorio.</p>
+            <p class="cz-err" id="ln-err"></p>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="cz-paso">
+        <legend><span class="cz-n" aria-hidden="true">3</span>Fecha de contratación</legend>
+        <div class="cz-campo">
+          <label for="czFecha">Inicio del servicio</label>
+          <input id="czFecha" class="cz-input" type="date">
+          <p class="cz-ayuda" id="czFechaAyuda"></p>
+          <p class="cz-err" id="fecha-err"></p>
+        </div>
+      </fieldset>
+    </form>
+
+    <aside class="cz-res" id="czRes" aria-live="polite" aria-label="Cotización">
+      <div class="cz-res__vacio" id="czVacio">
+        <p class="cz-res__k">Tu cotización</p>
+        <p>Elige el tipo de elección y el territorio para ver el precio.</p>
+      </div>
+      <div id="czOk" hidden>
+        <p class="cz-res__k" id="rTipo"></p>
+        <h2 class="cz-res__terr" id="rTerr"></h2>
+        <p class="cz-res__ln"><span id="rLn"></span> ciudadanos en lista nominal</p>
+
+        <div class="cz-total">
+          <p class="cz-total__k">Total de la campaña <span>sin IVA</span></p>
+          <p class="cz-total__v" id="rTotal"></p>
+          <p class="cz-total__iva" id="rIva"></p>
+        </div>
+
+        <dl class="cz-desg">
+          <div><dt>Instalación</dt><dd id="rInst"></dd></div>
+          <div><dt>Mensualidad</dt><dd id="rMens"></dd></div>
+          <div><dt>Meses de servicio</dt><dd id="rMeses"></dd></div>
+          <div><dt>Costo por ciudadano en lista</dt><dd id="rElector"></dd></div>
+        </dl>
+        <p class="cz-nota" id="rPeriodo"></p>
+
+        <div class="cz-primer">
+          <p class="cz-primer__k">Primer pago <span>instalación + primer mes</span></p>
+          <p class="cz-primer__v" id="rPrimer"></p>
+        </div>
+
+        <details class="cz-cal" id="rCalWrap">
+          <summary>Calendario de pagos <span id="rCalN"></span></summary>
+          <div class="cz-cal__tabla">
+            <table>
+              <thead><tr><th scope="col">Fecha</th><th scope="col">Concepto</th><th scope="col" class="num">Monto</th><th scope="col" class="num">Con IVA</th></tr></thead>
+              <tbody id="rCal"></tbody>
+            </table>
+          </div>
+          <p class="cz-nota">Todos los meses se pagan por adelantado, al inicio de cada periodo.</p>
+        </details>
+
+        <div class="cz-acc">
+          <a class="btn btn--wa btn--lg" id="rWa" href="https://wa.me/529932200146" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3Z"/></svg>
+            <span>Quiero esta cotización</span>
+          </a>
+          <button class="btn btn--line btn--lg" type="button" id="rPrint">Imprimir o guardar PDF</button>
+        </div>
+        <p class="cz-nota cz-nota--legal">Precios en pesos mexicanos, sin IVA. Cotización informativa generada el <span id="rHoy"></span>; sujeta a confirmación.</p>
+      </div>
+      <p class="cz-err" id="czErr" role="alert"></p>
+    </aside>
+  </main>
+
+  <footer class="pie">
+    <img src="/brand/logo-oscuro.svg" alt="VERTEX" width="110" height="25" loading="lazy">
+    <p>VERTEX · Tu estructura electoral bajo control</p>
+  </footer>
+</body>
+</html>

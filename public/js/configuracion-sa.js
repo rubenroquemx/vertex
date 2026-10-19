@@ -1,8 +1,9 @@
-// Configuración del Super administrador: pestañas "General" y "WhatsApp (Evolution API)".
+// Configuración del Super administrador: pestañas "WhatsApp (Evolution API)", "Cotizador" y "General".
 import { icon, ICONS, $, esc, fmtNum, fmtDateTime, api, fieldErrorSetter, toast, abrirEnArea, navigate } from './lib.js';
 
 const TABS = [
   { key: 'whatsapp', name: 'WhatsApp (Evolution API)' },
+  { key: 'costos', name: 'Cotizador' },
   { key: 'general', name: 'General' },
 ];
 const I = {
@@ -11,8 +12,9 @@ const I = {
 };
 
 export async function viewConfiguracionSA(route) {
-  const [wa, aviso, ejemplo] = await Promise.all([api('/api/configuracion/whatsapp'), api('/api/privacidad'), api('/api/configuracion/ejemplo')]);
+  const [wa, aviso, ejemplo, cz] = await Promise.all([api('/api/configuracion/whatsapp'), api('/api/privacidad'), api('/api/configuracion/ejemplo'), api('/api/configuracion/costos')]);
   route.data = wa;
+  route.costos = cz;
   const tab = new URLSearchParams(location.search).get('tab') || 'whatsapp';
   route.tab = TABS.some((t) => t.key === tab) ? tab : 'whatsapp';
   return `
@@ -25,6 +27,7 @@ export async function viewConfiguracionSA(route) {
       ).join('')}
     </div>
     <section class="tabs__panel" role="tabpanel" id="panel-whatsapp" aria-labelledby="tab-whatsapp" ${route.tab === 'whatsapp' ? '' : 'hidden'}>${panelWhatsapp(route.data)}</section>
+    <section class="tabs__panel" role="tabpanel" id="panel-costos" aria-labelledby="tab-costos" ${route.tab === 'costos' ? '' : 'hidden'}>${panelCostos(route.costos)}</section>
     <section class="tabs__panel" role="tabpanel" id="panel-general" aria-labelledby="tab-general" ${route.tab === 'general' ? '' : 'hidden'}>${panelGeneral(aviso, ejemplo)}</section>
     <dialog class="dialog" id="waDialog" aria-labelledby="waDlgT"></dialog>`;
 }
@@ -219,6 +222,7 @@ export function mountConfiguracionSA(root, route) {
   });
 
   mountWhatsapp(root, route);
+  mountCostos(root, route);
   mountGeneral(root);
   return undefined;
 }
@@ -362,5 +366,168 @@ function mountWhatsapp(root, route) {
     });
     abrirEnArea(dlg);
     $('#waPass', dlg)?.focus();
+  });
+}
+
+// ---------- Cotizador: parámetros del precio y enlace semi público ----------
+const TIPOS_CZ = { estatal: 'Estatal', federal: 'Diputación federal', local: 'Diputación local', municipal: 'Municipal' };
+const MXN = (n) => `$${fmtNum(Math.round(n))}`;
+// Territorios de muestra para ver el efecto de los parámetros (lista nominal aproximada)
+const MUESTRA = [
+  ['Estado grande', 12700000],
+  ['Referencia', null],
+  ['Estado mediano', 1800000],
+  ['Estado chico', 580000],
+  ['Distrito federal típico', 330000],
+  ['Municipio mediano', 100000],
+  ['Municipio chico', 20000],
+];
+
+function panelCostos(d) {
+  const c = d.config;
+  const enlace = c.token ? `${location.origin}/costos/${c.token}` : '';
+  const campo = (id, label, valor, ayuda = '', extra = 'inputmode="decimal"') => `
+    <div class="field">
+      <label for="cz_${id}">${label}</label>
+      <input class="input" id="cz_${id}" name="${id}" ${extra} value="${esc(valor)}">
+      ${ayuda ? `<p class="field__help">${ayuda}</p>` : ''}
+      <p class="field__error" id="cz_${id}-err"></p>
+    </div>`;
+  const filas = MUESTRA.map(([n, ln]) => {
+    const l = ln ?? c.anclaLn;
+    const mens = Math.ceil((c.anclaPrecio * (l / c.anclaLn) ** c.exponente) / c.mesesRef / c.redondeo) * c.redondeo;
+    const total = c.instalacion + mens * c.mesesRef;
+    return `<tr><td>${esc(ln ? n : c.anclaNombre)}</td><td class="num">${fmtNum(l)}</td><td class="num">${MXN(total)}</td><td class="num">$${((mens * c.mesesRef) / l).toFixed(2)}</td></tr>`;
+  }).join('');
+  return `
+    <div class="cfg-grid">
+      <form class="card form-card" id="czForm" novalidate aria-labelledby="czT">
+        <header class="form-card__head">
+          <span class="form-card__icon" aria-hidden="true">${ICONS.alert}</span>
+          <h3 id="czT">Precio por campaña</h3>
+          <span class="form-card__aside">${d.actualizado ? `Actualizado ${esc(fmtDateTime(d.actualizado.at))}${d.actualizado.by ? ` · ${esc(d.actualizado.by)}` : ''}` : 'Valores iniciales'}</span>
+        </header>
+        <p class="units__help">Operación de la campaña = precio de referencia × (lista nominal ÷ lista de referencia)<sup>exponente</sup> × factor del tipo. Se cobra en mensualidades por adelantado, más la instalación. Precios sin IVA.</p>
+        <div class="field-row">
+          ${campo('anclaNombre', 'Territorio de referencia', c.anclaNombre, '', 'autocomplete="off"')}
+          ${campo('anclaLn', 'Su lista nominal', fmtNum(c.anclaLn), '', 'inputmode="numeric"')}
+        </div>
+        <div class="field-row">
+          ${campo('anclaPrecio', 'Precio de la campaña completa (sin IVA)', fmtNum(c.anclaPrecio), '', 'inputmode="numeric"')}
+          ${campo('mesesRef', 'Meses de la campaña completa', c.mesesRef, 'La mensualidad es el precio entre estos meses.', 'inputmode="numeric"')}
+        </div>
+        <div class="field-row">
+          ${campo('exponente', 'Exponente de proporcionalidad', c.exponente, '1 = proporcional directo; 0.8 = los territorios chicos pagan más por ciudadano.')}
+          ${campo('instalacion', 'Instalación', fmtNum(c.instalacion), '', 'inputmode="numeric"')}
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="cz_fechaFin">Cierre del servicio</label><input class="input" id="cz_fechaFin" type="date" value="${esc(c.fechaFin)}"><p class="field__error" id="cz_fechaFin-err"></p></div>
+          ${campo('minMeses', 'Mínimo de meses', c.minMeses, '', 'inputmode="numeric"')}
+        </div>
+        <div class="field-row">
+          ${campo('iva', 'IVA (%)', c.iva, 'Se muestra aparte del precio.')}
+          <div class="field"><label for="cz_redondeo">Redondear la mensualidad a</label>
+            <select class="input" id="cz_redondeo">${[1, 10, 100, 1000].map((r) => `<option value="${r}" ${c.redondeo === r ? 'selected' : ''}>${r === 1 ? 'Sin redondeo' : `$${fmtNum(r)}`}</option>`).join('')}</select></div>
+        </div>
+        <fieldset class="cz-factores">
+          <legend>Factor por tipo de elección</legend>
+          <div class="field-row field-row--4">
+            ${Object.entries(TIPOS_CZ).map(([k, n]) => campo(`factor_${k}`, n, c.factores[k])).join('')}
+          </div>
+        </fieldset>
+        <p class="form-error" id="czErr" role="alert"></p>
+        <div class="mat-form__acc"><button class="btn" type="submit">Guardar</button></div>
+      </form>
+
+      <div class="cz-side">
+        <section class="card" aria-labelledby="czLinkT">
+          <header class="dash-card__head"><h3 id="czLinkT">Enlace del cotizador</h3></header>
+          <p class="dash-note">Solo quien tenga el enlace puede abrir el cotizador, sin iniciar sesión. Si lo regeneras, el anterior deja de funcionar.</p>
+          ${
+            enlace
+              ? `<div class="cz-link"><input class="input mono" id="czLink" readonly value="${esc(enlace)}" aria-label="Enlace del cotizador">
+                  <button class="btn btn--secondary" type="button" id="czCopiar">Copiar</button></div>
+                <div class="cz-link__acc"><a class="btn btn--secondary btn--sm" href="${esc(enlace)}" target="_blank" rel="noopener">Abrir</a>
+                  <button class="btn btn--secondary btn--sm btn--danger" type="button" id="czRegen">Regenerar enlace</button></div>`
+              : '<button class="btn" type="button" id="czRegen">Crear enlace</button>'
+          }
+        </section>
+        <section class="card" aria-labelledby="czPrevT">
+          <header class="dash-card__head"><h3 id="czPrevT">Así quedan los precios</h3></header>
+          <p class="dash-note">Campaña completa (${esc(String(c.mesesRef))} meses), tipo estatal, con los valores guardados.</p>
+          <div class="table-wrap"><table class="table cz-prev"><thead><tr><th scope="col">Territorio</th><th scope="col" class="num">Lista nominal</th><th scope="col" class="num">Total sin IVA</th><th scope="col" class="num">Por ciudadano</th></tr></thead>
+          <tbody>${filas}</tbody></table></div>
+          ${d.territorios.length ? `<p class="dash-note">${d.territorios.length === 32 ? 'Las 32 entidades tienen padrón cargado' : `${fmtNum(d.territorios.length)} de 32 entidades con padrón cargado; las demás se cotizan capturando la lista nominal`}.</p>` : '<p class="dash-note">No hay padrón cargado: el cotizador pedirá capturar la lista nominal.</p>'}
+        </section>
+      </div>
+    </div>`;
+}
+
+function mountCostos(root, route) {
+  const form = $('#czForm', root);
+  if (!form) return;
+  const ids = ['anclaNombre', 'anclaLn', 'anclaPrecio', 'mesesRef', 'exponente', 'instalacion', 'fechaFin', 'minMeses', 'iva', 'factor_estatal', 'factor_federal', 'factor_local', 'factor_municipal'];
+  const setErrors = fieldErrorSetter(root, Object.fromEntries(ids.map((k) => [k, `cz_${k}`])));
+  const val = (k) => $(`#cz_${k}`, root).value.trim();
+  const recargar = (d) => {
+    route.costos = { ...route.costos, ...d };
+    $('#panel-costos', root).innerHTML = panelCostos(route.costos);
+    mountCostos(root, route);
+  };
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setErrors();
+    $('#czErr', root).textContent = '';
+    const btn = form.querySelector('[type="submit"]');
+    btn.disabled = true;
+    try {
+      const body = {
+        anclaNombre: val('anclaNombre'),
+        anclaLn: val('anclaLn'),
+        anclaPrecio: val('anclaPrecio'),
+        mesesRef: val('mesesRef'),
+        exponente: val('exponente').replace(',', '.'),
+        instalacion: val('instalacion'),
+        fechaFin: val('fechaFin'),
+        minMeses: val('minMeses'),
+        iva: val('iva'),
+        redondeo: Number($('#cz_redondeo', root).value),
+        factores: Object.fromEntries(Object.keys(TIPOS_CZ).map((k) => [k, val(`factor_${k}`).replace(',', '.')])),
+      };
+      const r = await api('/api/configuracion/costos', { method: 'PUT', body });
+      toast('Precios del cotizador guardados');
+      recargar(r);
+    } catch (err) {
+      if (err.data?.fields) setErrors(err.data.fields);
+      else $('#czErr', root).textContent = err.message;
+      btn.disabled = false;
+    }
+  });
+  $('#czCopiar', root)?.addEventListener('click', async () => {
+    const i = $('#czLink', root);
+    try {
+      await navigator.clipboard.writeText(i.value);
+    } catch {
+      i.select();
+      document.execCommand('copy');
+    }
+    toast('Enlace copiado');
+  });
+  $('#czRegen', root)?.addEventListener('click', async (e) => {
+    const b = e.currentTarget;
+    // Regenerar invalida el enlace anterior: dos toques
+    if (route.costos.config.token && !b.dataset.confirmar) {
+      b.dataset.confirmar = '1';
+      b.textContent = '¿Seguro? El enlace actual dejará de funcionar';
+      return;
+    }
+    b.disabled = true;
+    try {
+      recargar(await api('/api/configuracion/costos/enlace', { method: 'POST' }));
+      toast('Enlace listo');
+    } catch (err) {
+      toast(err.message);
+      b.disabled = false;
+    }
   });
 }

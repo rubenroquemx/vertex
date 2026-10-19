@@ -252,6 +252,11 @@ function sectionsOf(clave) {
   return data;
 }
 
+// Nombres de los municipios de una entidad (clave → nombre), tal como vienen en el archivo del INE
+function municipiosOf(clave) {
+  return mem.states.get(Number(clave))?.data.municipios || null;
+}
+
 // Cruce con la cartografía cargada: secciones que no coinciden entre ambos archivos
 function crossCheck(clave, catalog) {
   const pad = sectionsOf(clave);
@@ -271,4 +276,4 @@ async function removeState(clave) {
   return true;
 }
 
-module.exports = { init, importXlsx, persist, summary, sectionsOf, crossCheck, removeState, PadronError };
+module.exports = { init, importXlsx, persist, summary, sectionsOf, municipiosOf, crossCheck, removeState, PadronError };

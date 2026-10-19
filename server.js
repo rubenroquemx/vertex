@@ -24,6 +24,7 @@ const externas = require('./src/externas');
 const listas = require('./src/listas');
 const responsables = require('./src/responsables');
 const metas = require('./src/metas');
+const costos = require('./src/costos');
 const panelSeccion = require('./src/panel-seccion');
 const panelSA = require('./src/panel-sa');
 const promovidos = require('./src/promovidos');
@@ -1067,6 +1068,56 @@ app.put('/api/responsables/:id', requireUser, requireCZ, async (req, res) => {
   res.json(rsDetail(users.get(current.id)));
 });
 
+// --- Calculadora de costos (semi pública: solo con el enlace que lleva la clave) ---
+const costosPublico = () => {
+  const c = costos.config();
+  const m = settings.meta(costos.KEY);
+  return { config: c, tipos: costos.TIPOS, actualizado: m ? { at: m.updatedAt, by: users.get(m.updatedBy)?.name || null } : null };
+};
+app.get('/api/configuracion/costos', requireUser, requireRole('superadmin'), (req, res) => {
+  res.json({ ...costosPublico(), territorios: costos.territorios().map((t) => ({ clave: t.clave, nombre: t.nombre, ln: t.ln })) });
+});
+app.put('/api/configuracion/costos', requireUser, requireRole('superadmin'), async (req, res) => {
+  const v = costos.validar(req.body || {});
+  if (Object.keys(v.errors).length) return invalid(res, v.errors);
+  const antes = costos.config();
+  await settings.set(costos.KEY, { ...v.config, token: antes.token }, req.realUser.id);
+  const { token: _t, ...sinClave } = v.config;
+  await audit.add({ action: 'settings.costos', by: req.realUser.id, after: sinClave });
+  res.json(costosPublico());
+});
+// Genera (o regenera) la clave del enlace: el enlace anterior deja de funcionar
+app.post('/api/configuracion/costos/enlace', requireUser, requireRole('superadmin'), async (req, res) => {
+  const c = costos.config();
+  const { token: _t, ...resto } = c;
+  await settings.set(costos.KEY, { ...resto, token: costos.nuevoToken() }, req.realUser.id);
+  await audit.add({ action: 'settings.costos.enlace', by: req.realUser.id, after: { regenerado: Boolean(c.token) } });
+  res.json(costosPublico());
+});
+// Vista previa para el super administrador (con sesión), con los mismos cálculos que la página pública
+app.post('/api/configuracion/costos/simular', requireUser, requireRole('superadmin'), (req, res) => {
+  try {
+    res.json(costos.cotizar(req.body || {}));
+  } catch (err) {
+    if (err instanceof costos.CostosError) return res.status(err.status).json({ error: err.message, fields: err.fields });
+    throw err;
+  }
+});
+const costosClave = (req, res, next) => {
+  if (!costos.tokenValido(req.params.clave)) return res.status(404).json({ error: 'Enlace no válido' });
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  next();
+};
+app.get('/api/costos/:clave', costosClave, (req, res) => res.json(costos.publico()));
+app.post('/api/costos/:clave/cotizar', costosClave, (req, res) => {
+  try {
+    res.json(costos.cotizar(req.body || {}));
+  } catch (err) {
+    if (err instanceof costos.CostosError) return res.status(err.status).json({ error: err.message, fields: err.fields });
+    throw err;
+  }
+});
+
 // --- Configuración › WhatsApp (Evolution API) — Super administrador ---------
 const waPublico = () => {
   const p = whatsapp.publico();
@@ -1305,6 +1356,14 @@ app.get(['/sw.js', '/manifest.webmanifest'], (req, res, next) => {
 // Leaflet (mapas OpenStreetMap) servido desde node_modules
 app.use('/vendor/leaflet', express.static(path.join(__dirname, 'node_modules', 'leaflet', 'dist'), { maxAge: isProd ? '30d' : 0 }));
 const REVALIDAR = /\.(html|css|js|webmanifest)$/;
+// Calculadora de costos: la página solo existe con la clave correcta (sin ella, 404)
+app.get('/costos/:clave', (req, res) => {
+  res.set({ 'X-Robots-Tag': 'noindex, nofollow', 'Cache-Control': 'no-cache', 'Referrer-Policy': 'no-referrer' });
+  if (!costos.tokenValido(req.params.clave)) return res.status(404).type('text/plain').send('Página no encontrada');
+  res.sendFile(path.join(PUBLIC_DIR, 'costos.html'));
+});
+app.get('/costos', (req, res) => res.status(404).type('text/plain').send('Página no encontrada'));
+
 // Raíz del sitio: quien tiene sesión entra directo a la app; los visitantes ven la página
 // informativa (con «Iniciar sesión», que abre la app en /entrar)
 app.get('/', (req, res) => {

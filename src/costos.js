@@ -50,8 +50,11 @@ const config = () => {
 // Compara en tiempo constante para no filtrar la clave por tiempos de respuesta
 function tokenValido(token) {
   const t = config().token;
-  if (!t || typeof token !== 'string' || token.length !== t.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(t));
+  if (!t || typeof token !== 'string') return false;
+  const a = Buffer.from(token);
+  const b = Buffer.from(t);
+  // Se comparan bytes (no caracteres): una clave con acentos del mismo largo no rompe la comparación
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 const nuevoToken = () => crypto.randomBytes(18).toString('base64url');
@@ -157,7 +160,8 @@ function territorios() {
 // ---------- Cotización ----------
 function cotizar({ tipo, entidad, clave, ln: lnManual, nombre, fecha }) {
   const c = config();
-  if (!TIPOS[tipo]) throw new CostosError('Elige el tipo de elección.', 422, { tipo: 'Elige el tipo de elección.' });
+  // Solo las claves propias de TIPOS (evita «constructor», «toString» y demás heredadas)
+  if (!Object.hasOwn(TIPOS, tipo)) throw new CostosError('Elige el tipo de elección.', 422, { tipo: 'Elige el tipo de elección.' });
   let ln;
   let territorio;
   if (lnManual !== undefined && lnManual !== null && lnManual !== '') {

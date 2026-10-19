@@ -1111,7 +1111,9 @@ const costosClave = (req, res, next) => {
 app.get('/api/costos/:clave', costosClave, (req, res) => res.json(costos.publico()));
 app.post('/api/costos/:clave/cotizar', costosClave, (req, res) => {
   try {
-    res.json(costos.cotizar(req.body || {}));
+    // La cotización pública siempre parte de hoy (contratando hoy)
+    const { fecha: _f, ...cuerpo } = req.body || {};
+    res.json(costos.cotizar(cuerpo));
   } catch (err) {
     if (err instanceof costos.CostosError) return res.status(err.status).json({ error: err.message, fields: err.fields });
     throw err;

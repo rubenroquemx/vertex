@@ -73,12 +73,12 @@ function pintarTerritorios() {
 }
 
 function limpiarErrores() {
-  for (const id of ['tipo', 'entidad', 'clave', 'ln', 'fecha']) $(`#${id}-err`).textContent = '';
+  for (const id of ['tipo', 'entidad', 'clave', 'ln']) $(`#${id}-err`).textContent = '';
   $('#czErr').textContent = '';
 }
 
 function cuerpo() {
-  const c = { tipo: tipo(), fecha: $('#czFecha').value };
+  const c = { tipo: tipo() };
   if (modo() === 'manual') {
     c.ln = $('#czLn').value.replace(/[^\d]/g, '');
     c.nombre = $('#czNombre').value.trim();
@@ -143,9 +143,9 @@ function mostrar(r) {
   $('#rMens').textContent = MXN.format(r.mensual);
   $('#rMeses').textContent = `${r.meses} ${r.meses === 1 ? 'mes' : 'meses'}`;
   $('#rElector').textContent = MXN2.format(r.porElector);
-  $('#rPeriodo').textContent = r.minimoAplicado
-    ? `Del ${f(r.inicio)} al ${f(r.fin)}. Se aplica el mínimo de ${r.minMeses} meses de servicio.`
-    : `Del ${f(r.inicio)} al ${f(r.fin)}, 30 días después de la elección.`;
+  $('#rPeriodo').innerHTML = `<strong>Contratando hoy</strong>, ${esc(f(r.inicio))}: servicio hasta el ${esc(f(r.fin))}, 30 días después de la elección.${
+    r.minimoAplicado ? ` Se aplica el mínimo de ${r.minMeses} meses.` : ''
+  }`;
   $('#rPrimer').textContent = `${MXN.format(r.pagos[0].monto)} + IVA`;
   $('#rCalN').textContent = `${r.pagos.length} pagos`;
   $('#rCal').innerHTML = r.pagos
@@ -156,7 +156,7 @@ function mostrar(r) {
     'Hola, me interesa contratar VERTEX con esta cotización:',
     `• ${r.tipoNombre}: ${r.territorio}`,
     `• Lista nominal: ${NUM.format(r.ln)}`,
-    `• Inicio: ${f(r.inicio)} · ${r.meses} meses`,
+    `• Contratando hoy (${f(r.inicio)}) · ${r.meses} meses`,
     `• Total: ${MXN.format(r.subtotal)} + IVA`,
     `• Primer pago: ${MXN.format(r.pagos[0].monto)} + IVA`,
   ].join('\n');
@@ -178,11 +178,6 @@ async function iniciar() {
     return;
   }
   pintarTipos();
-  const fecha = $('#czFecha');
-  fecha.min = datos.hoy;
-  fecha.max = datos.fin;
-  fecha.value = datos.hoy;
-  $('#czFechaAyuda').textContent = `El servicio termina el ${f(datos.fin)}. Mínimo ${datos.minMeses} meses.`;
   if (datos.territorios.length) {
     pintarEntidades();
   } else {
@@ -207,7 +202,6 @@ async function iniciar() {
     calcular();
   });
   $('#czNombre').addEventListener('input', calcular);
-  fecha.addEventListener('change', calcular);
   $('#rPrint').addEventListener('click', () => {
     $('#rCalWrap').open = true;
     window.print();

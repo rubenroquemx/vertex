@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://vertex.legislab.app/</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <image:image><image:loc>https://vertex.legislab.app/landing/og-vertex.jpg</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/cpv-panel.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/cpv-mapa.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/cpv-config.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/cpv-zonas.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/rs-revision.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/cpv-agenda.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/cpv-evento.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/cpv-evento-asis.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/cpv-externas.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/cpv-material.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/cpv-informe.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/m-pr-nuevo.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/m-pr-panel.webp</image:loc></image:image>
+    <image:image><image:loc>https://vertex.legislab.app/landing/sa-panel.webp</image:loc></image:image>
+  </url>
+  <url>
+    <loc>https://vertex.legislab.app/aviso-de-privacidad</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.2</priority>
+  </url>
+</urlset>

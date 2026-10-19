@@ -1,0 +1,20 @@
+# VERTEX · https://vertex.legislab.app
+# La página informativa es pública; la aplicación, su API y el cotizador privado no se indexan.
+User-agent: *
+Allow: /$
+Allow: /landing/
+Allow: /brand/
+Allow: /icons/
+Allow: /aviso-de-privacidad
+Allow: /llms.txt
+Allow: /sitemap.xml
+Disallow: /api/
+Disallow: /costos
+Disallow: /entrar
+Disallow: /js/
+Disallow: /css/
+Disallow: /vendor/
+Disallow: /sw.js
+Disallow: /*?
+
+Sitemap: https://vertex.legislab.app/sitemap.xml

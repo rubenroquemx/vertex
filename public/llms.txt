@@ -1,0 +1,42 @@
+# VERTEX
+
+> VERTEX es un software de estructura electoral y promoción del voto para campañas en México. Organiza la red de coordinadores, responsables de sección y promotores territoriales; calcula metas de promovidos por sección a partir de la lista nominal del INE; registra a cada promovido con la foto de su credencial INE, una sola vez en todo el sistema; y muestra el avance en tiempo real en la computadora y en el celular.
+
+Sitio: https://vertex.legislab.app/
+Contacto comercial: WhatsApp +52 993 220 0146
+Idioma: español (México)
+
+## Para quién es
+
+- Candidaturas y equipos de campaña en México: gubernaturas y jefatura de gobierno, diputaciones federales y locales, presidencias municipales y alcaldías.
+- Coordinadores de promoción del voto que dirigen una estructura territorial de varios niveles.
+
+## Cómo está organizada la estructura
+
+1. Super administrador: control total del sistema.
+2. Coordinador de Promoción del Voto (CPV): dirige su territorio y fija las metas.
+3. Coordinador de Zona: organiza a los responsables de sección de su zona.
+4. Responsable de Sección: revisa y aprueba los registros de sus promotores.
+5. Promotor Territorial: registra a los promovidos en campo desde su celular.
+
+Cada nivel da de alta al de abajo y ve solo su rama de la estructura.
+
+## Funciones principales
+
+- Metas por sección: lista nominal × participación estimada × conversión objetivo; promotores mínimos = meta ÷ promovidos por promotor. Se recalculan al momento en toda la red.
+- Panel por nivel: promovidos contra meta, ritmo actual contra el necesario, días para la elección y alertas.
+- Mapa por sección electoral con la cartografía oficial, coloreado según el avance.
+- Reparto del territorio en zonas y asignación de responsables.
+- Registro de promovidos con la credencial INE, validando clave de elector y CURP; sin duplicados (gana el primer registro).
+- Revisión: el responsable de sección aprueba o devuelve con motivo.
+- Captura sin conexión: la app se instala desde el navegador y envía lo capturado al recuperar la señal.
+- Agenda de asambleas y recorridos para toda la red o por zonas, con responsable de reporte.
+- Reportes de eventos con asistentes, duración, casas visitadas, kilómetros, fotos y lista de asistencia cotejada contra la estructura.
+- Estructuras paralelas: cruce de listas externas con la estructura propia, solo con conteos.
+- Material electoral: inventario, órdenes de entrega y evidencia con fotos.
+- Informe ejecutivo por periodo con análisis FODA, imprimible.
+- Bitácora de todas las acciones y supervisión de cuentas por el administrador.
+
+## Precio
+
+Depende del tipo de elección y de la lista nominal del territorio. Incluye una instalación y mensualidades por adelantado desde la contratación hasta 30 días después de la elección. Cotizaciones por WhatsApp: +52 993 220 0146.

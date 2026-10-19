@@ -276,3 +276,17 @@ h1, h2, h3, p { margin: 0; }
   .tour__stack img { transition: opacity 200ms linear; transform: none; }
   .telefonos .phone { transition: none; }
 }
+
+/* Preguntas frecuentes */
+.faq { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: start; }
+.faq .h2 { position: sticky; top: calc(var(--nav-h) + 24px); }
+.faq__lista { display: grid; gap: 12px; }
+.faq__item { border-radius: 18px; background: var(--paper-2); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow 300ms ease; }
+.faq__item[open] { box-shadow: inset 0 0 0 1px var(--line), 0 18px 40px rgba(20, 20, 20, .06); }
+.faq__item summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 24px; cursor: pointer; list-style: none; min-height: 44px; }
+.faq__item summary::-webkit-details-marker { display: none; }
+.faq__item summary::after { content: "+"; flex-shrink: 0; font-family: var(--display); font-size: 28px; line-height: 1; color: var(--blue); transition: transform 300ms var(--ease); }
+.faq__item[open] summary::after { transform: rotate(45deg); }
+.faq__item h3 { font-family: var(--display); font-size: 21px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2; }
+.faq__item p { padding: 0 24px 24px; color: var(--muted); max-width: 64ch; }
+@media (max-width: 860px) { .faq { grid-template-columns: minmax(0, 1fr); gap: 32px; } .faq .h2 { position: static; } }

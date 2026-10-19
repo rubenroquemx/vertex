@@ -1374,6 +1374,8 @@ app.get('/', (req, res) => {
   const sesion = token && sessions.get(token);
   const conSesion = Boolean(sesion && users.get(sesion.userId) && !users.get(sesion.userId).disabled);
   res.set('Cache-Control', 'no-cache');
+  // La app no se indexa; la página informativa sí
+  if (conSesion) res.set('X-Robots-Tag', 'noindex, nofollow');
   res.sendFile(path.join(PUBLIC_DIR, conSesion ? 'index.html' : 'landing.html'));
 });
 app.use(
@@ -1388,6 +1390,8 @@ app.use(
 
 // --- Fallback SPA ----------------------------------------------------------
 app.get('*', async (req, res) => {
+  // Pantallas internas de la app (y /entrar): fuera de los buscadores
+  res.set('X-Robots-Tag', 'noindex, nofollow');
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 

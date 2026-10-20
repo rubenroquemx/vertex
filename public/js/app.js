@@ -38,6 +38,7 @@ import { viewInforme, mountInforme } from './informe.js';
 import { viewExternas, mountExternas, viewListaPersonas, mountListaPersonas } from './externas.js';
 import { viewAgenda, mountAgenda, viewEventos, viewFormEvento, mountFormEvento, viewEvento, mountEvento, viewReporte, mountReporte } from './agenda.js';
 import { viewPendientes, mountPendientes } from './pendientes.js';
+import { viewDirectorio, mountDirectorio } from './directorio.js';
 import { sesion, pendientes as pendientesLocales, iniciarSincronizacion, prepararSinConexion, borrarDatosLocales, esErrorDeRed } from './offline.js';
 import { viewNotificaciones, mountNotificaciones, iniciarCampana, actualizarContador } from './notificaciones.js';
 import { viewNuevoPromovido, mountNuevoPromovido, viewPromovidos, viewPromovido, mountPromovido } from './promovidos.js';
@@ -75,6 +76,8 @@ const MATERIAL = { path: '/material', title: 'Material electoral', icon: 'box', 
 const AGENDA = { path: '/agenda', title: 'Agenda', icon: 'calendar', view: (r, p) => viewAgenda(r, p, state), mount: mountAgenda };
 // Estructuras externas: listas de otras estructuras para cotejar (solo CPV y super administrador)
 // `dock: false`: no va en la barra inferior del celular (tarea de computadora); sí en el menú lateral
+// Directorio: todas las personas de la estructura del CPV, filtrables por nivel
+const DIRECTORIO = { path: '/directorio', title: 'Directorio', icon: 'directorio', view: viewDirectorio, mount: mountDirectorio };
 const EXTERNAS = { path: '/estructuras-externas', title: 'Estructuras externas', icon: 'users', dock: false, view: (r, p) => viewExternas(r, p, state), mount: mountExternas };
 
 function buildMenu(me) {
@@ -110,7 +113,7 @@ function buildMenu(me) {
         EXTERNAS,
       ],
     });
-    groups.push({ label: 'Operación', items: [AGENDA, MATERIAL] });
+    groups.push({ label: 'Operación', items: [AGENDA, DIRECTORIO, MATERIAL] });
     groups.push({
       label: 'Sistema',
       items: [{ path: '/configuracion', title: 'Configuración', icon: 'settings', view: viewConfiguracionCPV, mount: mountConfiguracionCPV }],
@@ -1547,6 +1550,7 @@ const CORTO = {
   '/promovidos': 'Promovidos',
   '/material': 'Material',
   '/agenda': 'Agenda',
+  '/directorio': 'Directorio',
   '/estructuras-externas': 'Externas',
   '/zonas': 'Zonas',
   '/responsables': 'Responsables',
@@ -1575,6 +1579,8 @@ function renderDock(menuCompleto) {
     return;
   }
   $('#dock').classList.remove('has-fab');
+  // Con más de 5 accesos la barra se compacta para caber en el ancho del celular
+  $('#dock').classList.toggle('dock--compacto', items.length > 5);
   $('#dock').innerHTML = menu
     .map(
       (g) => `<div class="dock__group" role="group" aria-label="${esc(g.label)}">${g.items

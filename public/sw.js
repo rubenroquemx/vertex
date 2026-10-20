@@ -1,6 +1,6 @@
 // Service worker de VERTEX
 // Incrementa la versión al cambiar archivos del "app shell".
-const VERSION = 'v107';
+const VERSION = 'v109';
 const CACHE = `vertex-${VERSION}`;
 const APP_SHELL = [
   '/index.html',
@@ -25,6 +25,7 @@ const APP_SHELL = [
   '/js/escritorio-promotor.js',
   '/js/informe.js',
   '/js/agenda.js',
+  '/js/directorio.js',
   '/js/externas.js',
   '/js/asistencias.js',
   '/js/offline.js',

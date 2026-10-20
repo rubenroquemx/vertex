@@ -3057,3 +3057,53 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
 .gen__lotes li { display: flex; justify-content: space-between; align-items: center; gap: var(--space-lg); padding: var(--space-lg); border-radius: var(--radius); background: var(--color-surface-alt); }
 .gen #genClave { padding: 2px 8px; border-radius: 6px; background: var(--color-muted); font-size: 15px; user-select: all; }
 @media (max-width: 767px) { .gen__lotes li { flex-direction: column; align-items: stretch; } }
+
+/* Directorio del CPV */
+.dir__niveles { display: flex; flex-wrap: wrap; gap: var(--space-md); margin-bottom: var(--space-lg); }
+.dir__nivel { position: relative; cursor: pointer; }
+.dir__nivel input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.dir__nivel span { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 16px; border-radius: var(--radius-pill); background: var(--color-card); box-shadow: inset 0 0 0 1px var(--color-border); font-size: 14px; font-weight: 700; color: var(--color-muted-foreground); }
+.dir__nivel b { font-weight: 700; color: var(--color-foreground); }
+.dir__nivel input:checked + span { background: var(--color-primary); color: var(--color-on-primary); box-shadow: none; }
+.dir__nivel input:checked + span b { color: var(--color-on-primary); }
+.dir__nivel input:focus-visible + span { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+.dir__barra { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 260px) auto; gap: var(--space-md); align-items: center; }
+.dir__buscar > span { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); display: grid; color: var(--color-muted-foreground); pointer-events: none; }
+.dir__buscar > span svg { width: 18px; height: 18px; }
+.dir__buscar .input { padding-left: 42px; }
+.dir__barra .input { background: var(--color-card); box-shadow: inset 0 0 0 1px var(--color-border); }
+.dir__total { margin: var(--space-lg) 0 var(--space-md); font-size: 14px; color: var(--color-muted-foreground); }
+.dir__lista { list-style: none; margin: 0; padding: 0; overflow: hidden; }
+.dir__fila { display: flex; align-items: center; gap: var(--space-lg); padding: var(--space-lg) var(--space-xl); }
+.dir__fila + .dir__fila { border-top: 1px solid var(--color-border); }
+.dir__ini { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 50%; overflow: hidden; background: var(--color-muted); color: var(--color-foreground); font-size: 14px; font-weight: 700; box-shadow: 0 0 0 2px var(--color-card), 0 0 0 4px var(--zc); }
+.dir__ini img { width: 100%; height: 100%; object-fit: cover; }
+.dir__txt { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.dir__txt p { margin: 0; }
+.dir__nombre { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 15px; }
+.dir__rol { padding: 2px 10px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 700; background: var(--color-muted); color: var(--color-muted-foreground); }
+.dir__rol--coord_zona { background: var(--color-primary); color: var(--color-on-primary); }
+.dir__rol--resp_seccion { background: var(--color-muted-hover); color: var(--color-foreground); }
+.dir__det { font-size: 13px; color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; }
+.dir__chip { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: var(--color-foreground); }
+.dir__chip::before { content: ""; width: 9px; height: 9px; border-radius: 3px; background: var(--zc); }
+.dir__vacio { padding: var(--space-2xl); text-align: center; color: var(--color-muted-foreground); }
+.dir__mas { display: flex; justify-content: center; margin-top: var(--space-lg); }
+.dir .promo-contacto { padding-right: 0; }
+@media (max-width: 767px) {
+  .dir__barra { grid-template-columns: minmax(0, 1fr) auto; }
+  .dir__buscar { grid-column: 1 / -1; }
+  .dir__niveles { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-right: calc(-1 * var(--space-xl)); padding-right: var(--space-xl); }
+  .dir__nivel span { white-space: nowrap; }
+  .dir__fila { padding: var(--space-lg); align-items: flex-start; flex-wrap: wrap; }
+  .dir__fila .promo-contacto { width: 100%; padding-left: 58px; }
+}
+
+/* Barra inferior con 6 accesos (p. ej. CPV con Directorio): más angosta para caber en 375 px */
+@media (max-width: 767px) {
+  .dock.dock--compacto { gap: 2px; padding-left: 6px; padding-right: 6px; }
+  .dock--compacto .dock__group { gap: 2px; }
+  .dock--compacto .dock__link { min-width: 50px; padding: 0 2px; }
+  .dock--compacto .dock__label { font-size: 11px; }
+  .dock--compacto .dock__sep { margin: 0 1px; }
+}

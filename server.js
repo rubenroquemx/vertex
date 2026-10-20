@@ -444,6 +444,62 @@ const zonaPropia = (req, res) => {
   return z;
 };
 
+// --- Directorio del CPV: todas las personas de su estructura, por nivel -----
+app.get('/api/directorio', requireUser, requireCPV, (req, res) => {
+  const cpv = req.user;
+  const all = users.all();
+  const hijos = new Map();
+  for (const u of all) {
+    if (!hijos.has(u.parentId)) hijos.set(u.parentId, []);
+    hijos.get(u.parentId).push(u);
+  }
+  // Promovidos por promotor y por responsable (copia en memoria, sin datos personales)
+  const porPromotor = new Map();
+  const porResponsable = new Map();
+  const sumar = (m, k, aprobado) => {
+    const x = m.get(k) || { promovidos: 0, aprobados: 0 };
+    x.promovidos += 1;
+    if (aprobado) x.aprobados += 1;
+    m.set(k, x);
+  };
+  for (const p of store.promovidos.all()) {
+    sumar(porPromotor, p.promotorId, p.estatus === 'validado');
+    sumar(porResponsable, p.responsableId, p.estatus === 'validado');
+  }
+  const persona = (u, extra) => ({
+    id: u.id,
+    name: u.name,
+    role: u.role,
+    phone: u.phone || '',
+    email: u.email || '',
+    username: u.username || null,
+    avatarUrl: u.avatarAt ? `/api/users/${u.id}/avatar?v=${encodeURIComponent(u.avatarAt)}` : null,
+    createdAt: u.createdAt,
+    ...extra,
+  });
+  const personas = [];
+  const zonasLista = [];
+  for (const z of (hijos.get(cpv.id) || []).filter((u) => u.role === 'coord_zona')) {
+    const zona = { id: z.id, codigo: z.zona?.codigo || '', nombre: z.zona?.nombre || z.name, color: z.zona?.color || '#94a3b8' };
+    zonasLista.push(zona);
+    const responsables = (hijos.get(z.id) || []).filter((u) => u.role === 'resp_seccion');
+    let promZona = { promovidos: 0, aprobados: 0 };
+    const filasRs = [];
+    for (const rs of responsables) {
+      const seccion = rs.territorio?.secciones?.[0] ?? null;
+      const c = porResponsable.get(rs.id) || { promovidos: 0, aprobados: 0 };
+      promZona = { promovidos: promZona.promovidos + c.promovidos, aprobados: promZona.aprobados + c.aprobados };
+      const promotores = (hijos.get(rs.id) || []).filter((u) => u.role === 'promotor');
+      filasRs.push(persona(rs, { zona: zona.id, seccion, jefe: z.name, equipo: promotores.length, ...c }));
+      for (const pr of promotores) personas.push(persona(pr, { zona: zona.id, seccion, jefe: rs.name, ...(porPromotor.get(pr.id) || { promovidos: 0, aprobados: 0 }) }));
+    }
+    personas.push(persona(z, { zona: zona.id, seccion: null, jefe: cpv.name, equipo: responsables.length, ...promZona }), ...filasRs);
+  }
+  const orden = { coord_zona: 0, resp_seccion: 1, promotor: 2 };
+  personas.sort((a, b) => orden[a.role] - orden[b.role] || a.name.localeCompare(b.name, 'es'));
+  res.json({ zonas: zonasLista.sort((a, b) => a.codigo.localeCompare(b.codigo, 'es')), personas });
+});
+
 // --- Configuración del CPV: factor de conversión (metas de promovidos y promotores) ---
 async function historialConfig(cpvId) {
   const nombre = (id) => users.get(id)?.name || 'Cuenta eliminada';

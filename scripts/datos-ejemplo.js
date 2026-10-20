@@ -286,7 +286,7 @@ async function generar(nombreCpv, porcentaje) {
     const estatus = tipo === 'observaciones' ? 'en_revision' : tipo;
     const revisado = estatus === 'en_revision' ? null : new Date(Math.min(Date.now() - 3600000, creado.getTime() + entero(2, 96) * 3600000));
     const id = crypto.randomUUID();
-    filasProm.push([id, promotor.id, rs.id, seccion, data, clave, curp, estatus, revisado ? rs.id : null, revisado, creado]);
+    filasProm.push([id, promotor.id, rs.id, seccion, data, clave, curp, estatus, revisado ? rs.id : null, revisado, creado, cpv.id]);
     filasIne.push([id, 'frente', fotos.frente], [id, 'reverso', fotos.reverso]);
     filasHist.push([id, promotor.id, promotor.name, 'creado', '[]', creado]);
     if (rnd() < 0.12) {
@@ -325,7 +325,7 @@ async function generar(nombreCpv, porcentaje) {
       // Primero los responsables (los promotores dependen de ellos)
       [...nuevosUsers].sort((a, b) => (a.role === 'resp_seccion' ? -1 : 1) - (b.role === 'resp_seccion' ? -1 : 1)).map((u) => [u.id, u.role, u.parent_id, u.username, u.name, u.data, u.created_at])
     );
-    await insertarLote(c, 'promovidos', ['id', 'promotor_id', 'responsable_id', 'seccion', 'data', 'clave_elector', 'curp', 'estatus', 'revisado_por', 'revisado_at', 'created_at'], filasProm);
+    await insertarLote(c, 'promovidos', ['id', 'promotor_id', 'responsable_id', 'seccion', 'data', 'clave_elector', 'curp', 'estatus', 'revisado_por', 'revisado_at', 'created_at', 'cpv_id'], filasProm);
     await insertarLote(c, 'promovido_ine', ['promovido_id', 'lado', 'image'], filasIne);
     await insertarLote(c, 'promovido_historial', ['promovido_id', 'user_id', 'user_name', 'accion', 'cambios', 'at'], filasHist);
     await insertarLote(c, 'promovido_observaciones', ['promovido_id', 'user_id', 'user_name', 'texto', 'at'], filasObs);

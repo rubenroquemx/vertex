@@ -8,8 +8,40 @@ const { query, tx } = require('./db');
 const cache = {
   users: new Map(), // id → usuario
   sessions: new Map(), // hash del token → sesión
-  promovidos: [],
+  promovidos: new Map(), // id → { id, promotorId, responsableId, seccion, estatus, createdAt }
 };
+
+// Índices sobre la copia en memoria: las pantallas consultan por cuenta sin recorrer toda la
+// estructura ni todos los promovidos (con cientos de miles, cada recorrido frenaba al servidor)
+const idx = {
+  hijos: new Map(), // parentId → Set de usuarios
+  usernames: new Map(), // username → usuario
+  porResponsable: new Map(), // responsableId → Set de promovidos
+  porPromotor: new Map(), // promotorId → Set de promovidos
+};
+const VACIO = new Set();
+const agregar = (m, k, v) => {
+  let s = m.get(k);
+  if (!s) m.set(k, (s = new Set()));
+  s.add(v);
+};
+const quitar = (m, k, v) => {
+  const s = m.get(k);
+  if (s && s.delete(v) && !s.size) m.delete(k);
+};
+function indexarUsuario(u) {
+  agregar(idx.hijos, u.parentId || null, u);
+  if (u.username) idx.usernames.set(u.username, u);
+}
+function desindexarUsuario(u) {
+  quitar(idx.hijos, u.parentId || null, u);
+  if (u.username && idx.usernames.get(u.username) === u) idx.usernames.delete(u.username);
+}
+function indexarPromovido(p) {
+  cache.promovidos.set(p.id, p);
+  agregar(idx.porResponsable, p.responsableId, p);
+  agregar(idx.porPromotor, p.promotorId, p);
+}
 
 // --- Conversión fila ↔ objeto ----------------------------------------------
 const COLS = new Set(['id', 'role', 'parentId', 'username', 'name', 'createdAt', 'updatedAt']);
@@ -59,16 +91,22 @@ function newUser({ name, role, parentId = null, phone = '', email = '', ...extra
 const users = {
   all: () => [...cache.users.values()],
   get: (id) => (id ? cache.users.get(id) || null : null),
+  // Cuentas que dependen directamente de `parentId` (opcionalmente solo las de un rol)
+  hijos: (parentId, role) => {
+    const s = idx.hijos.get(parentId || null);
+    if (!s) return [];
+    const list = [...s];
+    return role ? list.filter((u) => u.role === role) : list;
+  },
   byUsername: (username) => {
     const u = String(username || '').trim().toLowerCase();
-    if (!u) return null;
-    for (const x of cache.users.values()) if (x.username === u) return x;
-    return null;
+    return (u && idx.usernames.get(u)) || null;
   },
   async create(data) {
     const u = newUser(data);
     await writeUser(u);
     cache.users.set(u.id, u);
+    indexarUsuario(u);
     return u;
   },
   async update(id, patch) {
@@ -76,15 +114,23 @@ const users = {
     if (!current) return null;
     const next = { ...current, ...patch, id, updatedAt: new Date().toISOString() };
     await writeUser(next);
+    // Solo se reacomoda en los índices si cambió de superior o de usuario (conserva el orden de alta)
+    const mueve = (current.parentId || null) !== (next.parentId || null) || current.username !== next.username;
+    if (mueve) desindexarUsuario(current);
     Object.assign(current, next);
     for (const [k, v] of Object.entries(patch)) if (v === undefined) delete current[k];
+    if (mueve) indexarUsuario(current);
     return current;
   },
   // Borra cuentas (las sesiones y fotos se borran en cascada en la base)
   async removeMany(ids) {
     const list = [...ids];
     await query('DELETE FROM users WHERE id = ANY($1::uuid[])', [list]);
-    for (const id of list) cache.users.delete(id);
+    for (const id of list) {
+      const u = cache.users.get(id);
+      if (u) desindexarUsuario(u);
+      cache.users.delete(id);
+    }
     for (const [h, s] of cache.sessions) if (ids.has(s.userId)) cache.sessions.delete(h);
   },
 };
@@ -138,12 +184,32 @@ const sessions = {
 // --- Promovidos (los captura el Promotor Territorial) ---------------------
 // Registro: { id, promotorId, seccion, createdAt, ... }. La captura se construirá en el módulo del Promotor.
 const promovidos = {
-  all: () => cache.promovidos,
+  all: () => cache.promovidos.values(),
+  get: (id) => cache.promovidos.get(id) || null,
+  // Promovidos de una cuenta (Set de solo lectura)
+  deResponsable: (id) => idx.porResponsable.get(id) || VACIO,
+  dePromotor: (id) => idx.porPromotor.get(id) || VACIO,
   // Registra en caché un promovido recién guardado (ver src/promovidos.js)
-  remember: (p) => cache.promovidos.push(p),
+  remember: (p) => indexarPromovido(p),
   // Quita de la copia en memoria los promovidos borrados (ids: Set)
   olvidar: (ids) => {
-    if (ids.size) cache.promovidos = cache.promovidos.filter((p) => !ids.has(p.id));
+    for (const id of ids) {
+      const p = cache.promovidos.get(id);
+      if (!p) continue;
+      cache.promovidos.delete(id);
+      quitar(idx.porResponsable, p.responsableId, p);
+      quitar(idx.porPromotor, p.promotorId, p);
+    }
+  },
+  // Pasa los promovidos asignados a un responsable a otro (transferencia de dependientes)
+  reasignarResponsable: (de, a) => {
+    const s = idx.porResponsable.get(de);
+    if (!s) return;
+    idx.porResponsable.delete(de);
+    for (const p of s) {
+      p.responsableId = a;
+      agregar(idx.porResponsable, a, p);
+    }
   },
 };
 
@@ -221,6 +287,9 @@ const scryptAsync = (plain, salt, len) => new Promise((ok, fail) => crypto.scryp
 async function init({ seedIfEmpty = true } = {}) {
   const { rows } = await query('SELECT * FROM users ORDER BY created_at');
   cache.users = new Map(rows.map((r) => [r.id, fromRow(r)]));
+  idx.hijos.clear();
+  idx.usernames.clear();
+  for (const u of cache.users.values()) indexarUsuario(u);
 
   if (!cache.users.size && seedIfEmpty) await seed();
 
@@ -230,14 +299,18 @@ async function init({ seedIfEmpty = true } = {}) {
   );
   // En memoria solo lo necesario para contar avance; los datos personales se quedan en la base
   const prom = await query('SELECT id, promotor_id, responsable_id, seccion, estatus, created_at FROM promovidos');
-  cache.promovidos = prom.rows.map((r) => ({
-    id: r.id,
-    promotorId: r.promotor_id,
-    responsableId: r.responsable_id,
-    seccion: r.seccion,
-    estatus: r.estatus,
-    createdAt: r.created_at.toISOString(),
-  }));
+  cache.promovidos = new Map();
+  idx.porResponsable.clear();
+  idx.porPromotor.clear();
+  for (const r of prom.rows)
+    indexarPromovido({
+      id: r.id,
+      promotorId: r.promotor_id,
+      responsableId: r.responsable_id,
+      seccion: r.seccion,
+      estatus: r.estatus,
+      createdAt: r.created_at.toISOString(),
+    });
 }
 
 async function seed() {
@@ -264,7 +337,10 @@ async function seed() {
   await tx(async (c) => {
     for (const u of list) await writeUser(u, c);
   });
-  for (const u of list) cache.users.set(u.id, u);
+  for (const u of list) {
+    cache.users.set(u.id, u);
+    indexarUsuario(u);
+  }
 }
 
 module.exports = { init, users, avatars, passwords, audit, sessions, promovidos, writeUser };

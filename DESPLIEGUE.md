@@ -32,6 +32,34 @@ Al arrancar, la app crea sus tablas, activa PostGIS si está disponible y, si la
 vacía y el volumen tiene datos de la versión anterior (`db.json`), los **importa** y deja
 `db.json.migrado` como respaldo. Programa los respaldos en el servicio Postgres (**Backups**).
 
+## 4b. Fotos de la INE en almacenamiento de objetos (recomendado para operación grande)
+
+Cada promovido guarda dos fotos de la INE (~150 KB). Con cientos de miles de promovidos suman
+decenas o cientos de GB: conviene guardarlas en **Cloudflare R2** (o cualquier servicio compatible
+con S3) en lugar de PostgreSQL.
+
+1. En Cloudflare › **R2**, crea un bucket **privado** (p. ej. `vertex-fotos`). No le actives acceso público:
+   la app sirve las fotos solo a quien tiene permiso de verlas.
+2. En **R2 › Manage API tokens**, crea un token con permiso **Object Read & Write** limitado a ese bucket.
+3. Agrega estas variables en Easypanel (Environment) y vuelve a desplegar:
+
+| Variable | Valor |
+|----------|-------|
+| `ALMACEN_ENDPOINT` | `https://<ID de cuenta>.r2.cloudflarestorage.com` |
+| `ALMACEN_BUCKET` | `vertex-fotos` |
+| `ALMACEN_ACCESS_KEY` | Access Key ID del token |
+| `ALMACEN_SECRET_KEY` | Secret Access Key del token |
+| `ALMACEN_REGION` | Opcional (R2 usa `auto`) |
+
+Al arrancar con estas variables, las fotos nuevas van directo al bucket y las que ya estaban en la base
+se pasan solas, por lotes y en segundo plano (el registro muestra cuántas pasaron). Las fotos que se
+reemplazan o se borran se eliminan del bucket automáticamente.
+
+- **No quites las variables** una vez activado: sin ellas la app no puede mostrar las fotos que ya están en el bucket.
+- El espacio que dejan las fotos en PostgreSQL se reutiliza para datos nuevos; para devolverlo al disco
+  hay que ejecutar `VACUUM FULL promovido_ine` en una ventana sin uso (bloquea la tabla mientras corre).
+- Sin estas variables todo sigue como antes: las fotos se guardan en PostgreSQL.
+
 ## 5. Volumen
 
 

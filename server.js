@@ -32,6 +32,7 @@ const promovidos = require('./src/promovidos');
 const promovidoPdf = require('./src/promovido-pdf');
 const notificaciones = require('./src/notificaciones');
 const fotos = require('./src/fotos');
+const almacen = require('./src/almacen');
 const privacidad = require('./src/privacidad');
 const ELECCION = require('./src/eleccion');
 const { memo, olvidar: olvidarPaneles } = require('./src/memo');
@@ -123,8 +124,8 @@ app.use((req, res, next) =>
 );
 
 
-const publicUser = (u, all) => {
-  const parent = u.parentId ? all.find((p) => p.id === u.parentId) : null;
+const publicUser = (u) => {
+  const parent = users.get(u.parentId);
   return {
     id: u.id,
     name: u.name,
@@ -145,7 +146,7 @@ const publicUser = (u, all) => {
           partidos: u.partidos || [],
           partidoOtro: u.partidoOtro || '',
           territorioResumen: u.territorio ? territory.resolve(u.territorio).resumen || null : null,
-          zonas: all.filter((x) => x.parentId === u.id && x.role === 'coord_zona').length,
+          zonas: users.hijos(u.id, 'coord_zona').length,
         }
       : {}),
   };
@@ -190,7 +191,7 @@ app.post('/api/auth/restablecer', async (req, res) => {
 
 app.get('/api/me', requireUser, async (req, res) => {
   res.json({
-    user: { ...publicUser(req.user, users.all()), hasPassword: Boolean(req.user.passwordHash) },
+    user: { ...publicUser(req.user), hasPassword: Boolean(req.user.passwordHash) },
     role: getRole(req.user.role),
     childRole: creatableRole(req.user),
     canDelete: canDeleteAccounts(req),
@@ -200,7 +201,7 @@ app.get('/api/me', requireUser, async (req, res) => {
     godMode: inGodMode(req)
       ? {
           by: { id: req.realUser.id, name: req.realUser.name },
-          chain: chainOf(req.user, users.all()).map((u) => ({ id: u.id, name: u.name, roleName: getRole(u.role).name, role: u.role })),
+          chain: chainOf(req.user).map((u) => ({ id: u.id, name: u.name, roleName: getRole(u.role).name, role: u.role })),
         }
       : null,
     dev: !isProd,
@@ -215,8 +216,7 @@ app.delete('/api/god-mode', requireUser, auth.stopGodMode);
 
 // Cuentas visibles para el usuario: solo su inmediato inferior
 app.get('/api/users', requireUser, async (req, res) => {
-  const all = users.all();
-  res.json(visibleUsers(req.user, all).map((u) => publicUser(u, all)));
+  res.json(visibleUsers(req.user).map((u) => publicUser(u)));
 });
 
 // Alta rápida de cuentas (niveles sin formulario propio): solo el nivel inmediato inferior
@@ -234,7 +234,7 @@ app.post('/api/users', requireUser, async (req, res) => {
   const created = await users.create({ ...cuenta.data, role: role.key, parentId: req.user.id });
   await users.update(created.id, { passwordHash: await passwords.hashAsync(cuenta.password) });
   await audit.add({ action: 'user.create', by: req.realUser.id, as: req.user.id, user: created.id });
-  res.status(201).json(publicUser(users.get(created.id), users.all()));
+  res.status(201).json(publicUser(users.get(created.id)));
 });
 
 // --- Eliminación de cuentas con respaldo de su rama --------------------------
@@ -332,7 +332,7 @@ app.get('/api/usernames/check', requireUser, async (req, res) => {
 
 // --- Coordinadores de Promoción del Voto (los gestiona el super administrador) ----
 const coordinadorDetail = (u) => ({
-  ...publicUser(u, users.all()),
+  ...publicUser(u),
   candidato: u.candidato || '',
   partidos: u.partidos || [],
   partidoOtro: u.partidoOtro || '',
@@ -430,7 +430,7 @@ const requireCPV = (req, res, next) =>
   req.user.role === 'coord_promocion' ? next() : res.status(403).json({ error: 'Solo el Coordinador de Promoción del Voto gestiona zonas' });
 
 const zonaDetail = (u) => ({
-  ...publicUser(u, users.all()),
+  ...publicUser(u),
   zona: u.zona || null,
   territorio: u.territorio || null,
 });
@@ -447,25 +447,12 @@ const zonaPropia = (req, res) => {
 // --- Directorio del CPV: todas las personas de su estructura, por nivel -----
 app.get('/api/directorio', requireUser, requireCPV, (req, res) => {
   const cpv = req.user;
-  const all = users.all();
-  const hijos = new Map();
-  for (const u of all) {
-    if (!hijos.has(u.parentId)) hijos.set(u.parentId, []);
-    hijos.get(u.parentId).push(u);
-  }
-  // Promovidos por promotor y por responsable (copia en memoria, sin datos personales)
-  const porPromotor = new Map();
-  const porResponsable = new Map();
-  const sumar = (m, k, aprobado) => {
-    const x = m.get(k) || { promovidos: 0, aprobados: 0 };
-    x.promovidos += 1;
-    if (aprobado) x.aprobados += 1;
-    m.set(k, x);
+  // Promovidos y aprobados de una cuenta (copia en memoria, sin datos personales)
+  const contar = (lista) => {
+    let aprobados = 0;
+    for (const p of lista) if (p.estatus === 'validado') aprobados += 1;
+    return { promovidos: lista.size, aprobados };
   };
-  for (const p of store.promovidos.all()) {
-    sumar(porPromotor, p.promotorId, p.estatus === 'validado');
-    sumar(porResponsable, p.responsableId, p.estatus === 'validado');
-  }
   const persona = (u, extra) => ({
     id: u.id,
     name: u.name,
@@ -479,19 +466,19 @@ app.get('/api/directorio', requireUser, requireCPV, (req, res) => {
   });
   const personas = [];
   const zonasLista = [];
-  for (const z of (hijos.get(cpv.id) || []).filter((u) => u.role === 'coord_zona')) {
+  for (const z of users.hijos(cpv.id, 'coord_zona')) {
     const zona = { id: z.id, codigo: z.zona?.codigo || '', nombre: z.zona?.nombre || z.name, color: z.zona?.color || '#94a3b8' };
     zonasLista.push(zona);
-    const responsables = (hijos.get(z.id) || []).filter((u) => u.role === 'resp_seccion');
+    const responsables = users.hijos(z.id, 'resp_seccion');
     let promZona = { promovidos: 0, aprobados: 0 };
     const filasRs = [];
     for (const rs of responsables) {
       const seccion = rs.territorio?.secciones?.[0] ?? null;
-      const c = porResponsable.get(rs.id) || { promovidos: 0, aprobados: 0 };
+      const c = contar(store.promovidos.deResponsable(rs.id));
       promZona = { promovidos: promZona.promovidos + c.promovidos, aprobados: promZona.aprobados + c.aprobados };
-      const promotores = (hijos.get(rs.id) || []).filter((u) => u.role === 'promotor');
+      const promotores = users.hijos(rs.id, 'promotor');
       filasRs.push(persona(rs, { zona: zona.id, seccion, jefe: z.name, equipo: promotores.length, ...c }));
-      for (const pr of promotores) personas.push(persona(pr, { zona: zona.id, seccion, jefe: rs.name, ...(porPromotor.get(pr.id) || { promovidos: 0, aprobados: 0 }) }));
+      for (const pr of promotores) personas.push(persona(pr, { zona: zona.id, seccion, jefe: rs.name, ...contar(store.promovidos.dePromotor(pr.id)) }));
     }
     personas.push(persona(z, { zona: zona.id, seccion: null, jefe: cpv.name, equipo: responsables.length, ...promZona }), ...filasRs);
   }
@@ -1051,7 +1038,7 @@ const rsPropio = (req, res) => {
   }
   return r;
 };
-const rsDetail = (u) => ({ ...publicUser(u, users.all()), territorio: u.territorio || null });
+const rsDetail = (u) => ({ ...publicUser(u), territorio: u.territorio || null });
 
 app.get('/api/responsables', requireUser, requireCZ, (req, res) => res.json(responsables.resumen(req.user)));
 
@@ -1090,7 +1077,7 @@ app.put('/api/responsables/:id', requireUser, requireCZ, async (req, res) => {
   const antes = current.territorio?.secciones?.[0];
   const despues = t.territorio?.secciones?.[0];
   if (antes !== undefined && antes !== despues) {
-    const promotores = users.all().filter((u) => u.parentId === current.id).length;
+    const promotores = users.hijos(current.id).length;
     const prom = await branch.promovidosDeRama(branch.branchOf(current.id).map((u) => u.id));
     if (promotores || prom.length) {
       const decision = req.body?.dependientes;
@@ -1131,7 +1118,7 @@ app.get('/api/configuracion/generador', requireUser, requireRole('superadmin'), 
   const all = users.all();
   const cpvs = all
     .filter((u) => u.role === 'coord_promocion')
-    .map((u) => ({ id: u.id, name: u.name, territorio: u.territorio ? territory.resolve(u.territorio).resumen || null : null, tieneZonas: all.some((z) => z.role === 'coord_zona' && z.parentId === u.id) }))
+    .map((u) => ({ id: u.id, name: u.name, territorio: u.territorio ? territory.resolve(u.territorio).resumen || null : null, tieneZonas: users.hijos(u.id, 'coord_zona').length > 0 }))
     .sort((a, b) => a.name.localeCompare(b.name));
   res.json({ cpvs, lotes: generador.lotes(), confirm: { hasPassword: Boolean(req.realUser.passwordHash) } });
 });
@@ -1274,7 +1261,7 @@ app.patch('/api/me', requireUser, async (req, res) => {
   if (about.length > 500) errors.about = 'Máximo 500 caracteres.';
   if (Object.keys(errors).length) return invalid(res, errors);
   const updated = await users.update(req.user.id, { ...data, about });
-  res.json(publicUser(updated, users.all()));
+  res.json(publicUser(updated));
 });
 
 // Foto: el navegador la recorta y comprime a JPEG antes de enviarla
@@ -1286,13 +1273,13 @@ app.put('/api/me/avatar', requireUser, express.json({ limit: '3mb' }), async (re
   if (buffer.length > 2 * 1024 * 1024) return res.status(413).json({ error: 'La imagen es demasiado grande (máx. 2 MB).' });
   await avatars.save(req.user.id, await fotos.comprimir(buffer, fotos.AVATAR));
   const updated = await users.update(req.user.id, { avatarAt: new Date().toISOString() });
-  res.json(publicUser(updated, users.all()));
+  res.json(publicUser(updated));
 });
 
 app.delete('/api/me/avatar', requireUser, async (req, res) => {
   await avatars.remove(req.user.id);
   const updated = await users.update(req.user.id, { avatarAt: null });
-  res.json(publicUser(updated, users.all()));
+  res.json(publicUser(updated));
 });
 
 app.put('/api/me/password', requireUser, async (req, res) => {
@@ -1312,7 +1299,7 @@ app.put('/api/me/password', requireUser, async (req, res) => {
 // Foto de perfil de una cuenta: solo si la cuenta es propia o está en la rama visible
 app.get('/api/users/:id/avatar', requireUser, async (req, res) => {
   const target = users.get(req.params.id);
-  if (!target || !target.avatarAt || !canView(req.user, target, users.all())) return res.status(404).end();
+  if (!target || !target.avatarAt || !canView(req.user, target)) return res.status(404).end();
   res.set('Cache-Control', 'private, max-age=31536000, immutable');
   const img = await avatars.get(target.id);
   if (!img) return res.status(404).end();
@@ -1420,7 +1407,7 @@ if (!isProd) {
     res.json(
       [...all]
         .sort((a, b) => getRole(a.role).level - getRole(b.role).level || a.name.localeCompare(b.name))
-        .map((u) => publicUser(u, all))
+        .map((u) => publicUser(u))
     );
   });
 
@@ -1506,6 +1493,7 @@ async function start() {
   app.listen(PORT, () => {
     // Fotos guardadas antes de la compresión: se pasan a WebP en segundo plano (una sola vez)
     setTimeout(() => fotos.compactarExistentes(), 10000);
+    almacen.iniciar();
     // Asambleas y recorridos: recordatorio de reporte el mismo día y aviso de los no reportados
     const avisarEventos = () => eventos.recordatorios().catch((err) => console.error('Recordatorios de eventos:', err.message));
     // Datos de ejemplo de agenda y estructuras paralelas: una sola vez, solo si esas tablas están vacías

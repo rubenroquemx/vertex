@@ -10,7 +10,7 @@ function resumen(resp) {
   const cpv = zona ? users.get(zona.parentId) : null;
   const ctx = zona ? responsables.contexto(zona) : null;
   const cfg = cpv ? metas.configDe(cpv) : { ...metas.DEFAULTS };
-  const registrados = users.all().filter((u) => u.parentId === resp.id && u.role === 'promotor').length;
+  const registrados = users.hijos(resp.id, 'promotor').length;
   const claves = resp.territorio?.secciones || [];
   const secciones = ctx
     ? ctx.secciones
@@ -41,8 +41,7 @@ function avancePromotores(resp) {
   const cpv = zona ? users.get(zona.parentId) : null;
   const { factor } = cpv ? metas.configDe(cpv) : metas.DEFAULTS;
   const porPromotor = {};
-  for (const p of cachePromovidos.all()) {
-    if (p.responsableId !== resp.id) continue;
+  for (const p of cachePromovidos.deResponsable(resp.id)) {
     const a = (porPromotor[p.promotorId] ||= { capturados: 0, aprobados: 0 });
     a.capturados += 1;
     if (p.estatus === 'validado') a.aprobados += 1;

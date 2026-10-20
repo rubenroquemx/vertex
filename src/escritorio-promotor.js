@@ -61,9 +61,8 @@ async function promotor(pr) {
   for (let i = conteo.length - 1 - (conteo[conteo.length - 1] ? 0 : 1); i >= 0 && conteo[i]; i--) racha += 1;
 
   // Lugar entre los promotores de su sección (solo su posición; no se exponen datos de los demás)
-  const companeros = rs ? users.all().filter((u) => u.parentId === rs.id && u.role === 'promotor') : [pr];
-  const porPromotor = new Map(companeros.map((u) => [u.id, 0]));
-  for (const p of cachePromovidos.all()) if (porPromotor.has(p.promotorId)) porPromotor.set(p.promotorId, porPromotor.get(p.promotorId) + 1);
+  const companeros = rs ? users.hijos(rs.id, 'promotor') : [pr];
+  const porPromotor = new Map(companeros.map((u) => [u.id, cachePromovidos.dePromotor(u.id).size]));
   const mio = porPromotor.get(pr.id) || 0;
   const lugar = 1 + [...porPromotor.values()].filter((n) => n > mio).length;
 

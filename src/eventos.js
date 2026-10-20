@@ -42,7 +42,7 @@ const nombre = (id) => users.get(id)?.name || 'Cuenta eliminada';
 // ---------------------------------------------------------------------------
 // Red del CPV: zonas, responsables y promotores
 // ---------------------------------------------------------------------------
-const hijos = (id, role) => users.all().filter((u) => u.parentId === id && u.role === role);
+const hijos = (id, role) => users.hijos(id, role);
 // Zona (Coordinador de Zona) y CPV a los que pertenece una cuenta
 function ubicar(u) {
   if (!u) return {};

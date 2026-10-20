@@ -44,7 +44,7 @@ const METODOS = {
   manual: { field: null, name: 'Manual en mapa' },
 };
 
-const zonasDe = (cpvId) => users.all().filter((u) => u.parentId === cpvId && u.role === 'coord_zona');
+const zonasDe = (cpvId) => users.hijos(cpvId, 'coord_zona');
 
 // Contexto del CPV: entidad, secciones de su territorio (con datos) y electores por sección
 function contexto(cpv) {

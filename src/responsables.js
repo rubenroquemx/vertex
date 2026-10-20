@@ -7,7 +7,7 @@ const padron = require('./padron');
 const { users } = require('./store');
 const { fmtSeccion } = require('./formato');
 
-const responsablesDe = (zonaId) => users.all().filter((u) => u.parentId === zonaId && u.role === 'resp_seccion');
+const responsablesDe = (zonaId) => users.hijos(zonaId, 'resp_seccion');
 
 // Secciones de la zona con sus datos (municipio, distritos, electores)
 function contexto(zona) {

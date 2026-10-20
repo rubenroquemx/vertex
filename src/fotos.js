@@ -12,10 +12,18 @@ const AVATAR = { ancho: 400, calidad: 80 };
 const esWebp = (b) => Boolean(b) && b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP';
 const tipo = (b) => (esWebp(b) ? 'image/webp' : 'image/jpeg');
 
-// Convierte a WebP (sin agrandar); si por alguna razón no conviene, se queda la original
+// Un JPEG que ya llega reducido y ligero se guarda tal cual: recomprimirlo cuesta más CPU de la que ahorra
+const LIGERO = 250 * 1024;
+
+// Convierte a WebP (sin agrandar); si por alguna razón no conviene, se queda la original.
+// Una WebP que no cabe en el ancho se reduce; si cabe, se guarda sin tocarla (la manda la app ya lista).
 async function comprimir(buf, { ancho, calidad } = INE) {
-  if (!buf || esWebp(buf)) return buf;
+  if (!buf) return buf;
   try {
+    const { width = 0, height = 0 } = await sharp(buf).metadata();
+    const cabe = width <= ancho && height <= ancho;
+    if (cabe && (esWebp(buf) || buf.length <= LIGERO)) return buf;
+    if (esWebp(buf) && !cabe) return await sharp(buf).resize({ width: ancho, height: ancho, fit: 'inside' }).webp({ quality: calidad, effort: 4 }).toBuffer();
     const out = await sharp(buf).rotate().resize({ width: ancho, height: ancho, fit: 'inside', withoutEnlargement: true }).webp({ quality: calidad, effort: 4 }).toBuffer();
     return out.length < buf.length ? out : buf;
   } catch {
@@ -63,7 +71,7 @@ async function compactarExistentes() {
       nombre: 'promovido_ine',
       // Llave compuesta como texto para recorrer por páginas
       select: `SELECT promovido_id::text || ':' || lado AS k, image FROM promovido_ine
-               WHERE $1::text IS NULL OR promovido_id::text || ':' || lado > $1 ORDER BY 1 LIMIT 25`,
+               WHERE image IS NOT NULL AND ($1::text IS NULL OR promovido_id::text || ':' || lado > $1) ORDER BY 1 LIMIT 25`,
       update: `UPDATE promovido_ine SET image = $2 WHERE promovido_id::text || ':' || lado = $1`,
       opciones: INE,
     });

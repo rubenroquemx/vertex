@@ -1,6 +1,7 @@
 // Rama de una cuenta (ella y todos sus subordinados, en cualquier nivel): resumen, respaldo y eliminación.
 const AdmZip = require('adm-zip');
 const { users, avatars, promovidos: cachePromovidos } = require('./store');
+const almacen = require('./almacen');
 const { query } = require('./db');
 const { getRole, ROLES } = require('./roles');
 const territory = require('./territory');
@@ -10,16 +11,10 @@ const BACKUP_VERSION = 1;
 
 // La cuenta raíz seguida de todos sus descendientes (recorrido por niveles)
 function branchOf(rootId) {
-  const all = users.all();
-  const root = all.find((u) => u.id === rootId);
+  const root = users.get(rootId);
   if (!root) return [];
-  const children = new Map();
-  for (const u of all) {
-    if (!children.has(u.parentId)) children.set(u.parentId, []);
-    children.get(u.parentId).push(u);
-  }
   const result = [root];
-  for (let i = 0; i < result.length; i++) result.push(...(children.get(result[i].id) || []));
+  for (let i = 0; i < result.length; i++) result.push(...users.hijos(result[i].id));
   return result;
 }
 
@@ -122,10 +117,12 @@ async function backupZip(rootId, { by }) {
   if (prom.length && prom.length <= CON_FOTOS) {
     for (let i = 0; i < prom.length; i += 100) {
       const ids = prom.slice(i, i + 100).map((p) => p.id);
-      const { rows: fotos } = await query('SELECT promovido_id, lado, image FROM promovido_ine WHERE promovido_id = ANY($1::uuid[])', [ids]);
+      const { rows: fotos } = await query('SELECT promovido_id, lado, image, objeto FROM promovido_ine WHERE promovido_id = ANY($1::uuid[])', [ids]);
       for (const f of fotos) {
-        const ext = f.image.toString('ascii', 0, 4) === 'RIFF' ? 'webp' : 'jpg';
-        zip.addFile(`ine/${f.promovido_id}-${f.lado}.${ext}`, f.image);
+        const img = await almacen.imagenDe(f).catch(() => null);
+        if (!img) continue;
+        const ext = img.toString('ascii', 0, 4) === 'RIFF' ? 'webp' : 'jpg';
+        zip.addFile(`ine/${f.promovido_id}-${f.lado}.${ext}`, img);
       }
     }
   }
@@ -179,14 +176,14 @@ async function removeBranch(rootId) {
 // Pasa los dependientes directos de `target` a `destino` (mismo nivel y mismo superior):
 // subordinados, promovidos asignados, material y —en las zonas— su territorio.
 async function transferirDependientes(target, destino) {
-  const hijos = users.all().filter((u) => u.parentId === target.id);
+  const hijos = users.hijos(target.id);
   for (const h of hijos) await users.update(h.id, { parentId: destino.id });
   if (target.role === 'coord_zona') {
     const secciones = [...new Set([...(destino.territorio?.secciones || []), ...(target.territorio?.secciones || [])])].sort((a, b) => a - b);
     await users.update(destino.id, { territorio: { ...(destino.territorio || {}), tipo: 'secciones', metodo: 'manual', secciones } });
   }
   const { rowCount } = await query('UPDATE promovidos SET responsable_id = $2 WHERE responsable_id = $1', [target.id, destino.id]);
-  for (const p of cachePromovidos.all()) if (p.responsableId === target.id) p.responsableId = destino.id;
+  cachePromovidos.reasignarResponsable(target.id, destino.id);
   await query('UPDATE material_ordenes SET para_id = $2 WHERE para_id = $1', [target.id, destino.id]);
   await query('UPDATE material_ordenes SET de_id = $2 WHERE de_id = $1', [target.id, destino.id]);
   // Asambleas y recorridos: pasan a la cuenta que hereda la estructura

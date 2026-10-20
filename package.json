@@ -19,6 +19,7 @@
   "dependencies": {
     "@webrek/mx-cp": "^0.2.0",
     "adm-zip": "^0.5.16",
+    "aws4fetch": "^1.0.20",
     "compression": "^1.7.4",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",

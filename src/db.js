@@ -498,6 +498,31 @@ const MIGRATIONS = [
       CREATE INDEX promovidos_curp_idx ON promovidos(curp);
     `,
   },
+  {
+    id: 15,
+    name: 'fotos de la INE: pueden vivir en el almacenamiento de objetos (R2/S3) en lugar de la base',
+    sql: `
+      -- Cada foto está en la base (image) o en el bucket (objeto: su clave)
+      ALTER TABLE promovido_ine ALTER COLUMN image DROP NOT NULL;
+      ALTER TABLE promovido_ine ADD COLUMN objeto text;
+      ALTER TABLE promovido_ine ADD CONSTRAINT promovido_ine_foto_ck CHECK (image IS NOT NULL OR objeto IS NOT NULL);
+
+      -- Objetos que la base ya no usa (borrados o reemplazados); un proceso los borra del bucket
+      CREATE TABLE almacen_pendientes (
+        objeto  text PRIMARY KEY,
+        at      timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE FUNCTION almacen_soltar_ine() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF OLD.objeto IS NOT NULL AND (TG_OP = 'DELETE' OR NEW.objeto IS DISTINCT FROM OLD.objeto) THEN
+          INSERT INTO almacen_pendientes (objeto) VALUES (OLD.objeto) ON CONFLICT DO NOTHING;
+        END IF;
+        RETURN NULL;
+      END $$;
+      CREATE TRIGGER promovido_ine_soltar AFTER DELETE OR UPDATE OF objeto ON promovido_ine
+        FOR EACH ROW EXECUTE FUNCTION almacen_soltar_ine();
+    `,
+  },
 ];
 
 async function migrate() {

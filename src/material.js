@@ -32,7 +32,7 @@ const folio = (n) => `OE-${String(n).padStart(5, '0')}`;
 
 // CPV al que pertenece la cuenta (ella misma si es CPV)
 function cpvDe(u) {
-  const c = chainOf(u, users.all()).find((x) => x.role === 'coord_promocion');
+  const c = chainOf(u).find((x) => x.role === 'coord_promocion');
   return c || null;
 }
 
@@ -41,7 +41,7 @@ function puedeVerOrden(viewer, row) {
   if (!viewer) return false;
   if (viewer.id === row.de_id || viewer.id === row.para_id) return true;
   const de = users.get(row.de_id);
-  return Boolean(de) && chainOf(de, users.all()).some((u) => u.id === viewer.id);
+  return Boolean(de) && chainOf(de).some((u) => u.id === viewer.id);
 }
 
 const nombreDe = (id) => users.get(id)?.name || 'Cuenta eliminada';
@@ -108,7 +108,7 @@ function formato(r) {
 
 // Avance de la rama: por subordinado directo, lo entregado y cómo va su recepción/comprobación
 async function avanceRama(user) {
-  const hijos = users.all().filter((u) => u.parentId === user.id && u.role === SIGUIENTE[user.role]);
+  const hijos = users.hijos(user.id, SIGUIENTE[user.role]);
   if (!hijos.length) return [];
   const ids = hijos.map((h) => h.id);
   // Órdenes que recibió cada subordinado

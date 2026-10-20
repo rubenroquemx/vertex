@@ -131,9 +131,9 @@ async function sembrar() {
   );
   const cpv = top[0] && users.get(top[0].cpv);
   if (!cpv || cpv.role !== 'coord_promocion') return null;
-  const zonas = users.all().filter((u) => u.parentId === cpv.id && u.role === 'coord_zona');
+  const zonas = users.hijos(cpv.id, 'coord_zona');
   if (!zonas.length) return null;
-  const rsDe = new Map(zonas.map((z) => [z.id, users.all().filter((u) => u.parentId === z.id && u.role === 'resp_seccion')]));
+  const rsDe = new Map(zonas.map((z) => [z.id, users.hijos(z.id, 'resp_seccion')]));
   const zonaDeRs = new Map();
   for (const [z, l] of rsDe) for (const r of l) zonaDeRs.set(r.id, z);
   const secciones = [...new Set([...rsDe.values()].flat().flatMap((r) => r.territorio?.secciones || []))];

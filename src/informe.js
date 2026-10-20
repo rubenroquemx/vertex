@@ -55,7 +55,7 @@ function validar({ desde, hasta } = {}) {
 // Alcance de cada nivel: unidades a cargo, metas vigentes y filtros de consulta
 // ---------------------------------------------------------------------------
 function hijosDe(id, role) {
-  return users.all().filter((u) => u.parentId === id && u.role === role);
+  return users.hijos(id, role);
 }
 
 async function alcance(user) {

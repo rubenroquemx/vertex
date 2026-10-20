@@ -4,14 +4,14 @@
 //    se recorren entrando a cada cuenta en modo dios, nivel por nivel.
 //  - Cada nivel crea solo el nivel inmediato inferior, que queda colgando de quien lo crea.
 const { childRoleOf } = require('./roles');
+const { users } = require('./store');
 
-function visibleUsers(actor, allUsers) {
-  return allUsers.filter((u) => u.parentId === actor.id);
+function visibleUsers(actor) {
+  return users.hijos(actor.id);
 }
 
-function canView(actor, target, allUsers) {
-  if (actor.id === target.id) return true;
-  return visibleUsers(actor, allUsers).some((u) => u.id === target.id);
+function canView(actor, target) {
+  return actor.id === target.id || target.parentId === actor.id;
 }
 
 function creatableRole(actor) {
@@ -19,11 +19,10 @@ function creatableRole(actor) {
 }
 
 // Cadena jerárquica desde la cuenta superior hasta `user` (incluido)
-function chainOf(user, allUsers) {
-  const byId = new Map(allUsers.map((u) => [u.id, u]));
+function chainOf(user) {
   const chain = [];
   const seen = new Set();
-  for (let u = user; u && !seen.has(u.id); u = byId.get(u.parentId)) {
+  for (let u = user; u && !seen.has(u.id); u = users.get(u.parentId)) {
     seen.add(u.id);
     chain.unshift(u);
   }

@@ -16,8 +16,7 @@ async function zona(cz) {
   const claves = cz.territorio?.secciones || [];
   if (!ctx || !claves.length) return { entidad: null };
   const cfg = metas.configDe(cpv);
-  const all = users.all();
-  const hijosDe = (id, role) => all.filter((u) => u.parentId === id && u.role === role);
+  const hijosDe = (id, role) => users.hijos(id, role);
 
   const secciones = new Map(
     claves.map((c) => {

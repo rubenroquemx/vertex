@@ -44,7 +44,10 @@ function recortar(fuente, sx, sy, sw, sh) {
   g.fillRect(0, 0, c.width, c.height);
   g.imageSmoothingQuality = 'high';
   g.drawImage(fuente, sx, sy, sw, sh, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.85);
+  // WebP con la calidad con que el servidor guarda la INE, así no tiene que volver a comprimirla.
+  // Los navegadores que no generan WebP devuelven PNG: en ese caso va JPEG
+  const webp = c.toDataURL('image/webp', 0.75);
+  return webp.startsWith('data:image/webp') ? webp : c.toDataURL('image/jpeg', 0.8);
 }
 
 /**

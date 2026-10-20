@@ -16,7 +16,8 @@ const geo = require('./geo');
 const { chainOf } = require('./access');
 const { fmtSeccion } = require('./formato');
 const { notificar } = require('./notificaciones');
-const { comprimir } = require('./fotos');
+const { comprimir, esWebp } = require('./fotos');
+const almacen = require('./almacen');
 const privacidad = require('./privacidad');
 
 // Jornada electoral: la INE debe estar vigente ese año para poder votar
@@ -96,10 +97,12 @@ const CLAVE_ELECTOR_RE = /^[A-Z]{6}\d{8}[HMX]\d{3}$/;
 const CURP_RE =
   /^[A-Z][AEIOUX][A-Z]{2}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[HMX](AS|BC|BS|CC|CL|CM|CS|CH|DF|DG|GT|GR|HG|JC|MC|MN|MS|NT|NL|OC|PL|QT|QR|SP|SL|SR|TC|TS|TL|VZ|YN|ZS|NE)[B-DF-HJ-NP-TV-Z]{3}[A-Z\d]\d$/;
 
+// La INE llega en WebP (la mayoría de los teléfonos) o JPEG (Safari y versiones anteriores de la app)
 function fotoValida(dataUrl) {
-  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
-  const buf = m ? Buffer.from(m[1], 'base64') : null;
-  if (!buf || buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8 || buf[2] !== 0xff) return { error: 'Toma o elige la foto.' };
+  const m = /^data:image\/(jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+  const buf = m ? Buffer.from(m[2], 'base64') : null;
+  const jpeg = buf && buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  if (!buf || !(m[1] === 'jpeg' ? jpeg : esWebp(buf))) return { error: 'Toma o elige la foto.' };
   if (buf.length > 2.5 * 1024 * 1024) return { error: 'La foto es demasiado grande.' };
   return { buf };
 }
@@ -217,6 +220,7 @@ async function crear(promotor, body) {
   if (clientId && capturado && capturado <= Date.now() && Date.now() - capturado < 60 * 86400000) v.data.capturadoAt = new Date(capturado).toISOString();
   const id = crypto.randomUUID();
   let createdAt;
+  const subida = almacen.activo ? await almacen.subirIne(id, v.fotos) : null;
   try {
     await tx(async (c) => {
       const r = await c.query(
@@ -225,12 +229,14 @@ async function crear(promotor, body) {
         [id, promotor.id, v.ctx.responsable.id, v.seccion, v.data, v.claveElector, v.curp, v.ctx.cpvId]
       );
       createdAt = r.rows[0].created_at.toISOString();
-      await c.query('INSERT INTO promovido_ine (promovido_id, lado, image) VALUES ($1, $2, $3), ($1, $4, $5)', [
+      await c.query('INSERT INTO promovido_ine (promovido_id, lado, image, objeto) VALUES ($1, $2, $3, $4), ($1, $5, $6, $7)', [
         id,
         'frente',
-        v.fotos.frente,
+        subida ? null : v.fotos.frente,
+        subida?.claves.frente || null,
         'reverso',
-        v.fotos.reverso,
+        subida ? null : v.fotos.reverso,
+        subida?.claves.reverso || null,
       ]);
       await c.query('INSERT INTO promovido_historial (promovido_id, user_id, user_name, accion) VALUES ($1, $2, $3, $4)', [
         id,
@@ -240,6 +246,7 @@ async function crear(promotor, body) {
       ]);
     });
   } catch (err) {
+    await subida?.deshacer();
     if (err.code === '23505') throw new PromovidoError('Esta persona ya está registrada como promovido.', 409);
     throw err;
   }
@@ -282,7 +289,7 @@ async function listaDe(promotor) {
   }));
 }
 
-const contarDeResponsable = (respId) => cachePromovidos.all().filter((p) => p.responsableId === respId).length;
+const contarDeResponsable = (respId) => cachePromovidos.deResponsable(respId).size;
 
 // ¿Puede `viewer` ver el promovido (y sus fotos de INE)? El promotor que lo capturó y su rama
 // hacia arriba: Responsable de Sección, Coordinador de Zona y CPV. El super administrador no.
@@ -290,7 +297,7 @@ function puedeVer(viewer, promotorId) {
   if (!viewer || viewer.role === 'superadmin') return false;
   const promotor = users.get(promotorId);
   if (!promotor) return false;
-  return chainOf(promotor, users.all()).some((u) => u.id === viewer.id);
+  return chainOf(promotor).some((u) => u.id === viewer.id);
 }
 
 async function detalle(viewer, id) {
@@ -335,12 +342,12 @@ async function detalle(viewer, id) {
 async function foto(viewer, id, lado) {
   if (!['frente', 'reverso'].includes(lado)) return null;
   const { rows } = await query(
-    'SELECT p.promotor_id, i.image FROM promovidos p JOIN promovido_ine i ON i.promovido_id = p.id WHERE p.id = $1 AND i.lado = $2',
+    'SELECT p.promotor_id, i.image, i.objeto FROM promovidos p JOIN promovido_ine i ON i.promovido_id = p.id WHERE p.id = $1 AND i.lado = $2',
     [id, lado]
   );
   const r = rows[0];
   if (!r || !puedeVer(viewer, r.promotor_id)) return null;
-  return r.image;
+  return almacen.imagenDe(r);
 }
 
 // Promotor que lo capturó o su Responsable de Sección directo: editan y conversan
@@ -400,6 +407,7 @@ async function actualizar(viewer, id, body) {
   // Si ya estaba revisado, el cambio lo regresa a revisión
   const regresa = actual.estatus !== 'en_revision';
   if (regresa) cambios.push({ campo: 'Estatus', antes: ESTATUS_TEXTO[actual.estatus], despues: ESTATUS_TEXTO.en_revision });
+  const subida = almacen.activo && (v.fotos.frente || v.fotos.reverso) ? await almacen.subirIne(id, v.fotos) : null;
 
   try {
     await tx(async (c) => {
@@ -413,7 +421,9 @@ async function actualizar(viewer, id, body) {
         ['frente', v.fotos.frente],
         ['reverso', v.fotos.reverso],
       ]) {
-        if (buf) await c.query('UPDATE promovido_ine SET image = $3 WHERE promovido_id = $1 AND lado = $2', [id, lado, buf]);
+        if (!buf) continue;
+        if (subida) await c.query('UPDATE promovido_ine SET image = NULL, objeto = $3 WHERE promovido_id = $1 AND lado = $2', [id, lado, subida.claves[lado]]);
+        else await c.query('UPDATE promovido_ine SET image = $3, objeto = NULL WHERE promovido_id = $1 AND lado = $2', [id, lado, buf]);
       }
       await c.query('INSERT INTO promovido_historial (promovido_id, user_id, user_name, accion, cambios) VALUES ($1, $2, $3, $4, $5)', [
         id,
@@ -424,12 +434,14 @@ async function actualizar(viewer, id, body) {
       ]);
     });
   } catch (err) {
+    await subida?.deshacer();
     if (err.code === '23505') throw new PromovidoError('Esta persona ya está registrada como promovido.', 409);
     throw err;
   }
-  if (regresa) {
-    const enCache = cachePromovidos.all().find((p) => p.id === id);
-    if (enCache) enCache.estatus = 'en_revision';
+  const enCache = cachePromovidos.get(id);
+  if (enCache) {
+    enCache.seccion = v.seccion;
+    if (regresa) enCache.estatus = 'en_revision';
   }
   // Avisa a la otra parte del equipo (promotor ↔ responsable)
   await notificar([actual.promotor_id, actual.responsable_id], {
@@ -517,7 +529,7 @@ async function revisar(viewer, id, body = {}) {
       ]);
     }
   });
-  const enCache = cachePromovidos.all().find((p) => p.id === id);
+  const enCache = cachePromovidos.get(id);
   if (enCache) enCache.estatus = nuevo;
   const nombre = nombreCompleto(row.data);
   await notificar([row.promotor_id], {

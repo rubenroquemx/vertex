@@ -38,12 +38,7 @@ const diaKey = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'nu
 
 async function resumen() {
   const all = users.all();
-  const hijos = new Map();
-  for (const u of all) {
-    if (!hijos.has(u.parentId)) hijos.set(u.parentId, []);
-    hijos.get(u.parentId).push(u);
-  }
-  const de = (id, role) => (hijos.get(id) || []).filter((u) => u.role === role);
+  const de = (id, role) => users.hijos(id, role);
   const cpvs = all.filter((u) => u.role === 'coord_promocion');
 
   // Promovidos por CPV y estatus (la cadena promotor → responsable → zona → CPV se resuelve en SQL)

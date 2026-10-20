@@ -1,10 +1,9 @@
-// Cotizador de VERTEX (página semi pública: la clave del enlace va en la ruta /costos/<clave>).
+// Cotizador de VERTEX: enlace fijo /costos, o /costos/<clave> para los enlaces anteriores.
 // El cálculo lo hace el servidor; aquí solo se arma el formulario y se muestra el resultado.
 const CLAVE = location.pathname.split('/').filter(Boolean)[1] || '';
 const WA = '529932200146';
 const $ = (s) => document.querySelector(s);
 const MXN = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
-const MXN2 = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const NUM = new Intl.NumberFormat('es-MX');
 const FECHA = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 const FECHA_C = new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
@@ -24,7 +23,7 @@ let datos = null;
 let ultima = null;
 
 async function api(path, body) {
-  const r = await fetch(`/api/costos/${encodeURIComponent(CLAVE)}${path}`, {
+  const r = await fetch(`/api/costos${CLAVE ? `/${encodeURIComponent(CLAVE)}` : ''}${path}`, {
     method: body ? 'POST' : 'GET',
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
@@ -35,11 +34,20 @@ async function api(path, body) {
 }
 
 const tipo = () => document.querySelector('input[name="tipo"]:checked')?.value || null;
+const partido = () => document.querySelector('input[name="partido"]:checked')?.value || null;
 
 function pintarTipos() {
   $('#czTipos').innerHTML = Object.entries(datos.tipos)
     .map(
       ([k, nombre]) => `<label class="cz-tipo"><input type="radio" name="tipo" value="${k}"><strong>${esc(nombre.split(' (')[0])}</strong><span>${esc(DESC[k])}</span></label>`
+    )
+    .join('');
+}
+
+function pintarPartidos() {
+  $('#czPartidos').innerHTML = datos.partidos
+    .map(
+      (p) => `<label class="cz-partido" style="--pc:${esc(p.color)}"><input type="radio" name="partido" value="${esc(p.key)}"><i aria-hidden="true"></i><strong>${esc(p.name)}</strong></label>`
     )
     .join('');
 }
@@ -72,19 +80,19 @@ function pintarTerritorios() {
 }
 
 function limpiarErrores() {
-  for (const id of ['tipo', 'entidad', 'clave']) $(`#${id}-err`).textContent = '';
+  for (const id of ['tipo', 'partido', 'entidad', 'clave']) $(`#${id}-err`).textContent = '';
   $('#czErr').textContent = '';
 }
 
 function cuerpo() {
-  const c = { tipo: tipo(), entidad: $('#czEntidad').value };
+  const c = { tipo: tipo(), partido: partido(), entidad: $('#czEntidad').value };
   if (c.tipo !== 'estatal') c.clave = $('#czClave').value;
   return c;
 }
 
 // ¿Hay lo mínimo para cotizar? (evita errores mientras la persona todavía está eligiendo)
 function completo(c) {
-  if (!c.tipo || !c.entidad) return false;
+  if (!c.tipo || !c.partido || !c.entidad) return false;
   return c.tipo === 'estatal' || Boolean(c.clave);
 }
 
@@ -125,7 +133,7 @@ function mostrar(r) {
   $('#czVacio').hidden = Boolean(r);
   $('#czOk').hidden = !r;
   if (!r) return;
-  $('#rTipo').textContent = r.tipoNombre;
+  $('#rTipo').textContent = `${r.tipoNombre} · ${r.partidoNombre}`;
   $('#rTerr').textContent = r.territorio;
   $('#rLn').textContent = NUM.format(r.ln);
   $('#rTotal').textContent = MXN.format(r.subtotal);
@@ -133,7 +141,6 @@ function mostrar(r) {
   $('#rInst').textContent = MXN.format(r.instalacion);
   $('#rMens').textContent = MXN.format(r.mensual);
   $('#rMeses').textContent = `${r.meses} ${r.meses === 1 ? 'mes' : 'meses'}`;
-  $('#rElector').textContent = MXN2.format(r.porElector);
   $('#rPeriodo').innerHTML = `<strong>Contratando hoy</strong>, ${esc(f(r.inicio))}: servicio hasta el ${esc(f(r.fin))}, 30 días después de la elección.${
     r.minimoAplicado ? ` Se aplica el mínimo de ${r.minMeses} meses.` : ''
   }`;
@@ -146,6 +153,7 @@ function mostrar(r) {
   const texto = [
     'Hola, me interesa contratar VERTEX con esta cotización:',
     `• ${r.tipoNombre}: ${r.territorio}`,
+    `• Partido: ${r.partidoNombre}`,
     `• Lista nominal: ${NUM.format(r.ln)}`,
     `• Contratando hoy (${f(r.inicio)}) · ${r.meses} meses`,
     `• Total: ${MXN.format(r.subtotal)} + IVA`,
@@ -162,6 +170,7 @@ async function iniciar() {
     return;
   }
   pintarTipos();
+  pintarPartidos();
   if (!datos.territorios.length) {
     $('#czApp').innerHTML = '<p class="cz-err">Por ahora no hay territorios disponibles para cotizar. Escríbenos por WhatsApp al 993 220 0146.</p>';
     return;
@@ -171,6 +180,7 @@ async function iniciar() {
     pintarTerritorios();
     calcular();
   });
+  $('#czPartidos').addEventListener('change', calcular);
   $('#czEntidad').addEventListener('change', () => {
     pintarTerritorios();
     calcular();

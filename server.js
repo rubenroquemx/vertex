@@ -1150,7 +1150,7 @@ app.post('/api/configuracion/generador/:id/eliminar', requireUser, requireRole('
   }
 });
 
-// --- Calculadora de costos (semi pública: solo con el enlace que lleva la clave) ---
+// --- Calculadora de costos (pública en /costos; los enlaces anteriores con clave siguen sirviendo) ---
 const costosPublico = () => {
   const c = costos.config();
   const m = settings.meta(costos.KEY);
@@ -1190,13 +1190,19 @@ const costosClave = (req, res, next) => {
   res.set('X-Robots-Tag', 'noindex, nofollow');
   next();
 };
+const costosAbierto = (req, res, next) => {
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  next();
+};
+// Enlace fijo /costos (sin clave) y enlaces anteriores con clave: los dos muestran la versión vigente
+app.get('/api/costos', costosAbierto, (req, res) => res.json(costos.publico()));
 app.get('/api/costos/:clave', costosClave, (req, res) => res.json(costos.publico()));
-app.post('/api/costos/:clave/cotizar', costosClave, (req, res) => {
+app.post(['/api/costos/cotizar', '/api/costos/:clave/cotizar'], (req, res, next) => (req.params.clave === undefined ? costosAbierto : costosClave)(req, res, next), (req, res) => {
   try {
     // La cotización pública siempre parte de hoy (contratando hoy)
     // y solo con territorios de la base de datos (sin lista nominal capturada a mano)
     const { fecha: _f, ln: _ln, nombre: _n, ...cuerpo } = req.body || {};
-    res.json(costos.cotizar(cuerpo));
+    res.json(costos.cotizar(cuerpo, { requierePartido: true }));
   } catch (err) {
     if (err instanceof costos.CostosError) return res.status(err.status).json({ error: err.message, fields: err.fields });
     throw err;
@@ -1441,13 +1447,17 @@ app.get(['/sw.js', '/manifest.webmanifest'], (req, res, next) => {
 // Leaflet (mapas OpenStreetMap) servido desde node_modules
 app.use('/vendor/leaflet', express.static(path.join(__dirname, 'node_modules', 'leaflet', 'dist'), { maxAge: isProd ? '30d' : 0 }));
 const REVALIDAR = /\.(html|css|js|webmanifest)$/;
-// Calculadora de costos: la página solo existe con la clave correcta (sin ella, 404)
+// Calculadora de costos con clave (enlaces anteriores): solo con la clave correcta (si no, 404)
 app.get('/costos/:clave', (req, res) => {
   res.set({ 'X-Robots-Tag': 'noindex, nofollow', 'Cache-Control': 'no-cache', 'Referrer-Policy': 'no-referrer' });
   if (!costos.tokenValido(req.params.clave)) return res.status(404).type('text/plain').send('Página no encontrada');
   res.sendFile(path.join(PUBLIC_DIR, 'costos.html'));
 });
-app.get('/costos', (req, res) => res.status(404).type('text/plain').send('Página no encontrada'));
+// Enlace fijo del cotizador: no cambia al guardar precios ni al regenerar la clave
+app.get('/costos', (req, res) => {
+  res.set({ 'X-Robots-Tag': 'noindex, nofollow', 'Cache-Control': 'no-cache', 'Referrer-Policy': 'no-referrer' });
+  res.sendFile(path.join(PUBLIC_DIR, 'costos.html'));
+});
 
 // Raíz del sitio: quien tiene sesión entra directo a la app; los visitantes ven la página
 // informativa (con «Iniciar sesión», que abre la app en /entrar)

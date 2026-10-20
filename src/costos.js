@@ -5,12 +5,14 @@
 //   operación de la campaña completa = precio ancla × (lista nominal ÷ lista ancla)^exponente × factor del tipo
 //   mensualidad                      = operación ÷ meses de referencia   (redondeada hacia arriba)
 //   meses a pagar                    = de la fecha de contratación al cierre, mínimo `minMeses`
+//   (la operación y la instalación se ajustan según el partido; ver AJUSTE_PARTIDO)
 //   total                            = instalación + mensualidad × meses   (sin IVA; el IVA se suma aparte)
 // Todos los meses se pagan por adelantado: el primer pago es la instalación más el primer mes.
 const crypto = require('crypto');
 const settings = require('./settings');
 const padron = require('./padron');
 const geo = require('./geo');
+const { PARTIDOS, isPartido } = require('./partidos');
 
 const KEY = 'costos';
 const TIPOS = {
@@ -33,6 +35,9 @@ const DEFAULTS = {
   redondeo: 100,
   factores: { estatal: 1, federal: 1, local: 1, municipal: 1 },
 };
+
+// Ajuste comercial por partido (solo en el servidor; la página pública recibe el precio ya calculado)
+const AJUSTE_PARTIDO = { MORENA: 1.25 };
 
 class CostosError extends Error {
   constructor(message, status = 422, fields = null) {
@@ -158,10 +163,13 @@ function territorios() {
 }
 
 // ---------- Cotización ----------
-function cotizar({ tipo, entidad, clave, ln: lnManual, nombre, fecha }) {
+function cotizar({ tipo, partido, entidad, clave, ln: lnManual, nombre, fecha }, { requierePartido = false } = {}) {
   const c = config();
   // Solo las claves propias de TIPOS (evita «constructor», «toString» y demás heredadas)
   if (!Object.hasOwn(TIPOS, tipo)) throw new CostosError('Elige el tipo de elección.', 422, { tipo: 'Elige el tipo de elección.' });
+  const conPartido = partido !== undefined && partido !== null && partido !== '';
+  if ((requierePartido || conPartido) && !isPartido(partido)) throw new CostosError('Elige el partido.', 422, { partido: 'Elige el partido.' });
+  const ajuste = conPartido && Object.hasOwn(AJUSTE_PARTIDO, partido) ? AJUSTE_PARTIDO[partido] : 1;
   let ln;
   let territorio;
   if (lnManual !== undefined && lnManual !== null && lnManual !== '') {
@@ -188,13 +196,13 @@ function cotizar({ tipo, entidad, clave, ln: lnManual, nombre, fecha }) {
   if (inicio > c.fechaFin) throw new CostosError('La fecha de contratación es posterior al cierre del servicio.', 422, { fecha: 'La fecha es posterior al cierre del servicio.' });
 
   const r = c.redondeo;
-  const operacion = c.anclaPrecio * (ln / c.anclaLn) ** c.exponente * c.factores[tipo];
+  const operacion = c.anclaPrecio * (ln / c.anclaLn) ** c.exponente * c.factores[tipo] * ajuste;
   const mensual = Math.ceil(operacion / c.mesesRef / r) * r;
   let fechas = periodos(inicio, c.fechaFin);
   const minimo = fechas.length < c.minMeses;
   if (minimo) fechas = Array.from({ length: c.minMeses }, (_, i) => fmt(sumarMeses(parse(inicio), i)));
   const meses = fechas.length;
-  const instalacion = Math.round(c.instalacion);
+  const instalacion = Math.round(c.instalacion * ajuste);
   const subtotal = instalacion + mensual * meses;
   const iva = Math.round((subtotal * c.iva) / 100);
   const pagos = fechas.map((f, i) => {
@@ -204,6 +212,8 @@ function cotizar({ tipo, entidad, clave, ln: lnManual, nombre, fecha }) {
   return {
     tipo,
     tipoNombre: TIPOS[tipo],
+    partido: conPartido ? partido : null,
+    partidoNombre: conPartido ? PARTIDOS.find((p) => p.key === partido).name : null,
     territorio,
     ln,
     inicio,
@@ -218,7 +228,6 @@ function cotizar({ tipo, entidad, clave, ln: lnManual, nombre, fecha }) {
     ivaPct: c.iva,
     iva,
     total: subtotal + iva,
-    porElector: Math.round(((mensual * meses) / ln) * 100) / 100,
     pagos,
   };
 }
@@ -226,7 +235,15 @@ function cotizar({ tipo, entidad, clave, ln: lnManual, nombre, fecha }) {
 // Datos que ve la página pública (sin la fórmula ni sus parámetros)
 function publico() {
   const c = config();
-  return { tipos: TIPOS, territorios: territorios(), fin: c.fechaFin, minMeses: c.minMeses, iva: c.iva, instalacion: c.instalacion, hoy: hoyMx() };
+  return {
+    tipos: TIPOS,
+    partidos: PARTIDOS.map(({ key, name, color }) => ({ key, name, color })),
+    territorios: territorios(),
+    fin: c.fechaFin,
+    minMeses: c.minMeses,
+    iva: c.iva,
+    hoy: hoyMx(),
+  };
 }
 
 module.exports = { KEY, TIPOS, DEFAULTS, CostosError, config, tokenValido, nuevoToken, validar, cotizar, publico, territorios };

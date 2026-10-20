@@ -23,7 +23,7 @@
     </div>
     <div class="wrap cz-hero">
       <h1 class="cz-hero__t">Cotiza VERTEX para tu campaña</h1>
-      <p class="cz-hero__p">Elige el tipo de elección y el territorio. El precio se calcula con su lista nominal y cubre desde la contratación hasta el cierre del servicio, 30 días después de la elección.</p>
+      <p class="cz-hero__p">Elige el tipo de elección, tu partido y el territorio. El precio se calcula con su lista nominal y cubre desde la contratación hasta el cierre del servicio, 30 días después de la elección.</p>
     </div>
   </header>
 
@@ -36,7 +36,13 @@
       </fieldset>
 
       <fieldset class="cz-paso">
-        <legend><span class="cz-n" aria-hidden="true">2</span>Territorio</legend>
+        <legend><span class="cz-n" aria-hidden="true">2</span>Partido</legend>
+        <div class="cz-partidos" id="czPartidos"></div>
+        <p class="cz-err" id="partido-err"></p>
+      </fieldset>
+
+      <fieldset class="cz-paso">
+        <legend><span class="cz-n" aria-hidden="true">3</span>Territorio</legend>
         <div class="cz-modo" id="modoLista">
           <div class="cz-campo">
             <label for="czEntidad">Entidad</label>
@@ -57,7 +63,7 @@
     <aside class="cz-res" id="czRes" aria-live="polite" aria-label="Cotización">
       <div class="cz-res__vacio" id="czVacio">
         <p class="cz-res__k">Tu cotización</p>
-        <p>Elige el tipo de elección y el territorio para ver el precio.</p>
+        <p>Elige el tipo de elección, el partido y el territorio para ver el precio.</p>
       </div>
       <div id="czOk" hidden>
         <p class="cz-res__k" id="rTipo"></p>
@@ -68,13 +74,13 @@
           <p class="cz-total__k">Total de la campaña <span>sin IVA</span></p>
           <p class="cz-total__v" id="rTotal"></p>
           <p class="cz-total__iva" id="rIva"></p>
+          <p class="cz-aviso">Sujeto a cambio sin previo aviso</p>
         </div>
 
         <dl class="cz-desg">
           <div><dt>Instalación</dt><dd id="rInst"></dd></div>
           <div><dt>Mensualidad</dt><dd id="rMens"></dd></div>
           <div><dt>Meses de servicio</dt><dd id="rMeses"></dd></div>
-          <div><dt>Costo por ciudadano en lista</dt><dd id="rElector"></dd></div>
         </dl>
         <p class="cz-nota" id="rPeriodo"></p>
 

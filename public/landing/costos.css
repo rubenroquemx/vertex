@@ -27,6 +27,14 @@
 .cz-tipo span { font-size: 14px; color: var(--muted); }
 .cz-tipo:has(input:checked) { box-shadow: inset 0 0 0 2px var(--blue); }
 .cz-tipo:has(input:focus-visible) { outline: 3px solid var(--blue-ink); outline-offset: 2px; }
+.cz-partidos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+@media (max-width: 560px) { .cz-partidos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.cz-partido { position: relative; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 12px 14px; border-radius: 14px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: box-shadow 200ms ease; }
+.cz-partido input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.cz-partido i { flex: none; width: 14px; height: 14px; border-radius: 50%; background: var(--pc); }
+.cz-partido strong { font-size: 15px; line-height: 1.2; min-width: 0; }
+.cz-partido:has(input:checked) { box-shadow: inset 0 0 0 2px var(--blue); }
+.cz-partido:has(input:focus-visible) { outline: 3px solid var(--blue-ink); outline-offset: 2px; }
 
 .cz-seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--sand); margin-bottom: 18px; flex-wrap: wrap; }
 .cz-seg label { position: relative; cursor: pointer; }
@@ -59,6 +67,7 @@
 .cz-total__k span { font-weight: 400; color: var(--muted-ink); }
 .cz-total__v { margin-top: 4px; font-family: var(--display); font-weight: 800; font-size: clamp(38px, 5vw, 50px); line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
 .cz-total__iva { margin-top: 8px; font-size: 14px; color: var(--muted-ink); }
+.cz-aviso { margin-top: 10px; font-size: 12px; letter-spacing: .02em; color: var(--muted-ink); opacity: .85; }
 .cz-desg { margin: 20px 0 0; display: grid; gap: 0; }
 .cz-desg div { display: flex; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px solid rgba(255, 255, 255, .08); }
 .cz-desg dt { color: var(--muted-ink); }
@@ -99,7 +108,7 @@
   .cz-res__ln span, .cz-total__k, .cz-desg dd { color: #111; }
   .cz-res__k { color: #1f64b8; }
   .cz-total, .cz-cal { box-shadow: inset 0 0 0 1px #ccc; background: #fff; }
-  .cz-total__iva, .cz-desg dt, .cz-nota, .cz-res__ln, .cz-cal th, .cz-cal summary span { color: #555; }
+  .cz-total__iva, .cz-aviso, .cz-desg dt, .cz-nota, .cz-res__ln, .cz-cal th, .cz-cal summary span { color: #555; }
   .cz-desg div, .cz-cal td { border-color: #ddd; }
   .cz-primer { background: #fff; box-shadow: inset 0 0 0 2px #1f64b8; color: #111; }
   .cz-cal summary::after { display: none; }

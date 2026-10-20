@@ -387,7 +387,7 @@ const MUESTRA = [
 
 function panelCostos(d) {
   const c = d.config;
-  const enlace = c.token ? `${location.origin}/costos/${c.token}` : '';
+  const enlace = `${location.origin}/costos`;
   const campo = (id, label, valor, ayuda = '', extra = 'inputmode="decimal"') => `
     <div class="field">
       <label for="cz_${id}">${label}</label>
@@ -444,15 +444,10 @@ function panelCostos(d) {
       <div class="cz-side">
         <section class="card" aria-labelledby="czLinkT">
           <header class="dash-card__head"><h3 id="czLinkT">Enlace del cotizador</h3></header>
-          <p class="dash-note">Solo quien tenga el enlace puede abrir el cotizador, sin iniciar sesión. Si lo regeneras, el anterior deja de funcionar.</p>
-          ${
-            enlace
-              ? `<div class="cz-link"><input class="input mono" id="czLink" readonly value="${esc(enlace)}" aria-label="Enlace del cotizador">
-                  <button class="btn btn--secondary" type="button" id="czCopiar">Copiar</button></div>
-                <div class="cz-link__acc"><a class="btn btn--secondary btn--sm" href="${esc(enlace)}" target="_blank" rel="noopener">Abrir</a>
-                  <button class="btn btn--secondary btn--sm btn--danger" type="button" id="czRegen">Regenerar enlace</button></div>`
-              : '<button class="btn" type="button" id="czRegen">Crear enlace</button>'
-          }
+          <p class="dash-note">Este enlace es fijo: no cambia al guardar los precios y siempre muestra la versión vigente. Lo puede abrir cualquiera que lo tenga, sin iniciar sesión.</p>
+          <div class="cz-link"><input class="input mono" id="czLink" readonly value="${esc(enlace)}" aria-label="Enlace del cotizador">
+            <button class="btn btn--secondary" type="button" id="czCopiar">Copiar</button></div>
+          <div class="cz-link__acc"><a class="btn btn--secondary btn--sm" href="${esc(enlace)}" target="_blank" rel="noopener">Abrir</a></div>
         </section>
         <section class="card" aria-labelledby="czPrevT">
           <header class="dash-card__head"><h3 id="czPrevT">Así quedan los precios</h3></header>
@@ -514,23 +509,6 @@ function mountCostos(root, route) {
       document.execCommand('copy');
     }
     toast('Enlace copiado');
-  });
-  $('#czRegen', root)?.addEventListener('click', async (e) => {
-    const b = e.currentTarget;
-    // Regenerar invalida el enlace anterior: dos toques
-    if (route.costos.config.token && !b.dataset.confirmar) {
-      b.dataset.confirmar = '1';
-      b.textContent = '¿Seguro? El enlace actual dejará de funcionar';
-      return;
-    }
-    b.disabled = true;
-    try {
-      recargar(await api('/api/configuracion/costos/enlace', { method: 'POST' }));
-      toast('Enlace listo');
-    } catch (err) {
-      toast(err.message);
-      b.disabled = false;
-    }
   });
 }
 

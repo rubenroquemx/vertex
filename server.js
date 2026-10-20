@@ -1468,10 +1468,13 @@ app.get('/', (req, res) => {
   const token = auth.readCookie(req, 'vx_session');
   const sesion = token && sessions.get(token);
   const conSesion = Boolean(sesion && users.get(sesion.userId) && !users.get(sesion.userId).disabled);
-  res.set('Cache-Control', 'no-cache');
+  // La misma dirección sirve dos páginas distintas según la sesión: nunca se guarda en caché ni
+  // responde «304 sin cambios» (ambas tienen la misma fecha de archivo y, tras Cloudflare, sin
+  // ETag; el navegador mostraría la página informativa guardada a quien ya inició sesión)
+  res.set({ 'Cache-Control': 'no-store, private', Vary: 'Cookie' });
   // La app no se indexa; la página informativa sí
   if (conSesion) res.set('X-Robots-Tag', 'noindex, nofollow');
-  res.sendFile(path.join(PUBLIC_DIR, conSesion ? 'index.html' : 'landing.html'));
+  res.sendFile(path.join(PUBLIC_DIR, conSesion ? 'index.html' : 'landing.html'), { etag: false, lastModified: false });
 });
 app.use(
   express.static(PUBLIC_DIR, {

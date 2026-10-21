@@ -557,6 +557,25 @@ const MIGRATIONS = [
       CREATE INDEX material_activacion_fotos_idx ON material_activacion_fotos(activacion_id, id);
     `,
   },
+  {
+    id: 17,
+    name: 'mapa de la sección: puntos de interés y ubicación de casillas',
+    sql: `
+      -- Los comparte el equipo de la sección (su Responsable y sus promotores)
+      CREATE TABLE seccion_puntos (
+        id           uuid PRIMARY KEY,
+        rs_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id      uuid REFERENCES users(id) ON DELETE SET NULL,
+        tipo         text NOT NULL CHECK (tipo IN ('interes', 'casilla')),
+        nombre       text NOT NULL,
+        descripcion  text NOT NULL DEFAULT '',
+        lat          double precision NOT NULL,
+        lng          double precision NOT NULL,
+        created_at   timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX seccion_puntos_rs_idx ON seccion_puntos(rs_id);
+    `,
+  },
 ];
 
 async function migrate() {

@@ -3206,3 +3206,38 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
 .table.mat-inv--rs thead th, .table.mat-inv--rs thead th.num { white-space: normal; line-height: 1.2; }
 @media (max-width: 767px) { .mat-inv--rs th, .mat-inv--rs td { padding-left: var(--space-md); padding-right: var(--space-md); font-size: 14px; } }
 .table.mat-inv--rs td.num { text-align: right; }
+
+/* Mi sección: botones para agregar puntos (naranja) y casillas (verde), pines y formulario */
+.ms { display: grid; gap: var(--space-md); --ms-barra: 60px; }
+.ms-acciones { display: flex; flex-wrap: wrap; gap: var(--space-md); }
+.ms .ms-btn { justify-content: center; color: #fff; }
+.ms .ms-btn svg { width: 20px; height: 20px; }
+.ms .ms-btn--interes { background: #ea580c; }
+.ms .ms-btn--interes:hover, .ms .ms-btn--interes[aria-pressed="true"] { background: #c2410c; }
+.ms .ms-btn--casilla { background: #15803d; }
+.ms .ms-btn--casilla:hover, .ms .ms-btn--casilla[aria-pressed="true"] { background: #166534; }
+.ms .ms-btn[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--color-background), 0 0 0 5px currentColor; }
+.ms-aviso { margin: 0; padding: var(--space-md) var(--space-lg); border-radius: var(--radius); background: var(--color-card); box-shadow: var(--shadow-card); font-size: 14px; font-weight: 700; }
+.ms-aviso[hidden] { display: none; }
+.ms .ms-mapa { height: calc(100dvh - var(--header-h) - 96px - var(--ms-barra)); }
+.ms.is-colocando .ms-mapa .leaflet-container, .ms.is-colocando .ms-mapa { cursor: crosshair; }
+.ms.is-editando .ms-mapa { height: 46dvh; min-height: 260px; }
+.ms-form[hidden] { display: none; }
+.ms-form h3 { margin: 0 0 var(--space-lg); font-size: 16px; }
+.ms-form__acc { display: flex; justify-content: flex-end; gap: var(--space-md); }
+.ms-pin { background: none; border: 0; }
+.ms-pin__in { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--c); box-shadow: 0 0 0 2px #fff, 0 3px 8px rgba(0, 0, 0, .35); }
+.ms-pin__in svg { width: 18px; height: 18px; color: #fff; transform: rotate(45deg); }
+.ms-pop { display: grid; gap: 4px; min-width: 180px; font-family: var(--font); }
+.ms-pop__tipo { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.ms-pop strong { font-size: 15px; }
+.ms-pop p { margin: 0; font-size: 13px; }
+.ms-pop small { color: #666; font-size: 12px; }
+.ms-pop__borrar { justify-self: start; color: #dc2626; }
+@media (max-width: 767px) {
+  .ms { --ms-barra: 56px; }
+  .ms-acciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
+  .ms .ms-btn { padding: 8px 10px; font-size: 14px; }
+  .ms .ms-mapa { height: calc(100dvh - var(--header-h) - var(--dock-space) - 48px - var(--ms-barra)); }
+  .ms.is-editando .ms-mapa { height: 42dvh; }
+}

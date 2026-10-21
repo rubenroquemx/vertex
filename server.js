@@ -39,6 +39,7 @@ const { memo, olvidar: olvidarPaneles } = require('./src/memo');
 const push = require('./src/push');
 const ejemplo = require('./src/ejemplo');
 const material = require('./src/material');
+const puntos = require('./src/puntos');
 const { fmtSeccion } = require('./src/formato');
 const padron = require('./src/padron');
 const territory = require('./src/territory');
@@ -861,7 +862,7 @@ app.get('/api/mi-seccion', requireUser, soloRoles('promotor', 'resp_seccion'), a
   const st = geo.getState(t.entidad);
   const cat = st?.catalog.secciones.find((s) => s.clave === Number(seccion));
   const mun = cat ? st.catalog.municipios.find((m) => m.clave === cat.municipio) : null;
-  res.set('Cache-Control', 'private, max-age=300');
+  res.set('Cache-Control', 'no-store'); // los puntos cambian en cualquier momento
   res.json({
     seccion: Number(seccion),
     entidad: st?.catalog.entidad.nombre || null,
@@ -870,8 +871,27 @@ app.get('/api/mi-seccion', requireUser, soloRoles('promotor', 'resp_seccion'), a
     distritoLocal: cat?.distritoLocal ?? null,
     distritoFederal: cat?.distritoFederal ?? null,
     feature: await geo.seccionFeature(t.entidad, seccion),
+    puntos: await puntos.lista(req.user),
+    puedeCasilla: req.user.role === 'resp_seccion',
   });
 });
+// Puntos del mapa de la sección: de interés (todo el equipo) y casillas (solo el Responsable)
+const conPuntos = (fn) => async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (err) {
+    if (!(err instanceof puntos.PuntoError)) throw err;
+    res.status(err.status).json(err.fields ? { error: err.message, fields: err.fields } : { error: err.message });
+  }
+};
+app.post('/api/mi-seccion/puntos', requireUser, soloRoles('promotor', 'resp_seccion'), conPuntos(async (req, res) => {
+  const p = await puntos.crear(req.user, req.body || {});
+  await audit.add({ action: 'seccion.punto', by: req.realUser.id, as: req.user.id, punto: p.id, tipo: p.tipo });
+  res.status(201).json(p);
+}));
+app.delete('/api/mi-seccion/puntos/:id', requireUser, soloRoles('promotor', 'resp_seccion'), conPuntos(async (req, res) => {
+  res.json(await puntos.borrar(req.user, req.params.id));
+}));
 app.get('/api/escritorio/zona', requireUser, requireRole('coord_zona'), async (req, res) => res.json(await memo(`zona:${req.user.id}`, 20000, () => escritorioZona.zona(req.user))));
 app.get('/api/escritorio/cpv', requireUser, requireCPV, async (req, res) => res.json(await memo(`cpv:${req.user.id}`, 20000, () => escritorio.cpv(req.user))));
 

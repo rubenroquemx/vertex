@@ -141,7 +141,7 @@ function buildMenu(me) {
     // Sin separador de sección: va junto al Panel
     groups[0].items.push(
       { path: '/estructura', title: 'Promotores territoriales', icon: 'tree', view: viewEstructura, mount: mountEstructura },
-      // `fab`: en celulares va como botón + al centro de la barra inferior
+      // `fab`: alta del nivel inferior; no va en la barra inferior del celular
       { path: '/estructura/nuevo', title: 'Nuevo promotor', icon: 'plus', fab: true, view: viewEstructura, mount: mountEstructura },
       // Bandeja para aprobar o rechazar lo que capturan sus promotores
       { path: '/promovidos', title: 'Promovidos', icon: 'check', view: viewRevision, mount: mountRevision },
@@ -167,7 +167,7 @@ function buildMenu(me) {
     groups.push({
       label: 'Captura',
       items: [
-        // `fab`: en celulares va como botón + al centro de la barra inferior
+        // `fab`: alta de promovido; no va en la barra inferior del celular
         { path: '/promovidos/nuevo', title: 'Nuevo promovido', icon: 'plus', fab: true, view: viewNuevoPromovido, mount: mountNuevoPromovido },
         { path: '/promovidos', title: 'Promovidos', icon: 'users', view: viewPromovidos },
         // Mapa de la sección donde promueve
@@ -621,7 +621,7 @@ function renderPromotoresAvance(root, list, avance) {
     box.innerHTML = `<div class="empty">
         <span aria-hidden="true">${ICONS.users}</span>
         <strong>${list.length ? 'Sin resultados' : 'Aún no tienes Promotores Territoriales'}</strong>
-        <span>${list.length ? 'Prueba con otro nombre.' : 'Toca el botón + para dar de alta el primero.'}</span>
+        <span>${list.length ? 'Prueba con otro nombre.' : 'Toca «Nuevo Promotor Territorial» para dar de alta el primero.'}</span>
       </div>`;
     return;
   }
@@ -1563,23 +1563,9 @@ const CORTO = {
 const corto = (r) => CORTO[r.path] || r.title.split(' ')[0];
 
 function renderDock(menuCompleto) {
-  const menu = menuCompleto.map((g) => ({ ...g, items: g.items.filter((r) => r.dock !== false) })).filter((g) => g.items.length);
+  // Sin botón + en la barra: las altas se hacen con el botón de cada página
+  const menu = menuCompleto.map((g) => ({ ...g, items: g.items.filter((r) => r.dock !== false && !r.fab) })).filter((g) => g.items.length);
   const items = menu.flatMap((g) => g.items);
-  const fab = items.find((r) => r.fab);
-  if (fab) {
-    // Botón de acción principal al centro, con las demás funciones a los lados
-    const resto = items.filter((r) => r !== fab);
-    const mitad = Math.ceil(resto.length / 2);
-    const link = (r) => `<a class="dock__link" href="${r.path}" data-link title="${esc(r.title)}" aria-label="${esc(r.title)}">${ICONS[r.icon]}<span class="dock__label" aria-hidden="true">${esc(corto(r))}</span></a>`;
-    $('#dock').classList.add('has-fab');
-    $('#dock').innerHTML = [
-      ...resto.slice(0, mitad).map(link),
-      `<a class="dock__fab" href="${fab.path}" data-link title="${esc(fab.title)}" aria-label="${esc(fab.title)}">${ICONS[fab.icon]}</a>`,
-      ...resto.slice(mitad).map(link),
-    ].join('');
-    return;
-  }
-  $('#dock').classList.remove('has-fab');
   // Con más de 5 accesos la barra se compacta para caber en el ancho del celular
   $('#dock').classList.toggle('dock--compacto', items.length > 5);
   $('#dock').innerHTML = menu
@@ -1719,8 +1705,8 @@ function etiquetarTablas(root) {
 
 // Bienvenida (primera vez por cuenta): lo esencial de cada nivel, en el área de trabajo
 const BIENVENIDA = {
-  promotor: ['Toca el botón + para capturar a una persona.', 'Encuadra la INE dentro del marco: se guarda solo lo que queda dentro.', 'Sin internet también puedes capturar: se guarda en tu teléfono y se envía solo.', 'Si tu Responsable deja observaciones, las verás en «Tienes que corregir».'],
-  resp_seccion: ['Da de alta a tus Promotores Territoriales con el botón +.', 'En «Promovidos» revisa que los datos coincidan con la INE y aprueba o rechaza (en computadora: teclas A y R).', 'Cuando recibas material, sube mínimo 5 fotos de evidencia por orden.', 'Llama o escribe por WhatsApp a los promotores con menor avance.'],
+  promotor: ['Toca «Capturar promovido» para capturar a una persona.', 'Encuadra la INE dentro del marco: se guarda solo lo que queda dentro.', 'Sin internet también puedes capturar: se guarda en tu teléfono y se envía solo.', 'Si tu Responsable deja observaciones, las verás en «Tienes que corregir».'],
+  resp_seccion: ['Da de alta a tus Promotores Territoriales con «Nuevo Promotor Territorial».', 'En «Promovidos» revisa que los datos coincidan con la INE y aprueba o rechaza (en computadora: teclas A y R).', 'Cuando recibas material, sube mínimo 5 fotos de evidencia por orden.', 'Llama o escribe por WhatsApp a los promotores con menor avance.'],
   coord_zona: ['Da de alta a un Responsable de Sección por cada sección de tu zona.', 'Revisa «Requiere tu atención»: secciones sin responsable y revisiones atrasadas.', 'Reparte el material que recibas entre tus responsables.'],
   coord_promocion: ['Divide tu territorio en zonas y asigna a sus coordinadores.', 'Ajusta tu factor de conversión en «Configuración».', 'Da de alta tu inventario de material y entrégalo a tus zonas.', 'Compara tu ritmo de captura contra el ritmo necesario para llegar a la meta.'],
   superadmin: ['Da de alta a los Coordinadores de Promoción del Voto.', 'Publica el aviso de privacidad en «Configuración › General» antes de capturar datos reales.', 'Consulta quién hizo qué en la «Bitácora».'],

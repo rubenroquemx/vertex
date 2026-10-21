@@ -772,7 +772,7 @@ export async function viewPromovidos() {
         : `<div class="empty">
             <span aria-hidden="true">${ICONS.users}</span>
             <strong>Sin promovidos todavía</strong>
-            <span>Toca el botón + para capturar el primero.</span>
+            <span>Toca «Nuevo promovido» para capturar el primero.</span>
           </div>`
     }`;
 }

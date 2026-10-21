@@ -1686,6 +1686,7 @@ async function render() {
   etiquetarTablas(view);
   if (ok && location.pathname === '/') mostrarBienvenida();
   if (ok && location.pathname === '/') saludar();
+  if (ok && location.pathname === '/') invitarPush();
   view.focus({ preventScroll: true });
 }
 
@@ -2115,6 +2116,7 @@ logoutBtn.addEventListener('click', async () => {
     return;
   }
   logoutBtn.disabled = true;
+  await soltarPush();
   await borrarDatosLocales();
   localStorage.removeItem(ME_LOCAL);
   await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
@@ -2150,11 +2152,84 @@ const b64aBytes = (b64) => {
   const s = atob((b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from(s, (c) => c.charCodeAt(0));
 };
+// ---------- Notificaciones push (toda la app) ----------
+const CAMPANA_PUSH = icon('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>');
+const pushSoportado = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const esIphone = () => /iphone|ipad/i.test(navigator.userAgent);
+// Pide permiso y suscribe este dispositivo a los avisos de la cuenta
+async function activarPush() {
+  if ((await Notification.requestPermission()) !== 'granted') throw new Error('No diste permiso para mostrar notificaciones.');
+  const reg = await navigator.serviceWorker.ready;
+  const { clave } = await api('/api/push/clave');
+  const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64aBytes(clave) }));
+  await api('/api/push/suscribir', { method: 'POST', body: { subscription: sub.toJSON() } });
+}
+// Al entrar: si el dispositivo ya dio permiso, recibe los avisos de la cuenta que tiene la sesión
+async function ligarPush() {
+  if (!pushSoportado() || state.me?.godMode || Notification.permission !== 'granted') return;
+  try {
+    await activarPush();
+  } catch {}
+}
+// Al salir: el dispositivo deja de recibir los avisos de esa cuenta
+async function soltarPush() {
+  if (!pushSoportado() || state.me?.godMode) return;
+  try {
+    const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    if (sub) await api('/api/push/suscribir', { method: 'DELETE', body: { endpoint: sub.endpoint } });
+  } catch {}
+}
+// Invitación en el panel (una vez por cuenta y dispositivo) para activar las notificaciones
+function invitarPush() {
+  const clave = `vx:push-invitacion:${state.me?.user?.id}`;
+  let vista = false;
+  try {
+    vista = localStorage.getItem(clave) === '1';
+  } catch {}
+  if (vista || state.me?.godMode || $('#pushInv', view)) return;
+  const soportado = pushSoportado();
+  if (soportado && Notification.permission !== 'default') return;
+  if (!soportado && !esIphone()) return;
+  const cerrar = () => {
+    try {
+      localStorage.setItem(clave, '1');
+    } catch {}
+    $('#pushInv', view)?.remove();
+  };
+  const ancla = $('.saludo', view);
+  const html = `<section class="card push-inv" id="pushInv" aria-labelledby="pushInvT">
+      <span class="push-inv__ic" aria-hidden="true">${CAMPANA_PUSH}</span>
+      <div><h3 id="pushInvT">Activa las notificaciones</h3>
+        <p>${
+          soportado
+            ? 'Te avisamos al momento, aunque la app esté cerrada: observaciones, aprobaciones, material, eventos y tu selfie de asistencia.'
+            : 'En iPhone, primero instala VERTEX en tu pantalla de inicio (Compartir › Agregar a inicio), ábrela desde ahí y activa las notificaciones.'
+        }</p></div>
+      <div class="push-inv__acc">
+        ${soportado ? '<button class="btn" type="button" id="pushInvSi">Activar</button>' : ''}
+        <button class="btn btn--secondary" type="button" id="pushInvNo">${soportado ? 'Ahora no' : 'Entendido'}</button>
+      </div>
+    </section>`;
+  if (ancla) ancla.insertAdjacentHTML('afterend', html);
+  else view.insertAdjacentHTML('afterbegin', html);
+  $('#pushInvNo', view).addEventListener('click', cerrar);
+  $('#pushInvSi', view)?.addEventListener('click', async (ev) => {
+    ev.currentTarget.disabled = true;
+    try {
+      await activarPush();
+      toast('Notificaciones activadas en este dispositivo');
+    } catch (err) {
+      toast(err.message);
+    }
+    cerrar();
+  });
+}
+
 async function montarPush(root) {
   const btn = $('#prefPush', root);
   const txt = $('#prefPushTxt', root);
   if (!btn) return;
-  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+  if (!pushSoportado()) {
     txt.textContent = /iphone|ipad/i.test(navigator.userAgent)
       ? 'En iPhone, primero instala VERTEX en tu pantalla de inicio (Compartir › Agregar a inicio) y ábrela desde ahí.'
       : 'Este navegador no permite notificaciones.';
@@ -2176,7 +2251,7 @@ async function montarPush(root) {
       btn.textContent = 'Desactivar en este dispositivo';
       btn.dataset.estado = 'on';
     } else {
-      txt.textContent = 'Recibe avisos aunque la app esté cerrada (observaciones, aprobaciones, material…).';
+      txt.textContent = 'Recibe avisos aunque la app esté cerrada (observaciones, aprobaciones, material, eventos…).';
       btn.textContent = 'Activar notificaciones';
       btn.dataset.estado = 'off';
     }
@@ -2192,10 +2267,7 @@ async function montarPush(root) {
         }
         toast('Notificaciones desactivadas en este dispositivo');
       } else {
-        if ((await Notification.requestPermission()) !== 'granted') throw new Error('No diste permiso para mostrar notificaciones.');
-        const { clave } = await api('/api/push/clave');
-        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64aBytes(clave) });
-        await api('/api/push/suscribir', { method: 'POST', body: { subscription: sub.toJSON() } });
+        await activarPush();
         toast('Notificaciones activadas en este dispositivo');
       }
     } catch (err) {
@@ -2326,6 +2398,7 @@ async function boot() {
   if (!state.campana) {
     state.campana = true;
     iniciarCampana();
+    ligarPush();
   }
   // Promotor Territorial: captura sin internet (pendientes en el teléfono y envío automático)
   if (state.me.role.key === 'promotor') {

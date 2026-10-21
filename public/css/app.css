@@ -2810,7 +2810,7 @@ a.tabs__tab { display: inline-flex; align-items: center; min-height: 40px; text-
 .ev-ruta-acc { display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap; }
 .ev-switch { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .ev-switch input { width: 18px; height: 18px; accent-color: var(--color-foreground); }
-.ev-map { height: 380px; border-radius: var(--radius); overflow: hidden; background: var(--color-muted); cursor: crosshair; }
+.ev-map { position: relative; isolation: isolate; /* los z-index de Leaflet no pasan sobre la barra inferior */ height: 380px; border-radius: var(--radius); overflow: hidden; background: var(--color-muted); cursor: crosshair; }
 .ev-map--ver { height: 300px; cursor: grab; }
 .ev-km { margin: var(--space-md) 0 0; font-size: 14px; font-weight: 700; }
 .ev-km:empty { display: none; }
@@ -3241,3 +3241,47 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
   .ms .ms-mapa { height: calc(100dvh - var(--header-h) - var(--dock-space) - 48px - var(--ms-barra)); }
   .ms.is-editando .ms-mapa { height: 42dvh; }
 }
+
+/* Agenda: asistencia de la estructura (confirmar y selfie de testimonio) */
+.ev-asis { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 700; background: var(--color-muted); color: var(--color-foreground); white-space: nowrap; }
+.ev-asis--confirmada { background: #fef3c7; color: #92400e; }
+.ev-asis--acreditada { background: #dcfce7; color: #166534; }
+.ev-asis--retirada { background: #fee2e2; color: #991b1b; }
+.ev-item .ev-asis { justify-self: start; margin-top: 2px; }
+.ev-miasis { display: grid; gap: var(--space-md); }
+.ev-miasis .form-card__head { margin-bottom: 0; }
+.ev-miasis p { margin: 0; }
+.ev-miasis .link-btn { justify-self: start; }
+.ev .ev-confirmar, .ev-ficha .ev-confirmar { justify-content: center; background: #15803d; color: #fff; }
+.ev-ficha .ev-confirmar:hover { background: #166534; }
+.ev-ficha .ev-confirmar svg { width: 18px; height: 18px; }
+.ev-selfie { display: grid; gap: var(--space-md); }
+.ev-selfie__previa img { display: block; width: 160px; height: 160px; object-fit: cover; border-radius: var(--radius); }
+.ev-selfie__previa[hidden] { display: none; }
+.ev-selfie__acc { display: flex; flex-wrap: wrap; gap: var(--space-md); }
+.ev-asis-lista { list-style: none; margin: var(--space-lg) 0 0; padding: 0; display: grid; gap: var(--space-md); }
+.ev-asis-lista li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: var(--space-md); }
+.ev-asis-lista img, .ev-asis-lista__sin { display: block; width: 44px; height: 44px; border-radius: 50%; object-fit: cover; background: var(--color-muted); }
+.ev-asis-lista strong { display: block; font-size: 14px; }
+.ev-asis-lista small { font-size: 12px; color: var(--color-muted-foreground); }
+:root[data-theme="dark"] .ev-asis--confirmada { background: #3d2e0a; color: #fcd34d; }
+:root[data-theme="dark"] .ev-asis--acreditada { background: #12301c; color: #86efac; }
+:root[data-theme="dark"] .ev-asis--retirada { background: #3b1515; color: #fca5a5; }
+@media (max-width: 767px) { .ev-selfie__acc .btn { flex: 1; } }
+
+/* Invitación a activar las notificaciones (panel de todos los niveles) */
+.push-inv { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-lg); margin-bottom: var(--space-xl); }
+.push-inv__ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #dc2626; color: #fff; }
+.push-inv__ic svg { width: 20px; height: 20px; }
+.push-inv h3 { margin: 0 0 4px; font-size: 16px; }
+.push-inv p { margin: 0; font-size: 14px; color: var(--color-muted-foreground); }
+.push-inv__acc { display: flex; gap: var(--space-md); }
+@media (max-width: 767px) {
+  .push-inv { grid-template-columns: auto minmax(0, 1fr); }
+  .push-inv__acc { grid-column: 1 / -1; }
+  .push-inv__acc .btn { flex: 1; }
+}
+
+/* Todos los mapas: los z-index internos de Leaflet (400–1000) quedan dentro del mapa y nunca
+   pasan sobre la barra inferior ni la superior */
+.leaflet-container { isolation: isolate; }

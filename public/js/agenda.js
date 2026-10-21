@@ -51,6 +51,7 @@ function filaEvento(e, rol) {
         <span class="ev-item__sub">${TIPO[e.tipo]} · ${cuando(e)}${extra}</span>
         ${e.turno ? `<span class="ev-item__turno">Te toca: ${esc(e.turno)}</span>` : ''}
         ${e.reporteTardio ? '<span class="ev-item__tarde">Reporte tardío</span>' : ''}
+        ${e.miAsistencia ? `<span class="ev-asis ev-asis--${e.miAsistencia.estado}">${esc(e.miAsistencia.estadoTexto)}</span>` : ''}
       </span>
     ${e.sinDetalle ? '</div>' : '</a>'}</li>`;
 }
@@ -689,6 +690,69 @@ export async function viewEvento(route, params) {
         </section>`
       : '';
 
+  // Mi asistencia: confirmar antes del evento y, al terminar, enviar la selfie para que cuente
+  const mia = e.miAsistencia;
+  const miAsistencia =
+    p.confirmarAsistencia || mia
+      ? `<section class="card ev-miasis" aria-labelledby="evMaT">
+          <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.users}</span><h3 id="evMaT">Tu asistencia</h3>
+            ${mia ? `<span class="ev-asis ev-asis--${mia.estado}">${esc(mia.estadoTexto)}</span>` : ''}</header>
+          ${
+            p.confirmarAsistencia
+              ? `<p class="muted">Confírmala si vas a ir. Al terminar el evento te pediremos una selfie para que cuente tu asistencia.</p>
+                 <button class="btn ev-confirmar" type="button" data-asistir>${I.ok}<span>Confirmar asistencia</span></button>`
+              : ''
+          }
+          ${
+            mia?.estado === 'confirmada' && !p.selfie
+              ? `<p class="muted">Cuando empiece el evento podrás enviar tu selfie (tienes hasta el ${esc(fmtDateTime(mia.limite))}).</p>`
+              : ''
+          }
+          ${p.cancelarAsistencia ? '<button class="link-btn" type="button" data-noasistir>Ya no podré ir</button>' : ''}
+          ${
+            p.selfie
+              ? `<div class="ev-selfie">
+                  <p>Envía una selfie en el evento para que cuente tu asistencia. Tienes hasta el <strong>${esc(fmtDateTime(mia.limite))}</strong>; después se quita.</p>
+                  <input type="file" id="evSelfie" accept="image/*" capture="user" hidden>
+                  <div class="ev-selfie__previa" id="evSelfiePrevia" hidden></div>
+                  <p class="field__error" id="evSelfie-err"></p>
+                  <div class="ev-selfie__acc">
+                    <button class="btn btn--secondary" type="button" data-selfie-tomar>${ICONS.camera}<span>Tomar selfie</span></button>
+                    <button class="btn ev-confirmar" type="button" data-selfie-enviar disabled>Enviar selfie</button>
+                  </div>
+                </div>`
+              : ''
+          }
+          ${mia?.estado === 'acreditada' ? `<p class="muted">Tu selfie se recibió el ${esc(fmtDateTime(mia.selfieAt))}.</p>` : ''}
+          ${mia?.estado === 'retirada' ? '<p class="muted">No se recibió tu selfie a tiempo.</p>' : ''}
+        </section>`
+      : '';
+
+  // Asistencia de la estructura (CPV y super administrador)
+  const ae = e.asistentesEstructura;
+  const ROL = { coord_zona: 'Coordinador de Zona', resp_seccion: 'Responsable de Sección', promotor: 'Promotor' };
+  const asisEstructura = ae
+    ? `<section class="card form-card ev-asis-est" aria-labelledby="evAeT">
+        <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.users}</span><h3 id="evAeT">Asistencia de la estructura</h3></header>
+        <div class="ev-metricas">
+          <div><span>Confirmaron</span><strong>${fmtNum(ae.length)}</strong></div>
+          <div><span>Acreditados con selfie</span><strong>${fmtNum(ae.filter((a) => a.estado === 'acreditada').length)}</strong></div>
+          <div><span>Retirados</span><strong>${fmtNum(ae.filter((a) => a.estado === 'retirada').length)}</strong></div>
+        </div>
+        ${
+          ae.length
+            ? `<ul class="ev-asis-lista">${ae
+                .map(
+                  (a) => `<li>${a.selfie ? `<a href="${a.selfie}" target="_blank" rel="noopener"><img src="${a.selfie}" alt="Selfie de ${esc(a.nombre)}" loading="lazy"></a>` : '<span class="ev-asis-lista__sin" aria-hidden="true"></span>'}
+                    <span><strong>${esc(a.nombre)}</strong><small>${esc(ROL[a.rol] || '')}</small></span>
+                    <span class="ev-asis ev-asis--${a.estado}">${esc(a.estadoTexto)}</span></li>`
+                )
+                .join('')}</ul>`
+            : '<p class="muted">Nadie de la estructura ha confirmado todavía.</p>'
+        }
+      </section>`
+    : '';
+
   const r = e.reporte;
   const reporte = r
     ? `<section class="card form-card ev-reporte" aria-labelledby="evRepT">
@@ -753,17 +817,19 @@ export async function viewEvento(route, params) {
       <div class="page-head">
         <p class="ev-tipo ev-tipo--${e.tipo}">${I[e.tipo]}<span>${TIPO[e.tipo]} · ${esc(e.folio)}</span></p>
         <h2>${esc(e.lugar)}</h2>
-        <p>${chip(e)} Para ${esc(e.para)}${e.reporta ? ` · Reporta ${esc(e.reporta)}` : ''}</p>
+        <p>${chip(e)}${e.para ? ` Para ${esc(e.para)}` : ''}${e.reporta ? ` · Reporta ${esc(e.reporta)}` : ''}</p>
       </div>
       ${
         e.inicio
           ? `<div class="ev-cuando">${I.reloj}<div><strong>${esc(FECHA_HORA.format(new Date(e.inicio)))}${e.fin ? ` a ${esc(HORA.format(new Date(e.fin)))}` : ''}</strong>
-             <span>${e.estado === 'borrador' ? 'Fecha del borrador (aún no publicado)' : `Convoca ${esc(e.cpv)}`}</span></div></div>`
+             ${e.estado === 'borrador' ? '<span>Fecha del borrador (aún no publicado)</span>' : e.cpv ? `<span>Convoca ${esc(e.cpv)}</span>` : ''}</div></div>`
           : ''
       }
       ${acciones}
+      ${miAsistencia}
       ${reporte}
       ${asistencia}
+      ${asisEstructura}
       <div class="ev-ficha__grid">
         ${
           hayMapa
@@ -828,6 +894,55 @@ export function mountEvento(root, route) {
   const e = route.evento;
   if (!e) return;
   const limpieza = [];
+  // Asistencia: confirmar / ya no podré ir / selfie de testimonio
+  const accionAsistencia = async (btn, fn, ok) => {
+    btn.disabled = true;
+    try {
+      await fn();
+      toast(ok);
+      navigate(location.pathname);
+    } catch (err) {
+      toast(err.message);
+      btn.disabled = false;
+    }
+  };
+  $('[data-asistir]', root)?.addEventListener('click', (ev) =>
+    accionAsistencia(ev.currentTarget, () => api(`/api/eventos/${e.id}/asistencia/confirmar`, { method: 'POST' }), 'Asistencia confirmada')
+  );
+  $('[data-noasistir]', root)?.addEventListener('click', (ev) => {
+    const b = ev.currentTarget;
+    if (!b.dataset.confirmar) {
+      b.dataset.confirmar = '1';
+      b.textContent = '¿Seguro? Toca de nuevo para quitar tu asistencia';
+      return;
+    }
+    accionAsistencia(b, () => api(`/api/eventos/${e.id}/asistencia/confirmar`, { method: 'DELETE' }), 'Quitaste tu asistencia');
+  });
+  const selfieIn = $('#evSelfie', root);
+  if (selfieIn) {
+    let selfie = null;
+    const enviar = $('[data-selfie-enviar]', root);
+    const err = $('#evSelfie-err', root);
+    $('[data-selfie-tomar]', root).addEventListener('click', () => selfieIn.click());
+    selfieIn.addEventListener('change', async () => {
+      const f = selfieIn.files[0];
+      selfieIn.value = '';
+      if (!f) return;
+      err.textContent = '';
+      try {
+        selfie = await aJpeg(f);
+        const previa = $('#evSelfiePrevia', root);
+        previa.innerHTML = `<img src="${selfie}" alt="Tu selfie">`;
+        previa.hidden = false;
+        enviar.disabled = false;
+      } catch {
+        err.textContent = 'No se pudo leer la foto; vuelve a tomarla.';
+      }
+    });
+    enviar.addEventListener('click', () =>
+      accionAsistencia(enviar, () => api(`/api/eventos/${e.id}/asistencia/selfie`, { method: 'POST', body: { selfie } }), 'Selfie enviada: tu asistencia cuenta')
+    );
+  }
   // Mapa de solo lectura
   if ($('#evMapVer', root)) {
     const { map, destroy } = baseMap($('#evMapVer', root));

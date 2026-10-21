@@ -537,20 +537,49 @@ function filtroRed(viewer) {
   };
 }
 
-// El Promotor solo ve lo que viene: sin resultados, sin eventos pasados y, en los recorridos,
-// solo el punto de inicio con la fecha y la hora de inicio (sin la ruta)
-const esPromotor = (viewer) => viewer.role === 'promotor';
+// La estructura (Coordinador de Zona, Responsable de Sección y Promotor), salvo quien reporta el evento,
+// solo ve el lugar, la fecha y la hora de inicio (en los recorridos, el punto de inicio). No ve
+// reportes ni puede abrir los eventos pasados (salvo para enviar la selfie de su asistencia).
+const ESTRUCTURA = new Set(['coord_zona', 'resp_seccion', 'promotor']);
+const restringido = (viewer, e) => ESTRUCTURA.has(viewer.role) && e.reporta_id !== viewer.id;
 const pasado = (e) => e.estado !== 'programado' || (e.inicio && diaDe(e.inicio) < hoyKey());
 
-function resumenFila(viewer, e, extra = {}) {
-  const fila = resumenBase(viewer, e, extra);
-  if (!esPromotor(viewer)) return fila;
+// Asistencia de la estructura: confirma antes del evento y, al terminar, envía una selfie
+const HORAS_EVENTO = 3; // sin hora de fin, el evento se da por terminado 3 horas después de iniciar
+const HORAS_SELFIE = 72; // plazo para enviar la selfie después del aviso
+const finDe = (e) => (e.fin ? new Date(e.fin) : new Date(new Date(e.inicio).getTime() + HORAS_EVENTO * 3600000));
+const limiteSelfie = (e) => new Date(finDe(e).getTime() + HORAS_SELFIE * 3600000);
+const ASISTENCIA = { confirmada: 'Asistencia confirmada', acreditada: 'Asistencia acreditada', retirada: 'Asistencia retirada' };
+const asistenciaDe = (e, a) =>
+  a
+    ? {
+        estado: a.estado,
+        estadoTexto: a.estado === 'confirmada' && Date.now() >= finDe(e).getTime() ? 'Falta tu selfie' : ASISTENCIA[a.estado],
+        confirmadaAt: a.confirmada_at.toISOString(),
+        selfieAt: a.selfie_at ? a.selfie_at.toISOString() : null,
+        limite: limiteSelfie(e).toISOString(),
+      }
+    : null;
+// Puede enviar la selfie: confirmó, el evento ya inició y no ha vencido el plazo
+const puedeSelfie = (e, a) => a?.estado === 'confirmada' && e.inicio && Date.now() >= new Date(e.inicio).getTime() && Date.now() <= limiteSelfie(e).getTime();
+
+async function asistenciasDe(viewer, ids) {
+  if (!ESTRUCTURA.has(viewer.role) || !ids.length) return new Map();
+  const { rows } = await query('SELECT evento_id, estado, confirmada_at, selfie_at FROM evento_asistencias WHERE user_id = $1 AND evento_id = ANY($2::uuid[])', [viewer.id, ids]);
+  return new Map(rows.map((r) => [r.evento_id, r]));
+}
+
+function resumenFila(viewer, e, extra = {}, asis = null) {
+  const fila = { ...resumenBase(viewer, e, extra), miAsistencia: asistenciaDe(e, asis) };
+  if (!restringido(viewer, e)) return fila;
   return {
     ...fila,
     reporteTardio: false,
-    sinDetalle: pasado(e),
-    ...(pasado(e) ? { asistentes: null } : {}),
-    ...(e.tipo === 'recorrido' ? { fin: null, asistentes: null } : {}),
+    reporta: null,
+    // El evento pasado no se abre, salvo para enviar la selfie de su asistencia
+    sinDetalle: pasado(e) && !puedeSelfie(e, asis),
+    fin: null,
+    asistentes: null,
   };
 }
 
@@ -608,7 +637,13 @@ async function agenda(viewer, mes) {
     viewer.role === 'superadmin'
       ? []
       : (await query("SELECT e.* FROM eventos e WHERE e.reporta_id = $1 AND e.estado = 'programado' AND e.inicio <= now() ORDER BY e.inicio", [viewer.id])).rows;
-  return { mes, hoy: hoyKey(), eventos: rows.map((e) => resumenFila(viewer, e)), porReportar: pendientes.map((e) => resumenFila(viewer, e)) };
+  const asis = await asistenciasDe(viewer, rows.map((e) => e.id));
+  return {
+    mes,
+    hoy: hoyKey(),
+    eventos: rows.map((e) => resumenFila(viewer, e, {}, asis.get(e.id))),
+    porReportar: pendientes.map((e) => resumenFila(viewer, e)),
+  };
 }
 
 async function detalle(viewer, id) {
@@ -619,9 +654,25 @@ async function detalle(viewer, id) {
   const yo = reporta(viewer, e);
   // La lista de asistencia y su cotejo: el CPV, quien reporta y el super administrador
   const verLista = e.estado === 'realizado' && (esCPV || yo || rol === 'sa');
-  if (esPromotor(viewer) && pasado(e)) throw new EventoError('Este evento ya pasó.', 404);
+  const asis = (await asistenciasDe(viewer, [e.id])).get(e.id) || null;
+  if (restringido(viewer, e) && pasado(e) && !puedeSelfie(e, asis)) throw new EventoError('Este evento ya pasó.', 404);
+  // Asistencia de la estructura (para el CPV y el super administrador)
+  const asistentesEstructura =
+    esCPV || rol === 'sa'
+      ? (
+          await query('SELECT user_id, estado, confirmada_at, selfie_at FROM evento_asistencias WHERE evento_id = $1 ORDER BY confirmada_at', [e.id])
+        ).rows.map((a) => ({
+          userId: a.user_id,
+          nombre: nombre(a.user_id),
+          rol: users.get(a.user_id)?.role || null,
+          estado: a.estado,
+          estadoTexto: ASISTENCIA[a.estado],
+          selfie: a.selfie_at ? `/api/eventos/${e.id}/asistencias/${a.user_id}/selfie` : null,
+        }))
+      : null;
   const out = {
-    ...resumenFila(viewer, e),
+    ...resumenFila(viewer, e, {}, asis),
+    asistentesEstructura,
     lat: e.lat,
     lng: e.lng,
     ruta: e.ruta,
@@ -645,16 +696,82 @@ async function detalle(viewer, id) {
       reportar: yo && e.estado === 'programado' && hoyKey() >= dia,
       corregirLista: e.estado === 'realizado' && (esCPV || yo),
       historial: esCPV || rol === 'sa' || yo,
+      confirmarAsistencia: ESTRUCTURA.has(viewer.role) && e.estado === 'programado' && Boolean(e.inicio) && new Date(e.inicio) > new Date() && !asis,
+      cancelarAsistencia: asis?.estado === 'confirmada' && Boolean(e.inicio) && new Date(e.inicio) > new Date(),
+      selfie: puedeSelfie(e, asis),
     },
     reportarDesde: dia,
   };
-  if (!esPromotor(viewer)) return out;
-  Object.assign(out, { reporte: null, reportadoAt: null, asistencia: null, fotosTestimonio: [] });
-  if (e.tipo === 'recorrido') {
-    const ini = e.ruta?.puntos?.[0];
-    Object.assign(out, { soloInicio: true, lat: ini ? ini[0] : e.lat, lng: ini ? ini[1] : e.lng, ruta: null, reporta: null, necesidades: [], notas: '', fotosLugar: [] });
-  }
+  if (!restringido(viewer, e)) return out;
+  // Solo lugar, fecha y hora de inicio (y en los recorridos, el punto de inicio)
+  const ini = e.tipo === 'recorrido' ? e.ruta?.puntos?.[0] : null;
+  Object.assign(out, {
+    soloInicio: true,
+    lat: ini ? ini[0] : e.lat,
+    lng: ini ? ini[1] : e.lng,
+    ruta: null,
+    para: '',
+    cpv: null,
+    zonas: [],
+    necesidades: [],
+    notas: '',
+    fotosLugar: [],
+    reporte: null,
+    reportadoAt: null,
+    asistencia: null,
+    fotosTestimonio: [],
+    publicadoAt: null,
+  });
   return out;
+}
+
+// --- Asistencia de la estructura ---------------------------------------------
+async function confirmarAsistencia(viewer, id) {
+  const { e } = await cargar(viewer, id);
+  if (!ESTRUCTURA.has(viewer.role)) throw new EventoError('Solo la estructura confirma asistencia.', 403);
+  if (e.estado !== 'programado' || !e.inicio || new Date(e.inicio) <= new Date()) throw new EventoError('Solo se confirma antes de que empiece el evento.', 409);
+  await query('INSERT INTO evento_asistencias (evento_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [e.id, viewer.id]);
+  return { ok: true };
+}
+
+async function cancelarAsistencia(viewer, id) {
+  const { e } = await cargar(viewer, id);
+  if (!e.inicio || new Date(e.inicio) <= new Date()) throw new EventoError('El evento ya empezó.', 409);
+  await query("DELETE FROM evento_asistencias WHERE evento_id = $1 AND user_id = $2 AND estado = 'confirmada'", [e.id, viewer.id]);
+  return { ok: true };
+}
+
+function selfieValida(dataUrl) {
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+  const buf = m ? Buffer.from(m[1], 'base64') : null;
+  return buf && buf.length > 1000 && buf.length < 6 * 1024 * 1024 && buf[0] === 0xff && buf[1] === 0xd8 ? buf : null;
+}
+
+async function enviarSelfie(viewer, id, dataUrl) {
+  const { e } = await cargar(viewer, id);
+  const asis = (await asistenciasDe(viewer, [e.id])).get(e.id) || null;
+  if (!asis) throw new EventoError('No confirmaste tu asistencia a este evento.', 409);
+  if (asis.estado === 'acreditada') throw new EventoError('Tu asistencia ya está acreditada.', 409);
+  if (asis.estado === 'retirada') throw new EventoError('Venció el plazo para enviar la selfie.', 409);
+  if (Date.now() < new Date(e.inicio).getTime()) throw new EventoError('La selfie se envía en el evento o al terminar.', 409);
+  if (Date.now() > limiteSelfie(e).getTime()) throw new EventoError('Venció el plazo para enviar la selfie.', 409);
+  const buf = selfieValida(dataUrl);
+  if (!buf) throw new EventoError('La foto no es válida; vuelve a tomarla.', 422, { selfie: 'La foto no es válida; vuelve a tomarla.' });
+  const img = await fotosLib.comprimir(buf, fotosLib.EVIDENCIA);
+  await query(
+    "UPDATE evento_asistencias SET estado = 'acreditada', selfie = $3, selfie_at = now() WHERE evento_id = $1 AND user_id = $2 AND estado = 'confirmada'",
+    [e.id, viewer.id, img]
+  );
+  return { ok: true };
+}
+
+// La selfie la ven quien la tomó, el CPV del evento y el super administrador
+async function selfieDe(viewer, id, userId) {
+  const { e, rol } = await cargar(viewer, id);
+  if (viewer.id !== userId && rol !== 'cpv' && rol !== 'sa') throw new EventoError('Foto no encontrada', 404);
+  const { rows } = await query('SELECT selfie FROM evento_asistencias WHERE evento_id = $1 AND user_id = $2 AND selfie IS NOT NULL', [e.id, userId]);
+  if (!rows.length) throw new EventoError('Foto no encontrada', 404);
+  return rows[0].selfie;
 }
 
 // Eventos ya ocurridos (o de hoy, ya iniciados) que le tocan a la cuenta: para ligarles una
@@ -684,7 +801,7 @@ async function foto(viewer, fotoId) {
   const { rows } = await query('SELECT f.image, f.evento_id, f.clase FROM evento_fotos f WHERE f.id = $1', [fotoId]);
   if (!rows.length) throw new EventoError('Foto no encontrada', 404);
   const { e } = await cargar(viewer, rows[0].evento_id);
-  if (esPromotor(viewer) && (rows[0].clase !== 'lugar' || pasado(e) || e.tipo === 'recorrido')) throw new EventoError('Foto no encontrada', 404);
+  if (restringido(viewer, e)) throw new EventoError('Foto no encontrada', 404);
   return rows[0].image;
 }
 
@@ -735,6 +852,36 @@ async function recordatorios() {
       cuerpo: `${e.reporta_id ? nombre(e.reporta_id) : 'Nadie'} no reportó el evento el mismo día.`,
       url: url(e.id),
     });
+
+  // Asistencia: al terminar el evento (su hora de fin o 3 horas después de iniciar) se pide la selfie
+  const finSql = `COALESCE(e.fin, e.inicio + interval '${HORAS_EVENTO} hours')`;
+  const { rows: pedirSelfie } = await query(
+    `UPDATE evento_asistencias a SET aviso_at = now() FROM eventos e
+     WHERE e.id = a.evento_id AND a.estado = 'confirmada' AND a.aviso_at IS NULL
+       AND e.estado IN ('programado', 'realizado') AND ${finSql} <= now()
+     RETURNING a.user_id, e.*`
+  );
+  for (const x of pedirSelfie)
+    await notificar([x.user_id], {
+      tipo: 'evento.selfie',
+      titulo: `Envía tu selfie de asistencia: ${titulo(x)}`,
+      cuerpo: `Para que cuente tu asistencia, envía tu selfie del evento en las próximas ${HORAS_SELFIE} horas.`,
+      url: url(x.id),
+    });
+  // Sin selfie 72 horas después de terminar el evento, la asistencia se retira
+  const { rows: retiradas } = await query(
+    `UPDATE evento_asistencias a SET estado = 'retirada', retirada_at = now() FROM eventos e
+     WHERE e.id = a.evento_id AND a.estado = 'confirmada'
+       AND e.estado IN ('programado', 'realizado') AND ${finSql} + interval '${HORAS_SELFIE} hours' <= now()
+     RETURNING a.user_id, e.*`
+  );
+  for (const x of retiradas)
+    await notificar([x.user_id], {
+      tipo: 'evento.asistencia_retirada',
+      titulo: `Se quitó tu asistencia: ${titulo(x)}`,
+      cuerpo: `No se recibió tu selfie en las ${HORAS_SELFIE} horas siguientes al evento.`,
+      url: '/agenda',
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -783,6 +930,10 @@ module.exports = {
   detalle,
   historialDe,
   pasadosDe,
+  confirmarAsistencia,
+  cancelarAsistencia,
+  enviarSelfie,
+  selfieDe,
   foto,
   recordatorios,
   rutaPorCalles,

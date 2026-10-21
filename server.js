@@ -114,8 +114,8 @@ const CON_FOTOS = new Set(['/api/me/avatar', '/api/promovidos']);
 const PROMOVIDO_RE = /^\/api\/promovidos\/[0-9a-f-]{36}$/;
 // Activaciones de material: llevan fotos
 const EVIDENCIA_RE = /^\/api\/material\/activaciones$/;
-// Asambleas y recorridos: alta, ajustes y reporte llevan fotos
-const EVENTO_FOTOS_RE = /^\/api\/eventos(\/[0-9a-f-]{36}(\/reporte)?)?$/;
+// Asambleas y recorridos: alta, ajustes, reporte y selfie de asistencia llevan fotos
+const EVENTO_FOTOS_RE = /^\/api\/eventos(\/[0-9a-f-]{36}(\/reporte|\/asistencia\/selfie)?)?$/;
 app.use((req, res, next) =>
   CON_FOTOS.has(req.path) ||
   (req.method === 'PUT' && PROMOVIDO_RE.test(req.path)) ||
@@ -961,6 +961,21 @@ app.get('/api/eventos/:id/asistencia.xlsx', requireUser, conEventos(async (req, 
 app.get('/api/listas/plantilla', requireUser, conEventos(async (req, res) => {
   res.set({ 'Content-Type': listas.xlsxTipo, 'Content-Disposition': 'attachment; filename="plantilla-lista.xlsx"' });
   res.send(await listas.plantilla('Personas'));
+}));
+// Asistencia de la estructura: confirmar, cancelar y enviar la selfie de testimonio
+app.post('/api/eventos/:id/asistencia/confirmar', requireUser, soloRoles('coord_zona', 'resp_seccion', 'promotor'), conEventos(async (req, res) => {
+  res.json(await eventos.confirmarAsistencia(req.user, req.params.id));
+}));
+app.delete('/api/eventos/:id/asistencia/confirmar', requireUser, soloRoles('coord_zona', 'resp_seccion', 'promotor'), conEventos(async (req, res) => {
+  res.json(await eventos.cancelarAsistencia(req.user, req.params.id));
+}));
+app.post('/api/eventos/:id/asistencia/selfie', requireUser, soloRoles('coord_zona', 'resp_seccion', 'promotor'), express.json({ limit: '10mb' }), conEventos(async (req, res) => {
+  res.json(await eventos.enviarSelfie(req.user, req.params.id, req.body?.selfie));
+}));
+app.get('/api/eventos/:id/asistencias/:userId/selfie', requireUser, conEventos(async (req, res) => {
+  const img = await eventos.selfieDe(req.user, req.params.id, req.params.userId);
+  res.set({ 'Content-Type': fotos.tipo(img), 'Cache-Control': 'private, max-age=86400' });
+  res.send(img);
 }));
 app.get('/api/eventos/:id/historial', requireUser, conEventos(async (req, res) => res.json(await eventos.historialDe(req.user, req.params.id))));
 // Trazo por calles para el diseño de recorridos (consulta el servidor de rutas público)

@@ -576,6 +576,27 @@ const MIGRATIONS = [
       CREATE INDEX seccion_puntos_rs_idx ON seccion_puntos(rs_id);
     `,
   },
+  {
+    id: 18,
+    name: 'agenda: confirmación de asistencia con selfie de testimonio',
+    sql: `
+      -- La estructura confirma que asistirá; al terminar el evento envía una selfie para que cuente.
+      -- Sin selfie 72 horas después del aviso, la asistencia se retira.
+      CREATE TABLE evento_asistencias (
+        evento_id      uuid NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
+        user_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        estado         text NOT NULL DEFAULT 'confirmada' CHECK (estado IN ('confirmada', 'acreditada', 'retirada')),
+        confirmada_at  timestamptz NOT NULL DEFAULT now(),
+        selfie         bytea,
+        selfie_at      timestamptz,
+        aviso_at       timestamptz,
+        retirada_at    timestamptz,
+        PRIMARY KEY (evento_id, user_id)
+      );
+      CREATE INDEX evento_asistencias_user_idx ON evento_asistencias(user_id);
+      CREATE INDEX evento_asistencias_pend_idx ON evento_asistencias(evento_id) WHERE estado = 'confirmada';
+    `,
+  },
 ];
 
 async function migrate() {

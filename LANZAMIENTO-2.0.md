@@ -44,7 +44,9 @@ sin base de datos se omiten y corren solo las 18 unitarias.
       después, aviso al terminar y retiro sin selfie, con sus notificaciones.
 - [x] **Permisos** (C): vista restringida de la agenda, eventos pasados, selfies, puntos y casillas.
 - [x] **Lector de la INE** (C): zona de lectura mecánica y frente con dígitos verificadores y correcciones.
-- [ ] Correr `npm test` antes de cada despliegue (C).
+- [x] Correr las pruebas antes de cada despliegue (C, 21 oct): GitHub Actions corre `npm test` con cada cambio en
+      `main` y solo si pasan despliega prueba (`.github/workflows/prueba.yml`, secreto `PRUEBA_DEPLOY_URL`).
+      Producción sigue manual desde `estable`.
 
 ## 3. Seguridad (bloqueante)
 
@@ -55,8 +57,10 @@ sin base de datos se omiten y corren solo las 18 unitarias.
       selfies, lista de asistencia y lector de la INE. Reforzado: tope de 20 lecturas de la INE por minuto por cuenta y
       cola máxima; fotos que declaran más de 60 MP se rechazan sin decodificarse; máximo 300 puntos por sección;
       selfie con identificador inválido responde 404; activación de una cuenta sin CPV da un mensaje claro.
-- [ ] **Aviso de privacidad** (R): actualizarlo si hace falta para la selfie de asistencia y la lectura
-      automática de la INE.
+- [ ] **Aviso de privacidad — BLOQUEANTE** (R + abogado): **nunca se publicó**; producción muestra la plantilla con
+      «[Nombre del responsable]». Propuesta para revisión en `AVISO-PRIVACIDAD-PROPUESTA.md`: preguntas para el
+      abogado (responsable por CPV, datos sensibles, ley aplicable, conservación, ARCO), texto para promovidos
+      con la lectura automática de la INE y aviso nuevo para la estructura con la selfie de asistencia.
 - [x] **Quitar `VERTEX_ADMIN_RESET`** (R): quitada de producción (vertex › vertexapp) y de prueba (legislab › vertex)
       el 21 oct; antes, en cada arranque la contraseña del Super admin volvía a la de las variables de entorno.
 
@@ -67,7 +71,9 @@ sin base de datos se omiten y corren solo las 18 unitarias.
 - [x] **Respaldos de producción** (R): respaldo hecho y respaldo diario programado en Easypanel (21 oct).
 - [ ] **Respaldo antes del lanzamiento** (R): uno más justo antes de desplegar la 2.0.
 - [x] **Migraciones** (C): el arranque de producción registra la 18 aplicada (implica la 16 y la 17, que se aplican en orden).
-- [ ] **Plan de regreso** (C): cómo volver a la 1.1.0 si algo sale mal (commit, imagen y respaldo).
+- [x] **Plan de regreso** (C, 21 oct): `PLAN-DE-REGRESO.md`. Regreso de código moviendo `estable` a la etiqueta
+      anterior (sin perder datos: las migraciones solo agregan); restauración de la base solo si hubo datos dañados.
+- [ ] **Etiquetas de versión** (C): crear `v1.1.0` en el commit de producción y `v2.0.0` al lanzar.
 
 ## 5. Producto y comunicación
 

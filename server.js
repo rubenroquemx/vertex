@@ -883,7 +883,15 @@ app.get('/api/version', requireUser, soloRoles('superadmin', 'coord_promocion'),
 });
 // Lectura de la INE (prototipo): prellena la captura con lo que Tesseract lee en el frente o el reverso.
 // La foto se lee en memoria y no se guarda.
+const lecturasIne = new Map(); // cuenta → momentos de sus últimas lecturas
+const LECTURAS_POR_MINUTO = 20;
 app.post('/api/ine/leer', requireUser, soloRoles('promotor', 'resp_seccion'), express.json({ limit: '10mb' }), async (req, res) => {
+  const ahora = Date.now();
+  const recientes = (lecturasIne.get(req.user.id) || []).filter((t) => ahora - t < 60000);
+  if (recientes.length >= LECTURAS_POR_MINUTO) return res.status(429).json({ error: 'Demasiadas lecturas seguidas; espera un momento.' });
+  recientes.push(ahora);
+  lecturasIne.set(req.user.id, recientes);
+  if (lecturasIne.size > 5000) for (const [k, v] of lecturasIne) if (!v.some((t) => ahora - t < 60000)) lecturasIne.delete(k);
   const lado = req.body?.lado === 'reverso' ? 'reverso' : 'frente';
   try {
     const inicio = Date.now();
@@ -993,6 +1001,7 @@ app.post('/api/eventos/:id/asistencia/selfie', requireUser, soloRoles('coord_zon
   res.json(await eventos.enviarSelfie(req.user, req.params.id, req.body?.selfie));
 }));
 app.get('/api/eventos/:id/asistencias/:userId/selfie', requireUser, conEventos(async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.userId)) return res.status(404).end();
   const img = await eventos.selfieDe(req.user, req.params.id, req.params.userId);
   res.set({ 'Content-Type': fotos.tipo(img), 'Cache-Control': 'private, max-age=86400' });
   res.send(img);

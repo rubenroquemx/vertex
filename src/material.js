@@ -413,9 +413,10 @@ async function crearActivacion(viewer, body) {
   if (!errors.fotos && bufs.some((b) => !b)) errors.fotos = 'Alguna foto no es válida; vuelve a elegirla.';
   if (Object.keys(errors).length) throw new MaterialError('Revisa los datos marcados', 422, errors);
 
+  const cpv = cpvDe(viewer);
+  if (!cpv) throw new MaterialError('Tu cuenta no pertenece a la estructura de un CPV.', 409);
   const comprimidas = await Promise.all(bufs.map((b) => fotosLib.comprimir(b, fotosLib.EVIDENCIA)));
   const id = crypto.randomUUID();
-  const cpv = cpvDe(viewer);
   let numero;
   await tx(async (c) => {
     // Una salida a la vez por cuenta: la existencia no puede quedar negativa

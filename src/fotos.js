@@ -9,6 +9,8 @@ const INE = { ancho: 1100, calidad: 75 };
 const EVIDENCIA = { ancho: 1280, calidad: 70 };
 const AVATAR = { ancho: 400, calidad: 80 };
 
+// Ninguna cámara de celular pasa de ~50 MP: una imagen que declara más se rechaza sin decodificarla
+const LIMITE = { limitInputPixels: 60_000_000 };
 const esWebp = (b) => Boolean(b) && b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP';
 const tipo = (b) => (esWebp(b) ? 'image/webp' : 'image/jpeg');
 
@@ -20,11 +22,11 @@ const LIGERO = 250 * 1024;
 async function comprimir(buf, { ancho, calidad } = INE) {
   if (!buf) return buf;
   try {
-    const { width = 0, height = 0 } = await sharp(buf).metadata();
+    const { width = 0, height = 0 } = await sharp(buf, LIMITE).metadata();
     const cabe = width <= ancho && height <= ancho;
     if (cabe && (esWebp(buf) || buf.length <= LIGERO)) return buf;
-    if (esWebp(buf) && !cabe) return await sharp(buf).resize({ width: ancho, height: ancho, fit: 'inside' }).webp({ quality: calidad, effort: 4 }).toBuffer();
-    const out = await sharp(buf).rotate().resize({ width: ancho, height: ancho, fit: 'inside', withoutEnlargement: true }).webp({ quality: calidad, effort: 4 }).toBuffer();
+    if (esWebp(buf) && !cabe) return await sharp(buf, LIMITE).resize({ width: ancho, height: ancho, fit: 'inside' }).webp({ quality: calidad, effort: 4 }).toBuffer();
+    const out = await sharp(buf, LIMITE).rotate().resize({ width: ancho, height: ancho, fit: 'inside', withoutEnlargement: true }).webp({ quality: calidad, effort: 4 }).toBuffer();
     return out.length < buf.length ? out : buf;
   } catch {
     return buf;
@@ -32,7 +34,7 @@ async function comprimir(buf, { ancho, calidad } = INE) {
 }
 
 // El generador de PDF solo acepta JPEG o PNG
-const aJpeg = async (buf) => (esWebp(buf) ? sharp(buf).jpeg({ quality: 85 }).toBuffer() : buf);
+const aJpeg = async (buf) => (esWebp(buf) ? sharp(buf, LIMITE).jpeg({ quality: 85 }).toBuffer() : buf);
 
 // ---------- Compactación de las fotos ya guardadas (una sola vez, en segundo plano) ----------
 const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
@@ -87,4 +89,4 @@ async function compactarExistentes() {
   }
 }
 
-module.exports = { INE, EVIDENCIA, AVATAR, esWebp, tipo, comprimir, aJpeg, compactarExistentes };
+module.exports = { INE, EVIDENCIA, AVATAR, LIMITE, esWebp, tipo, comprimir, aJpeg, compactarExistentes };

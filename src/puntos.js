@@ -13,6 +13,7 @@ class PuntoError extends Error {
 }
 
 const TIPOS = new Set(['interes', 'casilla']);
+const MAX_PUNTOS = 300; // por sección
 // Límites de México (para descartar coordenadas sin sentido)
 const enMexico = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && lat > 14 && lat < 33 && lng > -118.5 && lng < -86;
 const limpio = (v, max) => String(v ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
@@ -58,6 +59,8 @@ async function crear(viewer, body) {
   if (nombre.length < 2) errors.nombre = 'Escribe el nombre del punto.';
   const descripcion = String(body.descripcion ?? '').trim().slice(0, 500);
   if (Object.keys(errors).length) throw new PuntoError('Revisa los datos marcados', 422, errors);
+  const { rows: cuenta } = await query('SELECT count(*)::int AS n FROM seccion_puntos WHERE rs_id = $1', [rs.id]);
+  if (cuenta[0].n >= MAX_PUNTOS) throw new PuntoError(`La sección ya tiene ${MAX_PUNTOS} puntos; borra alguno para agregar otro.`, 409);
   const id = crypto.randomUUID();
   const { rows } = await query(
     'INSERT INTO seccion_puntos (id, rs_id, user_id, tipo, nombre, descripcion, lat, lng) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',

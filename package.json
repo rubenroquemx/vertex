@@ -20,7 +20,7 @@
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/spa": "^1.0.0",
     "@webrek/mx-cp": "^0.2.0",
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.6.1",
     "aws4fetch": "^1.0.20",
     "compression": "^1.7.4",
     "exceljs": "^4.4.0",
@@ -30,8 +30,11 @@
     "pg": "^8.13.1",
     "proj4": "^2.12.1",
     "shapefile": "^0.6.6",
-    "sharp": "^0.33.5",
+    "sharp": "^0.35.5",
     "tesseract.js": "^7.0.0",
     "web-push": "^3.6.7"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

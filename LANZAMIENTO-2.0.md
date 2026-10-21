@@ -45,19 +45,25 @@ Hoy el proyecto no tiene ninguna. Se cubre lo que más duele si falla:
 
 ## 3. Seguridad (bloqueante)
 
-- [ ] **Paquetes con alertas altas** (C): actualizar `sharp`, `adm-zip` y `uuid` (`npm audit`) y volver a
-      probar fotos, importación de bases de datos y respaldos.
-- [ ] **Revisión de seguridad de lo nuevo** (C): rutas de activaciones, puntos, asistencia, selfies y lectura
-      de la INE (límites de tamaño, permisos, que no se guarden ni registren datos personales de más).
+- [x] **Paquetes con alertas altas** (C, 21 oct): `sharp` 0.35.5, `adm-zip` 0.6.1 y `uuid` 11.1.1 (forzado dentro
+      de `exceljs`); `npm audit` en 0. Probado en local: compresión de fotos, lector de la INE, ZIP con carpetas y ZIP
+      interno, respaldo en ZIP y listas de Excel. Falta importar una cartografía real (R, en el servidor de prueba).
+- [x] **Revisión de seguridad de lo nuevo** (C, 21 oct): permisos correctos en activaciones, puntos, asistencia,
+      selfies, lista de asistencia y lector de la INE. Reforzado: tope de 20 lecturas de la INE por minuto por cuenta y
+      cola máxima; fotos que declaran más de 60 MP se rechazan sin decodificarse; máximo 300 puntos por sección;
+      selfie con identificador inválido responde 404; activación de una cuenta sin CPV da un mensaje claro.
 - [ ] **Aviso de privacidad** (R): actualizarlo si hace falta para la selfie de asistencia y la lectura
       automática de la INE.
+- [x] **Quitar `VERTEX_ADMIN_RESET`** (R): quitada de producción (vertex › vertexapp) y de prueba (legislab › vertex)
+      el 21 oct; antes, en cada arranque la contraseña del Super admin volvía a la de las variables de entorno.
 
 ## 4. Despliegue y datos (bloqueante)
 
-- [ ] **Separar prueba y producción** (C): rama `estable` para producción; `main` sigue para prueba.
-      Producción solo se actualiza al pasar de `main` a `estable`.
-- [ ] **Respaldo antes del lanzamiento** (R/C): respaldo completo de la base de producción antes de desplegar la 2.0.
-- [ ] **Migraciones** (C): confirmar en producción que la 16, 17 y 18 están aplicadas y que no hay datos a medias.
+- [x] **Separar prueba y producción** (C/R): rama `estable` creada (21 oct) y producción configurada en Easypanel
+      para construir desde ella; `main` sigue para prueba. Producción solo se actualiza al pasar de `main` a `estable`.
+- [x] **Respaldos de producción** (R): respaldo hecho y respaldo diario programado en Easypanel (21 oct).
+- [ ] **Respaldo antes del lanzamiento** (R): uno más justo antes de desplegar la 2.0.
+- [x] **Migraciones** (C): el arranque de producción registra la 18 aplicada (implica la 16 y la 17, que se aplican en orden).
 - [ ] **Plan de regreso** (C): cómo volver a la 1.1.0 si algo sale mal (commit, imagen y respaldo).
 
 ## 5. Producto y comunicación

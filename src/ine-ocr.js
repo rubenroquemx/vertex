@@ -9,6 +9,10 @@ const { createWorker, PSM } = require('tesseract.js');
 const ENG = require('@tesseract.js-data/eng');
 const SPA = require('@tesseract.js-data/spa');
 
+const LIMITE = { limitInputPixels: 60_000_000 };
+// Lecturas esperando a la vez (todas las cuentas): más allá, se pide intentar en un momento
+const MAX_EN_COLA = 12;
+let enCola = 0;
 const CLAVE_RE = /^[A-Z]{6}\d{8}[HM]\d{3}$/;
 const CURP_RE = /^[A-Z][AEIOUX][A-Z]{2}\d{6}[HM][A-Z]{5}[A-Z\d]\d$/;
 
@@ -63,10 +67,9 @@ function verificador(s) {
 const UMBRAL_ZONA = Number(process.env.INE_UMBRAL || 140);
 async function prepararReverso(buf) {
   // La zona de lectura mecánica ocupa el tercio inferior del reverso
-  const img = sharp(buf).rotate();
-  const { width, height } = await img.metadata();
+  const { width, height } = await sharp(buf, LIMITE).rotate().metadata();
   const top = Math.round(height * 0.55);
-  return sharp(buf)
+  return sharp(buf, LIMITE)
     .rotate()
     .extract({ left: 0, top, width, height: height - top })
     .resize({ width: 2000 })
@@ -150,9 +153,9 @@ async function leerReverso(buf) {
 // ===========================================================================
 async function prepararFrente(buf) {
   // A la izquierda está la fotografía: se lee desde poco antes de la columna de datos
-  const { width, height } = await sharp(buf).rotate().metadata();
+  const { width, height } = await sharp(buf, LIMITE).rotate().metadata();
   const left = Math.round(width * 0.27);
-  return sharp(buf)
+  return sharp(buf, LIMITE)
     .rotate()
     .extract({ left, top: Math.round(height * 0.18), width: width - left, height: Math.round(height * 0.8) })
     .resize({ width: 2000 })
@@ -253,8 +256,14 @@ function imagenDe(dataUrl) {
 async function leerIne(lado, dataUrl) {
   const buf = imagenDe(dataUrl);
   if (!buf) return { campos: {}, verificado: {}, error: 'La imagen no es válida.' };
-  const r = lado === 'reverso' ? await leerReverso(buf) : await leerFrente(buf);
-  return { lado, ...r };
+  if (enCola >= MAX_EN_COLA) return { campos: {}, verificado: {}, error: 'El lector está ocupado; captura los datos a mano.', ocupado: true };
+  enCola += 1;
+  try {
+    const r = lado === 'reverso' ? await leerReverso(buf) : await leerFrente(buf);
+    return { lado, ...r };
+  } finally {
+    enCola -= 1;
+  }
 }
 
 module.exports = { leerIne, parsearZona, parsearFrente, verificador };

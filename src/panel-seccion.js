@@ -120,8 +120,8 @@ async function escritorio(resp) {
   }
   const material = { porRecibir: [], sinEvidencia: [], conEvidencia: 0, total: mat.rows.length };
   for (const o of mat.rows) {
+    // Recibir la orden la cierra (la evidencia está en las activaciones)
     if (o.estado === 'pendiente') material.porRecibir.push(o.id);
-    else if (o.estado === 'recibida') material.sinEvidencia.push(o.id);
     else material.conEvidencia += 1;
   }
 

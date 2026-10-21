@@ -118,7 +118,8 @@ async function zona(cz) {
     } else {
       material.unidadesEntregadas += x.unidades;
       material.ordenes += x.n;
-      const k = x.estado === 'pendiente' ? 'pendientes' : x.estado === 'recibida' ? 'sinEvidencia' : 'conEvidencia';
+      // Recibir la orden la cierra (la evidencia está en las activaciones)
+      const k = x.estado === 'pendiente' ? 'pendientes' : 'conEvidencia';
       material[k] += x.n;
       const r = porId.get(x.para_id);
       if (r) r.material[k] += x.n;

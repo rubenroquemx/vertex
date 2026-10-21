@@ -183,10 +183,8 @@ function reporte(d) {
         <dl class="inf-dl">
           ${fila('Órdenes creadas en el periodo', `${fmtNum(m.creadas)} <small>(${fmtNum(m.unidades)} piezas)</small>`)}
           ${fila('Recibidas en el periodo', fmtNum(m.recibidas))}
-          ${fila('Comprobadas con fotos', fmtNum(m.comprobadas))}
           ${fila('Tiempo promedio para recibir', horas(m.horasRecibir))}
           ${fila('Por recibir hoy', fmtNum(m.pendientes))}
-          ${fila('Recibidas sin evidencia hoy', fmtNum(m.sinEvidencia))}
         </dl>
       </section>`
     : '';

@@ -57,7 +57,7 @@ function filasResponsables(d, orden) {
       const tel = String(r.phone || '').replace(/\D/g, '').slice(-10);
       const m = r.material;
       const matTxt = m.pendientes + m.sinEvidencia + m.conEvidencia
-        ? `${m.sinEvidencia ? `<span class="mat-alerta">${fmtNum(m.sinEvidencia)}</span> sin evidencia` : `${fmtNum(m.conEvidencia)} con evidencia`}${m.pendientes ? ` · ${fmtNum(m.pendientes)} por recibir` : ''}`
+        ? `${fmtNum(m.conEvidencia)} ${m.conEvidencia === 1 ? 'recibida' : 'recibidas'}${m.pendientes ? ` · ${fmtNum(m.pendientes)} por recibir` : ''}`
         : '—';
       return `<tr>
         <th scope="row"><span class="ez-rs"><strong>${esc(r.name)}</strong><small>Sección ${r.seccion !== null ? fmtSeccion(r.seccion) : '—'} · ${esc(hace(r.ultima))}</small></span></th>

@@ -31,7 +31,7 @@ import { viewEscritorioCPV, mountEscritorioCPV } from './escritorio-cpv.js';
 import { viewResponsables, mountResponsables, viewResponsable, mountResponsable } from './responsables.js';
 import { viewConfiguracionCPV, mountConfiguracionCPV } from './configuracion-cpv.js';
 import { viewConfiguracionSA, mountConfiguracionSA } from './configuracion-sa.js';
-import { viewMaterial, mountMaterial, viewEntregar, mountEntregar, viewOrden, mountOrden } from './material.js';
+import { viewMaterial, mountMaterial, viewEntregar, mountEntregar, viewOrden, mountOrden, viewNuevaActivacion, mountNuevaActivacion, viewActivacion } from './material.js';
 import { viewPanelSA, mountPanelSA } from './panel-sa.js';
 import { viewBitacora, mountBitacora } from './bitacora.js';
 import { viewEscritorioZona, mountEscritorioZona } from './escritorio-zona.js';
@@ -83,6 +83,8 @@ const AGENDA = { path: '/agenda', title: 'Agenda', icon: 'calendar', view: (r, p
 // `dock: false`: no va en la barra inferior del celular (tarea de computadora); sí en el menú lateral
 // Directorio: todas las personas de la estructura del CPV, filtrables por nivel
 const DIRECTORIO = { path: '/directorio', title: 'Directorio', icon: 'directorio', view: viewDirectorio, mount: mountDirectorio };
+// Mapa de la sección (Responsable de Sección y Promotor)
+const MI_SECCION = { path: '/mi-seccion', title: 'Mi sección', icon: 'map', view: viewMiSeccion, mount: mountMiSeccion };
 const EXTERNAS = { path: '/estructuras-externas', title: 'Estructuras externas', icon: 'users', dock: false, view: (r, p) => viewExternas(r, p, state), mount: mountExternas };
 
 function buildMenu(me) {
@@ -145,6 +147,7 @@ function buildMenu(me) {
       { path: '/estructura/nuevo', title: 'Nuevo promotor', icon: 'plus', fab: true, view: viewEstructura, mount: mountEstructura },
       // Bandeja para aprobar o rechazar lo que capturan sus promotores
       { path: '/promovidos', title: 'Promovidos', icon: 'check', view: viewRevision, mount: mountRevision },
+      MI_SECCION,
       MATERIAL,
       AGENDA
     );
@@ -170,8 +173,7 @@ function buildMenu(me) {
         // `fab`: alta de promovido; no va en la barra inferior del celular
         { path: '/promovidos/nuevo', title: 'Nuevo promovido', icon: 'plus', fab: true, view: viewNuevoPromovido, mount: mountNuevoPromovido },
         { path: '/promovidos', title: 'Promovidos', icon: 'users', view: viewPromovidos },
-        // Mapa de la sección donde promueve
-        { path: '/mi-seccion', title: 'Mi sección', icon: 'map', view: viewMiSeccion, mount: mountMiSeccion },
+        MI_SECCION,
         AGENDA,
       ],
     });
@@ -567,9 +569,7 @@ function renderCpvCards(root, list, catalogo) {
       </div>`;
 }
 
-// Color del avance hacia la meta: de rojo a verde conforme se acerca
-// Texto de las iniciales: oscuro sobre los tonos claros (contraste AA)
-const textoSobre = (bg) => (['#f59e0b', '#65a30d', '#ea580c'].includes(bg) ? '#1c1917' : '#ffffff');
+// Color de la barra de avance hacia la meta: de rojo a verde conforme se acerca
 function colorAvance(pct) {
   if (pct >= 1) return '#15803d';
   if (pct >= 0.75) return '#65a30d';
@@ -594,14 +594,16 @@ function renderPromotoresAvance(root, list, avance) {
           const a = avance?.porPromotor?.[u.id] || { capturados: 0, aprobados: 0 };
           const pct = meta ? a.capturados / meta : 0;
           const tel = String(u.phone || '').replace(/\D/g, '').slice(-10);
+          // Al tocarlo se ven sus promovidos (bandeja de revisión filtrada por promotor)
           return `<li class="promo-fila">
-            <div class="promo-item">
-              <span class="promo-ini" style="background:${colorAvance(pct)};color:${textoSobre(colorAvance(pct))}" aria-hidden="true">${esc(inicialesDe(u.name))}</span>
+            <a class="promo-item" href="/promovidos?promotor=${u.id}" data-link aria-label="Ver los promovidos de ${esc(u.name)}">
+              <span class="promo-ini promo-ini--neutro" aria-hidden="true">${esc(inicialesDe(u.name))}</span>
               <span class="promo-item__txt">
                 <strong>${esc(u.name)}</strong>
                 <span class="promo-item__mod">${fmtNum(a.capturados)} de ${fmtNum(meta)} promovidos · ${fmtNum(Math.min(999, Math.round(pct * 100)))}%${a.aprobados ? ` · ${fmtNum(a.aprobados)} ${a.aprobados === 1 ? 'aprobado' : 'aprobados'}` : ''}</span>
+                <span class="pa-barra" role="img" aria-label="Avance: ${fmtNum(Math.min(999, Math.round(pct * 100)))}%"><span style="width:${Math.min(100, pct * 100).toFixed(1)}%;background:${colorAvance(pct)}"></span></span>
               </span>
-            </div>
+            </a>
             <span class="promo-contacto">${
               tel
                 ? `<a class="icon-btn promo-contacto__btn" href="tel:+52${tel}" title="Llamar" aria-label="Llamar a ${esc(u.name)}">${CI.phone}</a>
@@ -1706,7 +1708,7 @@ function etiquetarTablas(root) {
 // Bienvenida (primera vez por cuenta): lo esencial de cada nivel, en el área de trabajo
 const BIENVENIDA = {
   promotor: ['Toca «Capturar promovido» para capturar a una persona.', 'Encuadra la INE dentro del marco: se guarda solo lo que queda dentro.', 'Sin internet también puedes capturar: se guarda en tu teléfono y se envía solo.', 'Si tu Responsable deja observaciones, las verás en «Tienes que corregir».'],
-  resp_seccion: ['Da de alta a tus Promotores Territoriales con «Nuevo Promotor Territorial».', 'En «Promovidos» revisa que los datos coincidan con la INE y aprueba o rechaza (en computadora: teclas A y R).', 'Cuando recibas material, sube mínimo 5 fotos de evidencia por orden.', 'Llama o escribe por WhatsApp a los promotores con menor avance.'],
+  resp_seccion: ['Da de alta a tus Promotores Territoriales con «Nuevo Promotor Territorial».', 'En «Promovidos» revisa que los datos coincidan con la INE y aprueba o rechaza (en computadora: teclas A y R).', 'Cuando repartas material a la gente, repórtalo en «Activaciones» con mínimo 5 fotos.', 'Llama o escribe por WhatsApp a los promotores con menor avance.'],
   coord_zona: ['Da de alta a un Responsable de Sección por cada sección de tu zona.', 'Revisa «Requiere tu atención»: secciones sin responsable y revisiones atrasadas.', 'Reparte el material que recibas entre tus responsables.'],
   coord_promocion: ['Divide tu territorio en zonas y asigna a sus coordinadores.', 'Ajusta tu factor de conversión en «Configuración».', 'Da de alta tu inventario de material y entrégalo a tus zonas.', 'Compara tu ritmo de captura contra el ritmo necesario para llegar a la meta.'],
   superadmin: ['Da de alta a los Coordinadores de Promoción del Voto.', 'Publica el aviso de privacidad en «Configuración › General» antes de capturar datos reales.', 'Consulta quién hizo qué en la «Bitácora».'],
@@ -2277,6 +2279,8 @@ async function boot() {
   if (['coord_promocion', 'coord_zona', 'resp_seccion'].includes(state.me.role.key)) {
     state.routes.set('/material/entregar', { path: '/material/entregar', title: 'Nueva orden de entrega', view: (r, p) => viewEntregar(r, p, state), mount: mountEntregar });
     state.patternRoutes.push({ pattern: /^\/material\/ordenes\/([0-9a-f-]{36})$/, title: 'Orden de entrega', view: viewOrden, mount: mountOrden });
+    state.routes.set('/material/activaciones/nueva', { path: '/material/activaciones/nueva', title: 'Nueva activación', view: viewNuevaActivacion, mount: mountNuevaActivacion });
+    state.patternRoutes.push({ pattern: /^\/material\/activaciones\/([0-9a-f-]{36})$/, title: 'Activación', view: viewActivacion });
   }
   // Asambleas y recorridos: el CPV los crea y edita; la ficha la ven los destinatarios; el reporte, quien lo tenga asignado
   if (state.me.role.key !== 'superadmin') {

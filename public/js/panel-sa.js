@@ -238,8 +238,7 @@ export async function viewPanelSA(route) {
         <div><dt>Unidades en inventario</dt><dd>${fmtNum(m.inventario)}</dd></div>
         <div><dt>Entregadas a zonas</dt><dd>${fmtNum(m.unidadesZonas)} <small>${pctTxt(m.unidadesZonas, m.inventario)}</small></dd></div>
         <div><dt>Órdenes a Responsables</dt><dd>${fmtNum(m.ordenes)}</dd></div>
-        <div><dt>Con evidencia</dt><dd><span class="vz-sw" style="background:#16a34a"></span>${fmtNum(m.conEvidencia)} <small>${pctTxt(m.conEvidencia, m.ordenes)}</small></dd></div>
-        <div><dt>Falta evidencia</dt><dd><span class="vz-sw" style="background:#dc2626"></span>${fmtNum(m.sinEvidencia)}</dd></div>
+        <div><dt>Recibidas</dt><dd><span class="vz-sw" style="background:#16a34a"></span>${fmtNum(m.conEvidencia)} <small>${pctTxt(m.conEvidencia, m.ordenes)}</small></dd></div>
         <div><dt>Por recibir</dt><dd><span class="vz-sw" style="background:#f59e0b"></span>${fmtNum(m.pendientes)}</dd></div>
         <div><dt>Fotos de evidencia</dt><dd>${fmtNum(m.fotos)}</dd></div>
       </dl>

@@ -523,6 +523,40 @@ const MIGRATIONS = [
         FOR EACH ROW EXECUTE FUNCTION almacen_soltar_ine();
     `,
   },
+  {
+    id: 16,
+    name: 'material: activaciones del Responsable de Sección (lo que reparte a la gente, con fotos)',
+    sql: `
+      -- Salida a activación: qué se repartió, cuándo, dónde y, si fue en un evento de la agenda, en cuál
+      CREATE TABLE material_activaciones (
+        id          uuid PRIMARY KEY,
+        numero      bigserial UNIQUE,
+        cpv_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        evento_id   uuid REFERENCES eventos(id) ON DELETE SET NULL,
+        lugar       text NOT NULL,
+        fecha       timestamptz NOT NULL,
+        nota        text NOT NULL DEFAULT '',
+        created_at  timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX material_activaciones_user_idx ON material_activaciones(user_id, fecha DESC);
+      CREATE INDEX material_activaciones_cpv_idx ON material_activaciones(cpv_id);
+      CREATE TABLE material_activacion_items (
+        activacion_id  uuid NOT NULL REFERENCES material_activaciones(id) ON DELETE CASCADE,
+        articulo_id    uuid NOT NULL REFERENCES material_articulos(id) ON DELETE CASCADE,
+        cantidad       integer NOT NULL CHECK (cantidad > 0),
+        PRIMARY KEY (activacion_id, articulo_id)
+      );
+      CREATE INDEX material_activacion_items_art_idx ON material_activacion_items(articulo_id);
+      CREATE TABLE material_activacion_fotos (
+        id             bigserial PRIMARY KEY,
+        activacion_id  uuid NOT NULL REFERENCES material_activaciones(id) ON DELETE CASCADE,
+        image          bytea NOT NULL,
+        at             timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX material_activacion_fotos_idx ON material_activacion_fotos(activacion_id, id);
+    `,
+  },
 ];
 
 async function migrate() {

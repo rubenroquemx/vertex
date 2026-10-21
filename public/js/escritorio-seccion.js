@@ -3,7 +3,7 @@
 import { ICONS, $, esc, fmtNum, fmtSeccion, fmtDateTime, api } from './lib.js';
 import { I } from './coordinador.js';
 import { barras30 } from './panel-sa.js';
-import { botonInforme } from './informe.js';
+import { DOC } from './informe.js';
 import { pct, pctTxt, ESTATUS, barra, sparkline, FECHA } from './escritorio-cpv.js';
 
 function hace(iso) {
@@ -84,7 +84,7 @@ export async function viewEscritorioSeccion(route) {
       ${kpi('Promotores Territoriales', fmtNum(k.promotores), [k.promotores, k.promotoresMeta], `${pctTxt(k.promotores, k.promotoresMeta)} de ${fmtNum(k.promotoresMeta)} que debes tener`, '/estructura')}
       ${kpi('Aprobados', fmtNum(est.aprobados), [est.aprobados, totalEst], `${pctTxt(est.aprobados, totalEst)} de lo capturado`)}
       ${kpi('Rechazados', fmtNum(est.rechazados), null, 'Esperan corrección del promotor', '/promovidos')}
-      ${kpi('Material', m.porRecibir.length || m.sinEvidencia.length ? fmtNum(m.porRecibir.length + m.sinEvidencia.length) : fmtNum(m.conEvidencia), null, m.porRecibir.length ? `${fmtNum(m.porRecibir.length)} por recibir` : m.sinEvidencia.length ? `${fmtNum(m.sinEvidencia.length)} sin evidencia` : `${m.total ? 'órdenes con evidencia' : 'Sin órdenes de material'}`, m.porRecibir[0] || m.sinEvidencia[0] ? `/material/ordenes/${m.porRecibir[0] || m.sinEvidencia[0]}` : '/material')}
+      ${kpi('Material', m.porRecibir.length ? fmtNum(m.porRecibir.length) : fmtNum(m.conEvidencia), null, m.porRecibir.length ? `${fmtNum(m.porRecibir.length)} por recibir` : m.total ? 'órdenes recibidas' : 'Sin órdenes de material', m.porRecibir[0] ? `/material/ordenes/${m.porRecibir[0]}` : '/material')}
     </div>`;
 
   const grafica = `
@@ -106,10 +106,13 @@ export async function viewEscritorioSeccion(route) {
       <ul class="sa-leyenda">${ESTATUS.map((e) => `<li><span class="vz-sw" style="background:${e.c}"></span><span>${e.t}</span><strong>${fmtNum(est[e.k])}</strong><small>${pctTxt(est[e.k], totalEst)}</small></li>`).join('')}</ul>
     </section>`;
 
-  // Promotores: avance contra su meta (factor de conversión del CPV), menor avance primero
+  // Promotores: avance contra su meta (factor de conversión del CPV). Dos listas de hasta 7:
+  // los de mejor desempeño y los que necesitan apoyo (sin repetir a nadie)
   const meta = d.metaPorPromotor;
-  const promotores = [...d.promotores].sort((a, b) => a.promovidos - b.promovidos || a.name.localeCompare(b.name, 'es'));
-  const filas = promotores
+  const desc = [...d.promotores].sort((a, b) => b.promovidos - a.promovidos || a.name.localeCompare(b.name, 'es'));
+  const mejores = desc.slice(0, Math.min(7, Math.ceil(desc.length / 2)));
+  const apoyo = desc.slice(mejores.length).reverse().slice(0, 7);
+  const filas = (lista) => lista
     .map((p) => {
       const tel = String(p.phone || '').replace(/\D/g, '').slice(-10);
       const inactivo = !p.ultima || Date.now() - new Date(p.ultima) > 3 * DIA;
@@ -129,23 +132,31 @@ export async function viewEscritorioSeccion(route) {
       </li>`;
     })
     .join('');
+  const tarjeta = (id, titulo, sub, lista) => `
+    <section class="card" aria-labelledby="${id}">
+      <header class="dash-card__head"><h3 id="${id}">${titulo}</h3><span class="muted">${sub}</span></header>
+      ${lista.length ? `<ul class="es-proms">${filas(lista)}</ul>` : '<p class="muted">Aún no tienes promotores.</p>'}
+    </section>`;
   const faltanPromotores = Math.max(0, k.promotoresMeta - k.promotores);
   const listaPromotores = `
-    <section class="card" aria-labelledby="esPrT">
-      <header class="dash-card__head"><h3 id="esPrT">Tus Promotores Territoriales</h3><span class="muted">Meta de ${fmtNum(meta)} promovidos cada uno</span></header>
-      ${filas ? `<ul class="es-proms">${filas}</ul>` : '<p class="muted">Aún no tienes promotores.</p>'}
+    <div class="es-proms-dos">
+      ${tarjeta('esPrMej', 'Mejor desempeño', `Meta de ${fmtNum(meta)} promovidos cada uno`, mejores)}
+      ${tarjeta('esPrApo', 'Necesitan apoyo', 'Menor avance contra su meta', apoyo)}
+    </div>
+    <div class="es-proms-pie">
+      <a class="link-btn" href="/estructura" data-link>Ver todos tus promotores (${fmtNum(desc.length)})</a>
       ${
         faltanPromotores
           ? `<div class="es-faltan"><p>Te faltan <strong>${fmtNum(faltanPromotores)} ${faltanPromotores === 1 ? 'promotor' : 'promotores'}</strong> para cubrir tu sección.</p><a class="btn btn--sm" href="/estructura/nuevo" data-link>${ICONS.plus}<span>Nuevo promotor</span></a></div>`
           : ''
       }
-    </section>`;
+    </div>`;
 
   return `
     <div class="ec">
-      ${botonInforme()}
       ${hero}
       ${bandeja}
+      <a class="btn es-informe" href="/informe" data-link>${DOC}<span>Generar informe</span></a>
       ${kpis}
       <div class="ec-row ec-row--chart">${grafica}${estatus}</div>
       ${listaPromotores}

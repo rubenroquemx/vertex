@@ -5,7 +5,9 @@
 //    CPV → Coordinador de Zona → Responsable de Sección. El Promotor Territorial no participa.
 //  - Nadie entrega más de lo que tiene disponible; no hay devoluciones (se reparte hasta agotarlo).
 //  - Lo entregado llega «Por recibir»; el subordinado confirma «Recibido» y solo entonces cuenta en su saldo.
-//  - El Responsable de Sección, último nivel, comprueba cada orden recibida con mínimo 5 fotos.
+//  - El Responsable de Sección, último nivel, reparte su material a la gente en activaciones: en cada una
+//    reporta qué y cuánto repartió, la fecha, la hora y el lugar (ligada a un evento ya ocurrido de la
+//    agenda o fuera de agenda) con mínimo 5 fotos. Lo repartido sale de su existencia.
 const crypto = require('crypto');
 const { query, tx } = require('./db');
 const { users } = require('./store');
@@ -15,6 +17,13 @@ const fotosLib = require('./fotos');
 
 const MIN_FOTOS = 5;
 const MAX_FOTOS_LOTE = 15;
+const folioAct = (n) => `AC-${String(n).padStart(5, '0')}`;
+// "YYYY-MM-DDTHH:MM" en hora del centro (sin horario de verano desde 2022)
+function fechaHora(s) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(String(s || ''))) return null;
+  const d = new Date(`${s}:00-06:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 const NIVELES = ['coord_promocion', 'coord_zona', 'resp_seccion'];
 // A quién le entrega cada nivel
 const SIGUIENTE = { coord_promocion: 'coord_zona', coord_zona: 'resp_seccion' };
@@ -59,7 +68,9 @@ async function saldos(user, client = { query }) {
        COALESCE((SELECT sum(i.cantidad) FROM material_orden_items i JOIN material_ordenes o ON o.id = i.orden_id
                  WHERE i.articulo_id = a.id AND o.para_id = $2 AND o.estado = 'pendiente'), 0)::int AS por_recibir,
        COALESCE((SELECT sum(i.cantidad) FROM material_orden_items i JOIN material_ordenes o ON o.id = i.orden_id
-                 WHERE i.articulo_id = a.id AND o.de_id = $2), 0)::int AS repartido
+                 WHERE i.articulo_id = a.id AND o.de_id = $2), 0)::int AS repartido,
+       COALESCE((SELECT sum(i.cantidad) FROM material_activacion_items i JOIN material_activaciones ac ON ac.id = i.activacion_id
+                 WHERE i.articulo_id = a.id AND ac.user_id = $2), 0)::int AS activado
      FROM material_articulos a WHERE a.cpv_id = $1 ORDER BY lower(a.nombre)`,
     [cpv.id, user.id]
   );
@@ -71,7 +82,9 @@ async function saldos(user, client = { query }) {
     recibido: r.recibido,
     porRecibir: r.por_recibir,
     repartido: r.repartido,
-    disponible: r.entradas + r.recibido - r.repartido,
+    // Repartido a la gente en activaciones (Responsable de Sección)
+    entregado: r.activado,
+    disponible: r.entradas + r.recibido - r.repartido - r.activado,
   }));
 }
 
@@ -94,8 +107,8 @@ function formato(r) {
     de: { id: r.de_id, name: nombreDe(r.de_id), role: rolDe(r.de_id) },
     para: { id: r.para_id, name: nombreDe(r.para_id), role: rolDe(r.para_id) },
     estado: r.estado,
-    // El Responsable de Sección es el último nivel: su orden se cierra con evidencia
-    requiereEvidencia: rolDe(r.para_id) === 'resp_seccion',
+    // Recibir la orden la cierra; la evidencia está en las activaciones (fotos de lo repartido)
+    requiereEvidencia: false,
     nota: r.nota,
     items: r.items,
     total: r.items.reduce((t, i) => t + i.cantidad, 0),
@@ -125,6 +138,16 @@ async function avanceRama(user) {
           [ids]
         )
       : { rows: [] };
+  // Para el Coordinador de Zona: lo que cada responsable repartió a la gente en activaciones
+  const acts =
+    user.role === 'coord_zona'
+      ? await query(
+          `SELECT ac.user_id AS id, count(DISTINCT ac.id)::int AS n, COALESCE(sum(i.cantidad), 0)::int AS piezas
+           FROM material_activaciones ac LEFT JOIN material_activacion_items i ON i.activacion_id = ac.id
+           WHERE ac.user_id = ANY($1::uuid[]) GROUP BY ac.user_id`,
+          [ids]
+        )
+      : { rows: [] };
   const vacio = () => ({ pendiente: 0, recibida: 0, comprobada: 0 });
   return hijos
     .map((h) => {
@@ -135,6 +158,9 @@ async function avanceRama(user) {
         if (x.estado !== 'pendiente') r.piezasRecibidas += x.piezas;
       }
       for (const x of abajo.rows.filter((x) => x.id === h.id)) r.abajo[x.estado] = x.n;
+      const a = acts.rows.find((x) => x.id === h.id);
+      r.activaciones = a ? a.n : 0;
+      r.repartidoGente = a ? a.piezas : 0;
       return { id: h.id, name: h.name, role: h.role, zona: h.zona?.nombre || null, secciones: h.territorio?.secciones || [], ...r };
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'es'));
@@ -142,22 +168,24 @@ async function avanceRama(user) {
 
 async function resumen(user) {
   if (!participa(user)) throw new MaterialError('Tu nivel no maneja material electoral.', 403);
-  const [inventario, recibidas, emitidas, rama] = await Promise.all([
+  const [inventario, recibidas, emitidas, rama, acts] = await Promise.all([
     saldos(user),
     ordenes('o.para_id = $1', [user.id]),
     SIGUIENTE[user.role] ? ordenes('o.de_id = $1', [user.id]) : Promise.resolve([]),
     SIGUIENTE[user.role] ? avanceRama(user) : Promise.resolve([]),
+    user.role === 'resp_seccion' ? activaciones('ac.user_id = $1', [user.id]) : Promise.resolve([]),
   ]);
   return {
     rol: user.role,
     esCPV: user.role === 'coord_promocion',
     puedeEntregar: Boolean(SIGUIENTE[user.role]),
-    requiereEvidencia: user.role === 'resp_seccion',
+    activa: user.role === 'resp_seccion',
     minFotos: MIN_FOTOS,
     inventario,
     recibidas,
     emitidas,
     rama,
+    activaciones: acts,
   };
 }
 
@@ -280,7 +308,7 @@ async function recibir(viewer, id) {
   await notificar([row.de_id], {
     tipo: 'material.recibida',
     titulo: `${viewer.name} recibió el material (${folio(row.numero)})`,
-    cuerpo: rolDe(row.para_id) === 'resp_seccion' ? `Falta que suba las fotos de evidencia (mínimo ${MIN_FOTOS}).` : '',
+    cuerpo: '',
     url: `/material/ordenes/${id}`,
     autorId: viewer.id,
   });
@@ -303,37 +331,139 @@ function fotoValida(dataUrl) {
   return buf;
 }
 
-async function subirEvidencia(viewer, id, fotos) {
-  const row = await filaOrden(id);
-  if (!row || viewer.id !== row.para_id) throw new MaterialError('Orden no encontrada', 404);
-  if (rolDe(row.para_id) !== 'resp_seccion') throw new MaterialError('Esta orden no requiere evidencia.', 409);
-  if (row.estado === 'pendiente') throw new MaterialError('Primero confirma que recibiste el material.', 409);
-  const lista = Array.isArray(fotos) ? fotos : [];
-  if (lista.length > MAX_FOTOS_LOTE) throw new MaterialError(`Sube como máximo ${MAX_FOTOS_LOTE} fotos a la vez.`, 422, { fotos: `Máximo ${MAX_FOTOS_LOTE} fotos a la vez.` });
-  const bufs = lista.map(fotoValida);
-  if (!bufs.length || bufs.some((b) => !b)) throw new MaterialError('Alguna foto no es válida.', 422, { fotos: 'Alguna foto no es válida; vuelve a elegirla.' });
-  const ya = (await query('SELECT count(*)::int n FROM material_evidencias WHERE orden_id = $1', [id])).rows[0].n;
-  if (ya + bufs.length < MIN_FOTOS) {
-    const msg = `Sube mínimo ${MIN_FOTOS} fotos del material entregado o en uso (llevas ${ya + bufs.length}).`;
-    throw new MaterialError(msg, 422, { fotos: msg });
+// --- Activaciones: lo que el Responsable de Sección reparte a la gente -------------------
+async function activaciones(where, params) {
+  const { rows } = await query(
+    `SELECT ac.*, e.tipo AS evento_tipo, e.lugar AS evento_lugar, e.inicio AS evento_inicio,
+            (SELECT count(*)::int FROM material_activacion_fotos f WHERE f.activacion_id = ac.id) AS fotos,
+            COALESCE((SELECT json_agg(json_build_object('articuloId', a.id, 'nombre', a.nombre, 'unidad', a.unidad, 'cantidad', i.cantidad) ORDER BY lower(a.nombre))
+                      FROM material_activacion_items i JOIN material_articulos a ON a.id = i.articulo_id WHERE i.activacion_id = ac.id), '[]') AS items
+     FROM material_activaciones ac LEFT JOIN eventos e ON e.id = ac.evento_id
+     WHERE ${where} ORDER BY ac.fecha DESC, ac.numero DESC LIMIT 300`,
+    params
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    folio: folioAct(r.numero),
+    por: { id: r.user_id, name: nombreDe(r.user_id) },
+    lugar: r.lugar,
+    fecha: r.fecha.toISOString(),
+    nota: r.nota,
+    evento:
+      r.evento_id && r.evento_inicio
+        ? { id: r.evento_id, tipo: r.evento_tipo, lugar: r.evento_lugar, inicio: r.evento_inicio.toISOString() }
+        : null,
+    items: r.items,
+    total: r.items.reduce((t, i) => t + i.cantidad, 0),
+    fotos: r.fotos,
+    createdAt: r.created_at.toISOString(),
+  }));
+}
+
+// Puede verla quien la reportó y su rama hacia arriba (Coordinador de Zona, CPV, super administrador)
+function puedeVerActivacion(viewer, userId) {
+  if (!viewer) return false;
+  if (viewer.id === userId) return true;
+  const u = users.get(userId);
+  return Boolean(u) && chainOf(u).some((x) => x.id === viewer.id);
+}
+
+// Datos del formulario: existencia por artículo y eventos ya ocurridos que se pueden ligar
+async function opcionesActivacion(viewer) {
+  if (viewer.role !== 'resp_seccion') throw new MaterialError('Solo el Responsable de Sección reporta activaciones.', 403);
+  const eventos = require('./eventos');
+  const [inventario, pasados] = await Promise.all([saldos(viewer), eventos.pasadosDe(viewer)]);
+  return { inventario: inventario.filter((a) => a.disponible > 0), eventos: pasados, minFotos: MIN_FOTOS, maxFotos: MAX_FOTOS_LOTE };
+}
+
+async function crearActivacion(viewer, body) {
+  if (viewer.role !== 'resp_seccion') throw new MaterialError('Solo el Responsable de Sección reporta activaciones.', 403);
+  const errors = {};
+  const lugar = limpio(body.lugar, 160);
+  if (lugar.length < 3) errors.lugar = 'Escribe el lugar donde se repartió.';
+  const fecha = fechaHora(`${body.fecha || ''}T${body.hora || ''}`);
+  if (!fecha) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha || ''))) errors.fecha = 'Elige la fecha.';
+    else errors.hora = 'Escribe la hora.';
+  } else if (fecha.getTime() > Date.now() + 5 * 60000) errors.fecha = 'La activación no puede ser en el futuro.';
+  else if (fecha.getTime() < Date.now() - 366 * 86400000) errors.fecha = 'La fecha es de hace más de un año.';
+
+  // Evento de la agenda ya ocurrido (o «fuera de agenda»)
+  let eventoId = null;
+  if (body.eventoId) {
+    const pasados = await require('./eventos').pasadosDe(viewer, 366);
+    const ev = pasados.find((e) => e.id === String(body.eventoId));
+    if (!ev) errors.eventoId = 'Elige un evento que ya haya ocurrido.';
+    else eventoId = ev.id;
   }
-  let comprobada = false;
+
+  const pedidos = new Map();
+  for (const it of Array.isArray(body.items) ? body.items : []) {
+    const n = entero(it?.cantidad);
+    if (!it?.articuloId || !n) continue;
+    if (n < 0) errors.items = 'Las cantidades deben ser positivas.';
+    else pedidos.set(String(it.articuloId), (pedidos.get(String(it.articuloId)) || 0) + n);
+  }
+  if (!pedidos.size && !errors.items) errors.items = 'Escribe cuánto repartiste de al menos un artículo.';
+
+  const lista = Array.isArray(body.fotos) ? body.fotos : [];
+  if (lista.length < MIN_FOTOS) errors.fotos = `Sube mínimo ${MIN_FOTOS} fotos de la activación (llevas ${lista.length}).`;
+  else if (lista.length > MAX_FOTOS_LOTE) errors.fotos = `Sube como máximo ${MAX_FOTOS_LOTE} fotos.`;
+  const bufs = lista.map(fotoValida);
+  if (!errors.fotos && bufs.some((b) => !b)) errors.fotos = 'Alguna foto no es válida; vuelve a elegirla.';
+  if (Object.keys(errors).length) throw new MaterialError('Revisa los datos marcados', 422, errors);
+
   const comprimidas = await Promise.all(bufs.map((b) => fotosLib.comprimir(b, fotosLib.EVIDENCIA)));
+  const id = crypto.randomUUID();
+  const cpv = cpvDe(viewer);
+  let numero;
   await tx(async (c) => {
-    for (const b of comprimidas) await c.query('INSERT INTO material_evidencias (orden_id, user_id, image) VALUES ($1, $2, $3)', [id, viewer.id, b]);
-    const r = await c.query("UPDATE material_ordenes SET estado = 'comprobada', comprobada_at = now() WHERE id = $1 AND estado = 'recibida' RETURNING id", [id]);
-    comprobada = r.rows.length > 0;
+    // Una salida a la vez por cuenta: la existencia no puede quedar negativa
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [viewer.id]);
+    const saldo = new Map((await saldos(viewer, c)).map((s) => [s.id, s]));
+    const faltan = {};
+    for (const [artId, n] of pedidos) {
+      const s = saldo.get(artId);
+      if (!s) faltan[artId] = 'Artículo no válido.';
+      else if (n > s.disponible) faltan[artId] = `Solo tienes ${s.disponible.toLocaleString('es-MX')} ${s.unidad} en existencia.`;
+    }
+    if (Object.keys(faltan).length) throw new MaterialError('No tienes suficiente material en existencia.', 422, { porArticulo: faltan });
+    const r = await c.query(
+      'INSERT INTO material_activaciones (id, cpv_id, user_id, evento_id, lugar, fecha, nota) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING numero',
+      [id, cpv.id, viewer.id, eventoId, lugar, fecha, limpio(body.nota, 300)]
+    );
+    numero = r.rows[0].numero;
+    for (const [artId, n] of pedidos) await c.query('INSERT INTO material_activacion_items (activacion_id, articulo_id, cantidad) VALUES ($1, $2, $3)', [id, artId, n]);
+    for (const b of comprimidas) await c.query('INSERT INTO material_activacion_fotos (activacion_id, image) VALUES ($1, $2)', [id, b]);
   });
-  if (comprobada) {
-    await notificar([row.de_id], {
-      tipo: 'material.comprobada',
-      titulo: `${viewer.name} subió la evidencia de ${folio(row.numero)}`,
-      cuerpo: `${ya + bufs.length} fotos del material entregado o en uso.`,
-      url: `/material/ordenes/${id}`,
+  if (viewer.parentId) {
+    await notificar([viewer.parentId], {
+      tipo: 'material.activacion',
+      titulo: `${viewer.name} reportó una activación (${folioAct(numero)})`,
+      cuerpo: `${lugar} · ${comprimidas.length} fotos.`,
+      url: `/material/activaciones/${id}`,
       autorId: viewer.id,
     });
   }
-  return { ok: true, fotos: ya + bufs.length };
+  return { id, folio: folioAct(numero) };
+}
+
+async function activacionDetalle(viewer, id) {
+  if (!/^[0-9a-f-]{36}$/.test(String(id))) return null;
+  const [a] = await activaciones('ac.id = $1', [id]);
+  if (!a || !puedeVerActivacion(viewer, a.por.id)) return null;
+  const f = await query('SELECT id FROM material_activacion_fotos WHERE activacion_id = $1 ORDER BY id', [id]);
+  return { ...a, fotosIds: f.rows.map((x) => String(x.id)) };
+}
+
+async function activacionFoto(viewer, fotoId) {
+  if (!/^\d+$/.test(String(fotoId))) return null;
+  const { rows } = await query(
+    'SELECT f.image, ac.user_id FROM material_activacion_fotos f JOIN material_activaciones ac ON ac.id = f.activacion_id WHERE f.id = $1',
+    [fotoId]
+  );
+  if (!rows[0] || !puedeVerActivacion(viewer, rows[0].user_id)) return null;
+  return rows[0].image;
 }
 
 async function evidencia(viewer, fotoId) {
@@ -356,6 +486,9 @@ module.exports = {
   detalle,
   recibir,
   cancelar,
-  subirEvidencia,
   evidencia,
+  opcionesActivacion,
+  crearActivacion,
+  activacionDetalle,
+  activacionFoto,
 };

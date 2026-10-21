@@ -1930,7 +1930,7 @@ a.promo-item:hover { background: var(--color-surface-alt); }
 }
 
 /* ---------- Responsable de Sección: promotores con su avance hacia la meta ---------- */
-.prom-avance .promo-item { cursor: default; }
+.prom-avance a.promo-item { color: inherit; text-decoration: none; }
 @media (max-width: 767px) {
   .prom-avance .promo-list { margin: 0 calc(-1 * var(--space-xl)); }
 }
@@ -3166,3 +3166,43 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
   .dock__link { height: var(--dock-h); }
   .dock__link[aria-current="page"] { border-radius: 0; }
 }
+
+/* Material del Responsable de Sección: tablero «Por recibir | Activaciones» */
+.mat-kanban { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xl); align-items: start; }
+.mat-col { display: grid; gap: var(--space-md); padding: var(--space-lg); border-radius: var(--radius-lg); background: var(--color-muted); min-width: 0; }
+.mat-col__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); }
+.mat-col__head h3 { margin: 0; font-size: 15px; }
+.mat-col__n { display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 8px; border-radius: 999px; background: var(--color-card); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mat-col .mat-lista { margin: 0; border: 0; background: none; display: grid; gap: var(--space-md); }
+.mat-col .mat-lista li + li { border-top: 0; }
+.mat-col .mat-orden { border-radius: var(--radius); background: var(--color-card); box-shadow: var(--shadow-card); }
+.mat-col__vacio { margin: 0; padding: var(--space-lg); font-size: 14px; color: var(--color-muted-foreground); text-align: center; }
+.mat-col__btn { justify-content: center; }
+.mat-col__btn svg { width: 18px; height: 18px; }
+.mat-hist summary { cursor: pointer; padding: var(--space-md) 0; font-weight: 700; }
+.mat-act .field__label { display: block; margin-bottom: var(--space-sm); font-size: 14px; font-weight: 700; }
+@media (max-width: 767px) {
+  .mat-kanban { grid-template-columns: minmax(0, 1fr); gap: var(--space-lg); }
+  .mat-col .mat-lista { margin: 0; }
+  .mat-col .mat-orden { padding: var(--space-lg); }
+}
+
+/* Panel del Responsable: informe en verde bajo «Por revisar» y promotores en dos listas */
+.ec .es-informe { justify-content: center; min-height: 48px; background: #15803d; color: #fff; }
+.ec .es-informe:hover { background: #166534; }
+.ec .es-informe svg { width: 18px; height: 18px; }
+.es-proms-dos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xl); align-items: start; }
+.es-proms-pie { display: grid; gap: var(--space-lg); justify-items: start; }
+.es-proms-pie .es-faltan { width: 100%; }
+@media (max-width: 1023px) { .es-proms-dos { grid-template-columns: minmax(0, 1fr); gap: var(--space-lg); } }
+
+/* Promotores del Responsable: iniciales en un solo color y barra de avance debajo */
+.promo-ini--neutro { background: var(--color-primary); color: var(--color-on-primary); }
+.pa-barra { display: block; height: 6px; margin-top: 6px; border-radius: 999px; background: var(--color-muted); overflow: hidden; }
+.pa-barra > span { display: block; height: 100%; border-radius: inherit; }
+.mat-inv--rs small { display: block; font-size: 12px; color: var(--color-muted-foreground); font-weight: 400; }
+/* Cabe en el celular: el artículo puede partirse en dos líneas y las cifras no */
+.mat-inv--rs th[scope="row"] { white-space: normal; }
+.table.mat-inv--rs thead th, .table.mat-inv--rs thead th.num { white-space: normal; line-height: 1.2; }
+@media (max-width: 767px) { .mat-inv--rs th, .mat-inv--rs td { padding-left: var(--space-md); padding-right: var(--space-md); font-size: 14px; } }
+.table.mat-inv--rs td.num { text-align: right; }

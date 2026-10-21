@@ -1,4 +1,4 @@
-// Mi sección (Promotor Territorial): solo el mapa de la sección donde promueve
+// Mi sección (Responsable de Sección y Promotor Territorial): solo el mapa de su sección
 import { ICONS, api, fmtSeccion } from './lib.js';
 import { baseMap } from './zonas.js';
 
@@ -7,7 +7,7 @@ export async function viewMiSeccion(route) {
   route.data = d;
   if (!d.feature) {
     return `<div class="empty"><span aria-hidden="true">${ICONS.map}</span><strong>${d.seccion === null ? 'Aún no tienes sección asignada' : 'El mapa de tu sección no está disponible'}</strong>
-      <span>${d.seccion === null ? 'Tu Responsable de Sección debe tener una sección asignada.' : 'Avísale a tu Responsable de Sección.'}</span></div>`;
+      <span>${d.seccion === null ? 'Debe asignarse una sección a la estructura.' : 'Avísale a tu coordinador.'}</span></div>`;
   }
   return `<div class="ms-mapa" id="msMapa" role="region" aria-label="Mapa de la sección ${fmtSeccion(d.seccion)}"></div>`;
 }

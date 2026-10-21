@@ -111,7 +111,8 @@ const jsonBody = express.json();
 // Rutas con fotos: su propio límite de tamaño
 const CON_FOTOS = new Set(['/api/me/avatar', '/api/promovidos']);
 const PROMOVIDO_RE = /^\/api\/promovidos\/[0-9a-f-]{36}$/;
-const EVIDENCIA_RE = /^\/api\/material\/ordenes\/[0-9a-f-]{36}\/evidencias$/;
+// Activaciones de material: llevan fotos
+const EVIDENCIA_RE = /^\/api\/material\/activaciones$/;
 // Asambleas y recorridos: alta, ajustes y reporte llevan fotos
 const EVENTO_FOTOS_RE = /^\/api\/eventos(\/[0-9a-f-]{36}(\/reporte)?)?$/;
 app.use((req, res, next) =>
@@ -664,8 +665,26 @@ app.post('/api/material/ordenes/:id/recibir', requireUser, conMaterial(async (re
 app.delete('/api/material/ordenes/:id', requireUser, conMaterial(async (req, res) => res.json(await material.cancelar(req.user, req.params.id))));
 // Envíos grandes: primero se valida el nivel y después se lee el contenido
 const soloRoles = (...roles) => (req, res, next) => (roles.includes(req.user.role) ? next() : res.status(403).json({ error: 'No tienes permiso para esta acción' }));
-app.post('/api/material/ordenes/:id/evidencias', requireUser, soloRoles('resp_seccion'), express.json({ limit: '40mb' }), conMaterial(async (req, res) => {
-  res.status(201).json(await material.subirEvidencia(req.user, req.params.id, req.body?.fotos));
+// Activaciones del Responsable de Sección: lo que reparte a la gente, con fotos
+app.get('/api/material/activaciones/opciones', requireUser, conMaterial(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await material.opcionesActivacion(req.user));
+}));
+app.post('/api/material/activaciones', requireUser, soloRoles('resp_seccion'), express.json({ limit: '40mb' }), conMaterial(async (req, res) => {
+  const r = await material.crearActivacion(req.user, req.body || {});
+  await audit.add({ action: 'material.activacion', by: req.realUser.id, as: req.user.id, activacion: r.id });
+  res.status(201).json(r);
+}));
+app.get('/api/material/activaciones/fotos/:id', requireUser, conMaterial(async (req, res) => {
+  const img = await material.activacionFoto(req.user, req.params.id);
+  if (!img) return res.status(404).end();
+  res.set({ 'Content-Type': fotos.tipo(img), 'Cache-Control': 'private, max-age=86400' });
+  res.send(img);
+}));
+app.get('/api/material/activaciones/:id', requireUser, conMaterial(async (req, res) => {
+  const a = await material.activacionDetalle(req.user, req.params.id);
+  if (!a) return res.status(404).json({ error: 'Activación no encontrada' });
+  res.json(a);
 }));
 app.get('/api/material/evidencias/:id', requireUser, conMaterial(async (req, res) => {
   const img = await material.evidencia(req.user, req.params.id);
@@ -833,9 +852,9 @@ app.get('/api/escritorio/promotor', requireUser, requirePromotor, async (req, re
   res.set('Cache-Control', 'no-store');
   res.json(await escritorioPromotor.promotor(req.user));
 });
-// Mi sección (Promotor): el contorno de la sección de su Responsable, sin el resto de la entidad
-app.get('/api/mi-seccion', requireUser, requirePromotor, async (req, res) => {
-  const rs = users.get(req.user.parentId);
+// Mi sección (Promotor y Responsable de Sección): el contorno de la sección, sin el resto de la entidad
+app.get('/api/mi-seccion', requireUser, soloRoles('promotor', 'resp_seccion'), async (req, res) => {
+  const rs = req.user.role === 'resp_seccion' ? req.user : users.get(req.user.parentId);
   const t = rs?.territorio;
   const seccion = t?.secciones?.[0] ?? null;
   if (seccion === null || !t.entidad) return res.json({ seccion: null });

@@ -212,7 +212,7 @@ async function generar(user, periodo) {
                   count(*) FILTER (WHERE o.comprobada_at >= b.ini AND o.comprobada_at < b.fin)::int AS comprobadas,
                   avg(EXTRACT(EPOCH FROM o.recibida_at - o.created_at)) FILTER (WHERE o.recibida_at >= b.ini AND o.recibida_at < b.fin)::float AS seg_recibir,
                   count(*) FILTER (WHERE o.estado = 'pendiente')::int AS pendientes,
-                  count(*) FILTER (WHERE o.estado = 'recibida')::int AS sin_evidencia
+                  0 AS sin_evidencia -- recibir la orden la cierra; la evidencia está en las activaciones
            FROM material_ordenes o, b WHERE ${a.material.sql}`,
           [a.material.valor, desde, hasta]
         )
@@ -574,7 +574,7 @@ function analizar({ a, kpis: k, unidades, dias, total, len, motivos, mat, revisa
 
   // --- Material
   if (mat) {
-    if (mat.recibidas && !mat.sinEvidencia && mat.comprobadas) F.push({ titulo: 'Material comprobado', texto: `${n(mat.comprobadas)} ${plural(mat.comprobadas, 'orden comprobada', 'órdenes comprobadas')} con fotos en el periodo y ninguna pendiente de evidencia.` });
+    if (mat.recibidas && !mat.pendientes) F.push({ titulo: 'Material al día', texto: `${n(mat.recibidas)} ${plural(mat.recibidas, 'orden recibida', 'órdenes recibidas')} en el periodo y ninguna por recibir.` });
     if (mat.sinEvidencia)
       D.push({
         titulo: 'Material sin evidencia',

@@ -657,6 +657,21 @@ async function detalle(viewer, id) {
   return out;
 }
 
+// Eventos ya ocurridos (o de hoy, ya iniciados) que le tocan a la cuenta: para ligarles una
+// activación de material. Nunca eventos futuros.
+async function pasadosDe(viewer, dias = 90) {
+  const f = filtroRed(viewer);
+  const n = f.params.length;
+  const { rows } = await query(
+    `SELECT e.* FROM eventos e
+     WHERE ${f.sql} AND e.estado IN ('programado', 'realizado') AND e.inicio IS NOT NULL
+       AND e.inicio <= now() AND e.inicio > now() - ($${n + 1}::int * interval '1 day')
+     ORDER BY e.inicio DESC LIMIT 100`,
+    [...f.params, dias]
+  );
+  return rows.map((e) => ({ id: e.id, tipo: e.tipo, tipoTexto: TIPO[e.tipo], lugar: e.lugar, inicio: e.inicio.toISOString() }));
+}
+
 async function historialDe(viewer, id) {
   const { e, rol } = await cargar(viewer, id);
   if (rol !== 'cpv' && rol !== 'sa' && !reporta(viewer, e)) throw new EventoError('No disponible.', 403);
@@ -767,6 +782,7 @@ module.exports = {
   agenda,
   detalle,
   historialDe,
+  pasadosDe,
   foto,
   recordatorios,
   rutaPorCalles,

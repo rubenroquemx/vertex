@@ -104,6 +104,24 @@ export function mountRevision(root, route) {
   );
   $('#revBuscar', root).addEventListener('input', filtrar);
   $('#revPromotor', root).addEventListener('change', filtrar);
+  // Desde «Promotores»: llega filtrado por un promotor, en la primera pestaña que tenga promovidos suyos
+  const pr = new URLSearchParams(location.search).get('promotor');
+  // Sin promovidos todavía: se elige igual para que la lista quede vacía (no la de todos)
+  if (pr && /^[0-9a-f-]{36}$/.test(pr) && !$(`#revPromotor option[value="${pr}"]`, root)) {
+    $('#revPromotor', root).insertAdjacentHTML('beforeend', `<option value="${pr}">Promotor sin promovidos</option>`);
+  }
+  if (pr && $(`#revPromotor option[value="${CSS.escape(pr)}"]`, root)) {
+    $('#revPromotor', root).value = pr;
+    const suyos = lista.filter((p) => p.promotorId === pr);
+    const t = TABS.find((x) => suyos.some(x.f));
+    if (t && t !== tab) {
+      tab = t;
+      root.querySelectorAll('[data-tab]').forEach((x) => {
+        x.classList.toggle('is-on', x.dataset.tab === t.k);
+        x.setAttribute('aria-selected', String(x.dataset.tab === t.k));
+      });
+    }
+  }
   $('#revEmpezar', root)?.addEventListener('click', () => {
     const primero = lista.filter(TABS[0].f).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
     if (primero) navigate(`/promovidos/${primero.id}`);

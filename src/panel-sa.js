@@ -72,7 +72,7 @@ async function resumen() {
       `SELECT (SELECT count(DISTINCT user_id)::int FROM sessions WHERE expires_at > now()) AS activas,
               (SELECT count(DISTINCT by_user)::int FROM audit WHERE action = 'login' AND at > now() - interval '7 days') AS accesos7d,
               (SELECT COALESCE(sum(cantidad), 0)::int FROM material_entradas) AS inventario,
-              (SELECT count(*)::int FROM material_evidencias) AS fotos`
+              (SELECT count(*)::int FROM material_evidencias) + (SELECT count(*)::int FROM material_activacion_fotos) AS fotos`
     ),
   ]);
 
@@ -105,8 +105,8 @@ async function resumen() {
       else {
         mat.ordenes += r.n;
         if (r.estado === 'pendiente') mat.pendientes += r.n;
-        if (r.estado === 'recibida') mat.sinEvidencia += r.n;
-        if (r.estado === 'comprobada') mat.conEvidencia += r.n;
+        // Recibir la orden la cierra (la evidencia está en las activaciones)
+        if (r.estado !== 'pendiente') mat.conEvidencia += r.n;
       }
     }
     let terr = null;

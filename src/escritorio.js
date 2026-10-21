@@ -150,7 +150,8 @@ async function cpv(cpvUser) {
     const z = porZona.get(r.de_id);
     mat.ordenes += r.n;
     if (z) z.material.ordenes += r.n;
-    const k = r.estado === 'pendiente' ? 'pendientes' : r.estado === 'recibida' ? 'sinEvidencia' : 'conEvidencia';
+    // Recibir la orden la cierra (la evidencia está en las activaciones)
+    const k = r.estado === 'pendiente' ? 'pendientes' : 'conEvidencia';
     mat[k] += r.n;
     if (z) z.material[k] += r.n;
   }

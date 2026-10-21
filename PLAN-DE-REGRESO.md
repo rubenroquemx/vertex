@@ -79,7 +79,7 @@ promovidos que ya no existen en la base restaurada quedan sin uso en el bucket, 
 
 - [ ] Anotar en esta página la etiqueta anterior a la que se regresaría.
 
-Versión actual en producción: **1.1.0** (rama `estable`). Etiqueta pendiente de crear: `v1.1.0`.
+Versión actual en producción: **1.1.0** (rama `estable`). Punto de regreso: etiqueta **`v1.1.0`** (commit `cef2db0`, creada el 21 oct 2026).
 
 ---
 

@@ -73,7 +73,8 @@ sin base de datos se omiten y corren solo las 18 unitarias.
 - [x] **Migraciones** (C): el arranque de producción registra la 18 aplicada (implica la 16 y la 17, que se aplican en orden).
 - [x] **Plan de regreso** (C, 21 oct): `PLAN-DE-REGRESO.md`. Regreso de código moviendo `estable` a la etiqueta
       anterior (sin perder datos: las migraciones solo agregan); restauración de la base solo si hubo datos dañados.
-- [ ] **Etiquetas de versión** (C): crear `v1.1.0` en el commit de producción y `v2.0.0` al lanzar.
+- [x] **Etiqueta `v1.1.0`** (C, 21 oct): en `cef2db0`, el código que corre en producción; es el punto de regreso.
+- [ ] **Etiqueta `v2.0.0`** (C): crearla al lanzar.
 
 ## 5. Producto y comunicación
 

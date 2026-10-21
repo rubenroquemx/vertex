@@ -130,6 +130,7 @@ export async function viewNuevoPromovido(route, params = []) {
         </section>
 
         <section class="card wiz-step" data-paso="3" aria-label="Paso 3: ${PASOS[2]}" hidden>
+          <p class="ocr-aviso" id="pOcr" role="status" hidden></p>
           <div class="field-row field-row--fotos">
             ${campo('pVigencia', 'vigencia', 'Vigencia', { req: true, help: `Año final de la INE: ${ctx.vigenciaMin} o posterior.`, attrs: 'inputmode="numeric" maxlength="4"' })}
             ${campo('pSeccion', 'seccion', 'Sección', { req: true, help: `Debe ser la ${fmtSeccion(ctx.seccion)}.`, attrs: 'inputmode="numeric" maxlength="4"' })}
@@ -226,7 +227,8 @@ export function mountNuevoPromovido(root, route) {
   const guia = (id) => $(`#${id}Guia`, root);
   let cerrarCamara = null;
 
-  const ponerFoto = (id, dataUrl) => {
+  // `leer`: con una foto nueva se leen sus datos (al recuperar un borrador no)
+  const ponerFoto = (id, dataUrl, { leer = true } = {}) => {
     const { key } = LADOS[id];
     fotos[key] = dataUrl;
     const box = $(`#${id}Box`, root);
@@ -241,7 +243,81 @@ export function mountNuevoPromovido(root, route) {
     // Con foto, los botones ofrecen reemplazarla
     box.closest('.ine-field').classList.add('has-photo');
     err(id, '');
+    if (leer) leerIne(key === 'ineFrente' ? 'frente' : 'reverso', dataUrl);
   };
+
+  // ---------- Lectura de la INE (prototipo): con cada foto, el servidor lee la credencial y se
+  // prellenan los datos vacíos. Lo que el promotor ya escribió no se toca; todo se revisa antes de guardar.
+  const lecturas = { frente: null, reverso: null };
+  const leyendo = new Set();
+  const prellenados = new Set();
+  const avisoOcr = $('#pOcr', root);
+  const pintarAviso = () => {
+    if (leyendo.size) {
+      avisoOcr.hidden = false;
+      avisoOcr.className = 'ocr-aviso is-leyendo';
+      avisoOcr.textContent = 'Leyendo los datos de la INE…';
+    } else if (prellenados.size) {
+      avisoOcr.hidden = false;
+      avisoOcr.className = 'ocr-aviso';
+      avisoOcr.textContent = `Prellenamos ${prellenados.size} ${prellenados.size === 1 ? 'dato' : 'datos'} con la foto de la INE (marcados en azul). Revísalos con la credencial antes de continuar.`;
+    } else avisoOcr.hidden = true;
+  };
+  const prellenar = () => {
+    const f = lecturas.frente?.campos || {};
+    const r = lecturas.reverso?.campos || {};
+    const rv = lecturas.reverso?.verificado || {};
+    // Nombres: el frente (letra normal) va primero; la zona de lectura mecánica del reverso es respaldo
+    const delFrente = Boolean(f.paterno && f.nombres);
+    const secReverso = r.ocr && Number(r.ocr.slice(0, 4)) === ctx.seccion ? r.ocr.slice(0, 4) : null;
+    const valores = {
+      pPaterno: delFrente ? f.paterno : r.paterno,
+      pMaterno: delFrente ? f.materno : r.materno,
+      pNombres: delFrente ? f.nombres : r.nombres,
+      pClave: f.claveElector,
+      pCurp: f.curp,
+      // La vigencia del reverso trae dígito verificador: si cuadra, es la más confiable
+      pVigencia: rv.vigencia ? r.vigencia : f.vigencia || r.vigencia,
+      pSeccion: f.seccion || secReverso,
+      pCalle: f.calle,
+      pNumExt: f.numExt,
+      pNumInt: f.numInt,
+      pCp: f.cp,
+    };
+    for (const [id, v] of Object.entries(valores)) {
+      const el = $(`#${id}`, root);
+      if (!el || !v || el.value.trim() === v) continue;
+      // Lo que el promotor escribió no se toca
+      if (el.value.trim() && !prellenados.has(id)) continue;
+      el.value = v;
+      prellenados.add(id);
+      el.classList.add('is-ocr');
+      if (id === 'pCp') el.dispatchEvent(new Event('input'));
+    }
+    pintarAviso();
+  };
+  // Al corregir un dato prellenado deja de marcarse
+  for (const id of ['pPaterno', 'pMaterno', 'pNombres', 'pClave', 'pCurp', 'pVigencia', 'pSeccion', 'pCalle', 'pNumExt', 'pNumInt', 'pCp']) {
+    $(`#${id}`, root)?.addEventListener('input', (e) => {
+      if (!e.isTrusted) return;
+      prellenados.delete(id);
+      e.target.classList.remove('is-ocr');
+      pintarAviso();
+    });
+  }
+  async function leerIne(lado, dataUrl) {
+    if (!navigator.onLine) return; // sin internet se captura a mano, como siempre
+    leyendo.add(lado);
+    pintarAviso();
+    try {
+      lecturas[lado] = await api('/api/ine/leer', { method: 'POST', body: { lado, imagen: dataUrl } });
+    } catch {
+      // Si no se pudo leer, se captura a mano
+    } finally {
+      leyendo.delete(lado);
+      prellenar();
+    }
+  }
 
   // Foto cargada (o tomada con la cámara del teléfono): se encuadra en la guía y se guarda
   // solo lo que queda dentro del marco
@@ -533,8 +609,8 @@ export function mountNuevoPromovido(root, route) {
       if (el?.type === 'checkbox') el.checked = true;
       else if (el && 'value' in el && el.type !== 'file') el.value = v;
     }
-    if (snap.fotos?.ineFrente) ponerFoto('pFrente', snap.fotos.ineFrente);
-    if (snap.fotos?.ineReverso) ponerFoto('pReverso', snap.fotos.ineReverso);
+    if (snap.fotos?.ineFrente) ponerFoto('pFrente', snap.fotos.ineFrente, { leer: false });
+    if (snap.fotos?.ineReverso) ponerFoto('pReverso', snap.fotos.ineReverso, { leer: false });
     localidadInicial = snap.localidad || '';
     if (cp.value) cp.dispatchEvent(new Event('input'));
   };

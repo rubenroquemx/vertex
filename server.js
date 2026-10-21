@@ -40,6 +40,7 @@ const push = require('./src/push');
 const ejemplo = require('./src/ejemplo');
 const material = require('./src/material');
 const puntos = require('./src/puntos');
+const ineOcr = require('./src/ine-ocr');
 const { fmtSeccion } = require('./src/formato');
 const padron = require('./src/padron');
 const territory = require('./src/territory');
@@ -110,7 +111,7 @@ app.use(compression());
 // La foto de perfil usa su propio parser con un límite mayor
 const jsonBody = express.json();
 // Rutas con fotos: su propio límite de tamaño
-const CON_FOTOS = new Set(['/api/me/avatar', '/api/promovidos']);
+const CON_FOTOS = new Set(['/api/me/avatar', '/api/promovidos', '/api/ine/leer']);
 const PROMOVIDO_RE = /^\/api\/promovidos\/[0-9a-f-]{36}$/;
 // Activaciones de material: llevan fotos
 const EVIDENCIA_RE = /^\/api\/material\/activaciones$/;
@@ -874,6 +875,20 @@ app.get('/api/mi-seccion', requireUser, soloRoles('promotor', 'resp_seccion'), a
     puntos: await puntos.lista(req.user),
     puedeCasilla: req.user.role === 'resp_seccion',
   });
+});
+// Lectura de la INE (prototipo): prellena la captura con lo que Tesseract lee en el frente o el reverso.
+// La foto se lee en memoria y no se guarda.
+app.post('/api/ine/leer', requireUser, soloRoles('promotor', 'resp_seccion'), express.json({ limit: '10mb' }), async (req, res) => {
+  const lado = req.body?.lado === 'reverso' ? 'reverso' : 'frente';
+  try {
+    const inicio = Date.now();
+    const r = await ineOcr.leerIne(lado, req.body?.imagen);
+    res.set('Cache-Control', 'no-store');
+    res.json({ ...r, ms: Date.now() - inicio });
+  } catch (err) {
+    console.error('Lectura de la INE:', err.message);
+    res.status(500).json({ error: 'No se pudo leer la INE.' });
+  }
 });
 // Puntos del mapa de la sección: de interés (todo el equipo) y casillas (solo el Responsable)
 const conPuntos = (fn) => async (req, res) => {

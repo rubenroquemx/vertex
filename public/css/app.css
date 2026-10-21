@@ -3285,3 +3285,11 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
 /* Todos los mapas: los z-index internos de Leaflet (400–1000) quedan dentro del mapa y nunca
    pasan sobre la barra inferior ni la superior */
 .leaflet-container { isolation: isolate; }
+
+/* Captura: datos prellenados con la lectura de la INE (prototipo) */
+.ocr-aviso { margin: 0 0 var(--space-lg); padding: var(--space-md) var(--space-lg); border-radius: var(--radius); background: #eff6ff; color: #1e3a8a; font-size: 14px; font-weight: 600; }
+.ocr-aviso[hidden] { display: none; }
+.ocr-aviso.is-leyendo { background: var(--color-muted); color: var(--color-foreground); }
+.input.is-ocr { box-shadow: inset 0 0 0 2px #3b82f6; background: #eff6ff; }
+:root[data-theme="dark"] .ocr-aviso { background: #172554; color: #bfdbfe; }
+:root[data-theme="dark"] .input.is-ocr { background: #172554; }

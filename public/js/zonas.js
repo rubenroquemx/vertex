@@ -1,5 +1,5 @@
 // Zonas del Coordinador de Promoción del Voto (CPV): resumen + alta/edición con mapa.
-import { ICONS, $, esc, fmtNum, fmtSeccion, api, fieldErrorSetter, submitWith, toast, GEO_STYLE, homeControl, navigate } from './lib.js';
+import { ICONS, $, esc, fmtNum, fmtSeccion, api, fieldErrorSetter, camposNombre, nombreCompleto, alCambiarNombre, submitWith, toast, GEO_STYLE, homeControl, navigate } from './lib.js';
 import { I, generatePassword, debounce, showAccessDialog } from './coordinador.js';
 
 const METODOS = [
@@ -266,11 +266,7 @@ export async function viewZona(route, params = []) {
               <span class="form-card__icon" aria-hidden="true">${I.user}</span>
               <h3 id="zs2">2. Coordinador de zona y cuenta de acceso</h3>
             </header>
-            <div class="field">
-              <label for="cName">Nombre completo del coordinador <span class="req" aria-hidden="true">*</span></label>
-              <input class="input" id="cName" name="name" maxlength="120" autocomplete="off" value="${esc(current?.name || '')}" placeholder="ej. Juan Pérez López" required>
-              <p class="field__error" id="cName-err"></p>
-            </div>
+            ${camposNombre('c', current, { ej: ['Juan', 'Pérez López'] })}
             <div class="field-row">
               <div class="field">
                 <label for="cUser">Usuario de acceso <span class="req" aria-hidden="true">*</span></label>
@@ -385,11 +381,12 @@ export function mountZona(root, route) {
     $('#cUser-err', root).textContent = r.error || '';
     userOk.textContent = r.available ? 'Disponible' : '';
   }, 350);
-  $('#cName', root).addEventListener(
-    'input',
+  alCambiarNombre(
+    root,
+    'c',
     debounce(async () => {
       if (userTouched) return;
-      const name = $('#cName', root).value.trim();
+      const name = nombreCompleto(root, 'c');
       if (name.length < 3) return;
       const r = await api(`/api/usernames/suggest?name=${encodeURIComponent(name)}`).catch(() => null);
       if (r?.username && !userTouched) {
@@ -624,7 +621,8 @@ export function mountZona(root, route) {
   const baseSetErrors = fieldErrorSetter(root, {
     zonaNombre: 'zNombre',
     zonaCodigo: 'zCodigo',
-    name: 'cName',
+    nombres: 'cName',
+    apellidos: 'cApellidos',
     username: 'cUser',
     password: 'cPass',
     phone: 'cPhone',

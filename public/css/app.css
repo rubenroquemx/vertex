@@ -3009,27 +3009,27 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
    con la sección actual; al detenerse vuelve a su tamaño. Una sola forma que cambia
    de tamaño (ancho, alto y radio) con una curva de resorte suave. */
 @media (max-width: 767px) {
-  :root { --isla-margen: 10px; --dock-space: calc(var(--dock-h) + var(--isla-margen) + env(safe-area-inset-bottom)); }
+  :root { --isla-margen: 10px; --ease-isla: cubic-bezier(.22, 1, .36, 1); --dock-space: calc(var(--dock-h) + var(--isla-margen) + env(safe-area-inset-bottom)); }
   .dock {
     left: 50%; right: auto; bottom: calc(var(--isla-margen) + env(safe-area-inset-bottom));
     width: calc(100% - 2 * var(--isla-margen)); max-width: 520px; height: var(--dock-h);
     padding: 8px; border-radius: 28px; transform: translateX(-50%);
     box-shadow: 0 10px 30px rgba(0, 0, 0, .28), 0 0 0 1px rgba(255, 255, 255, .06);
-    transition: width 420ms cubic-bezier(.32, 1.25, .5, 1), height 420ms cubic-bezier(.32, 1.25, .5, 1), border-radius 420ms var(--ease);
+    transition: width 640ms var(--ease-isla), height 640ms var(--ease-isla), border-radius 640ms var(--ease-isla);
   }
-  .dock > :not(.dock__isla) { transition: opacity 180ms var(--ease) 120ms, transform 300ms var(--ease) 60ms; }
+  .dock > :not(.dock__isla) { transition: opacity 260ms var(--ease) 180ms, transform 420ms var(--ease-isla) 80ms; }
   .dock__isla {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     padding: 0 16px; border: 0; border-radius: inherit; background: transparent; color: #fafafa;
     opacity: 0; pointer-events: none; transition: opacity 160ms var(--ease);
   }
-  .dock__isla-in { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 14px; font-weight: 700; white-space: nowrap; }
+  .dock__isla-in { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; font-weight: 700; white-space: nowrap; }
   .dock__isla-in span { overflow: hidden; text-overflow: ellipsis; }
-  .dock__isla svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .dock__isla svg { width: 16px; height: 16px; flex-shrink: 0; }
 
-  .dock.is-isla { width: 168px; height: 40px; border-radius: 20px; overflow: hidden; }
-  .dock.is-isla > :not(.dock__isla) { opacity: 0; transform: scale(.6); pointer-events: none; transition: opacity 120ms var(--ease), transform 200ms var(--ease); }
-  .dock.is-isla .dock__isla { opacity: 1; pointer-events: auto; transition: opacity 200ms var(--ease) 140ms; }
+  .dock.is-isla { width: 156px; height: 32px; border-radius: 16px; overflow: hidden; }
+  .dock.is-isla > :not(.dock__isla) { opacity: 0; transform: scale(.85); pointer-events: none; transition: opacity 220ms var(--ease), transform 520ms var(--ease-isla); }
+  .dock.is-isla .dock__isla { opacity: 1; pointer-events: auto; transition: opacity 320ms var(--ease) 220ms; }
   /* El dock del promotor deja salir el botón +; como isla se recorta */
   .dock.has-fab.is-isla { overflow: hidden; }
 }
@@ -3107,3 +3107,61 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
   .dock--compacto .dock__label { font-size: 11px; }
   .dock--compacto .dock__sep { margin: 0 1px; }
 }
+
+/* Saludo al inicio del panel (del CPV al Promotor) */
+.saludo { margin: 0 0 var(--space-xl); font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+@media (max-width: 767px) { .saludo { font-size: 20px; margin-bottom: var(--space-lg); } }
+
+/* Campana con notificaciones por ver: roja y en movimiento */
+.topbar__notif.has-nuevas { color: #dc2626; }
+.topbar__notif.has-nuevas svg { transform-origin: 50% 2px; animation: campana 2.4s ease-in-out infinite; }
+@keyframes campana {
+  0%, 52%, 100% { transform: rotate(0); }
+  6% { transform: rotate(16deg); }
+  14% { transform: rotate(-14deg); }
+  22% { transform: rotate(10deg); }
+  30% { transform: rotate(-8deg); }
+  38% { transform: rotate(4deg); }
+  46% { transform: rotate(-2deg); }
+}
+:root[data-theme="dark"] .topbar__notif.has-nuevas { color: #f87171; }
+@media (prefers-reduced-motion: reduce) { .topbar__notif.has-nuevas svg { animation: none; } }
+
+/* Modo dios en tema oscuro: texto blanco sobre la banda */
+:root[data-theme="dark"] .god-banner, :root[data-theme="dark"] .god-banner .god-path, :root[data-theme="dark"] .god-banner .god-path strong { color: #fafafa; }
+
+/* Celular con tema claro: barra inferior (e isla) blanca */
+@media (max-width: 767px) {
+  :root:not([data-theme="dark"]) .dock { background: #fff; box-shadow: 0 10px 30px rgba(0, 0, 0, .14), 0 0 0 1px rgba(0, 0, 0, .06); }
+  :root:not([data-theme="dark"]) .dock__link { color: #525252; }
+  :root:not([data-theme="dark"]) .dock__link[aria-current="page"] { background: #0a0a0a; color: #fafafa; }
+  :root:not([data-theme="dark"]) .dock__sep { background: #e5e5e5; }
+  :root:not([data-theme="dark"]) .dock :focus-visible { outline-color: #0a0a0a; }
+  :root:not([data-theme="dark"]) .dock__isla { color: #0a0a0a; }
+  :root:not([data-theme="dark"]) .dock__fab { background: #0a0a0a; color: #fafafa; box-shadow: 0 0 0 4px #fff, 0 6px 16px rgba(0, 0, 0, .25); }
+  :root:not([data-theme="dark"]) .dock__fab[aria-current="page"] { background: #262626; box-shadow: 0 0 0 4px #fff, 0 0 0 6px #0a0a0a; }
+}
+
+/* Panel del Promotor: capturar e informe lado a lado (el informe en verde) */
+.ep-acciones { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-md); }
+.ep .ep-informe { display: none; }
+@media (max-width: 767px) {
+  .ep > .inf-cta { display: none; }
+  .ep-acciones { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ep .ep-informe { display: inline-flex; justify-content: center; min-height: 52px; background: #15803d; color: #fff; }
+  .ep .ep-informe:hover { background: #166534; }
+  .ep-acciones .btn { padding: 8px 14px; font-size: 15px; line-height: 1.15; white-space: normal; text-align: left; }
+  .ep-acciones .btn svg { width: 20px; height: 20px; flex-shrink: 0; }
+}
+
+/* Promovidos aprobados y eventos pasados: informativos, sin enlace */
+.promo-fila.is-fijo:hover { background: transparent; }
+.ev-item.is-pasado { opacity: .7; }
+.ev-item.is-pasado:hover { box-shadow: var(--shadow-card); }
+
+/* Mi sección (Promotor): solo el mapa, a todo el alto disponible */
+.ms-mapa { height: calc(100dvh - var(--header-h) - 96px); min-height: 360px; border-radius: var(--radius-lg); overflow: hidden; background: var(--color-muted); box-shadow: var(--shadow-card); }
+@media (max-width: 767px) { .ms-mapa { height: calc(100dvh - var(--header-h) - var(--dock-space) - 48px); margin: 0 calc(-1 * var(--space-sm)); border-radius: var(--radius); } }
+.leaflet-tooltip.ms-etiqueta { padding: 4px 10px; border: 0; border-radius: 999px; background: #0a0a0a; color: #fff; font: 700 13px/1.2 var(--font); box-shadow: none; }
+.leaflet-tooltip.ms-etiqueta::before { display: none; }
+.ep div.ep-item:hover strong { text-decoration: none; }

@@ -42,7 +42,9 @@ function tabs(rol, actual) {
 
 function filaEvento(e, rol) {
   const extra = rol === 'coord_promocion' ? ` · Para ${esc(e.para)}${e.reporta ? ` · Reporta ${esc(e.reporta)}` : ''}` : e.reportaYo ? ' · Tú lo reportas' : '';
-  return `<li><a class="ev-item ${e.turno ? 'is-turno' : ''}" href="/agenda/eventos/${e.id}" data-link>
+  // Eventos pasados del Promotor: solo informativos, sin ficha
+  const abre = e.sinDetalle ? '<div class="ev-item is-pasado">' : `<a class="ev-item ${e.turno ? 'is-turno' : ''}" href="/agenda/eventos/${e.id}" data-link>`;
+  return `<li>${abre}
       <span class="ev-item__ico ev-item__ico--${e.tipo}" aria-hidden="true">${I[e.tipo]}</span>
       <span class="ev-item__main">
         <span class="ev-item__top"><strong>${esc(e.lugar)}</strong>${chip(e)}</span>
@@ -50,7 +52,7 @@ function filaEvento(e, rol) {
         ${e.turno ? `<span class="ev-item__turno">Te toca: ${esc(e.turno)}</span>` : ''}
         ${e.reporteTardio ? '<span class="ev-item__tarde">Reporte tardío</span>' : ''}
       </span>
-    </a></li>`;
+    ${e.sinDetalle ? '</div>' : '</a>'}</li>`;
 }
 
 // ===========================================================================
@@ -84,8 +86,11 @@ export async function viewAgenda(route, _p, state) {
       ${evs.length ? `<button type="button" class="ag-dia__ir" data-dia="${k}" aria-label="${esc(`${fechaDe(k)}: ${evs.length} ${evs.length === 1 ? 'evento' : 'eventos'}`)}"></button>` : ''}
       ${evs
         .map(
-          (e) => `<a class="ag-ev ag-ev--${e.tipo} ${e.estado === 'realizado' ? 'is-hecho' : ''}" href="/agenda/eventos/${e.id}" data-link title="${esc(`${TIPO[e.tipo]} · ${e.lugar} · ${HORA.format(new Date(e.inicio))}`)}">
-            <span class="ag-ev__ico">${I[e.tipo]}</span><span class="ag-ev__t">${esc(HORA.format(new Date(e.inicio)))} ${esc(e.lugar)}</span></a>`
+          (e) => {
+            const tag = e.sinDetalle ? 'span' : 'a';
+            return `<${tag} class="ag-ev ag-ev--${e.tipo} ${e.estado === 'realizado' ? 'is-hecho' : ''}"${e.sinDetalle ? '' : ` href="/agenda/eventos/${e.id}" data-link`} title="${esc(`${TIPO[e.tipo]} · ${e.lugar} · ${HORA.format(new Date(e.inicio))}`)}">
+            <span class="ag-ev__ico">${I[e.tipo]}</span><span class="ag-ev__t">${esc(HORA.format(new Date(e.inicio)))} ${esc(e.lugar)}</span></${tag}>`;
+          }
         )
         .join('')}
     </div>`);
@@ -763,13 +768,13 @@ export async function viewEvento(route, params) {
         ${
           hayMapa
             ? `<section class="card form-card" aria-labelledby="evMapT">
-            <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${I.pin}</span><h3 id="evMapT">${e.tipo === 'asamblea' ? 'Ubicación' : `Ruta${e.ruta ? ` · ${esc(kmTxt(e.ruta.km))}` : ''}`}</h3>
+            <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${I.pin}</span><h3 id="evMapT">${e.tipo === 'asamblea' ? 'Ubicación' : e.soloInicio ? 'Punto de inicio' : `Ruta${e.ruta ? ` · ${esc(kmTxt(e.ruta.km))}` : ''}`}</h3>
               ${comoLlegar ? `<a class="btn btn--secondary btn--sm" href="${comoLlegar}" target="_blank" rel="noopener">Cómo llegar</a>` : ''}</header>
             <div class="ev-map ev-map--ver" id="evMapVer"></div>
           </section>`
             : ''
         }
-        <section class="card form-card" aria-labelledby="evDatT">
+        ${e.soloInicio ? '' : `<section class="card form-card" aria-labelledby="evDatT">
           <header class="form-card__head"><span class="form-card__icon" aria-hidden="true">${ICONS.calendar}</span><h3 id="evDatT">Datos del evento</h3></header>
           <dl class="ficha__grid">
             ${dato(e.tipo === 'asamblea' ? 'Asistentes esperados' : 'Acompañantes del candidato', fmtNum(e.asistentes))}
@@ -781,7 +786,7 @@ export async function viewEvento(route, params) {
           ${e.necesidades.length ? `<ul class="ev-tags">${e.necesidades.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : '<p class="muted">Ninguna.</p>'}
           ${e.notas ? `<h4 class="ev-sub">Notas</h4><p class="ev-notas">${esc(e.notas).replace(/\n/g, '<br>')}</p>` : ''}
           ${e.fotosLugar.length ? `<h4 class="ev-sub">Fotos del lugar</h4><div class="mat-galeria">${e.fotosLugar.map((id) => `<a href="/api/eventos/fotos/${id}" target="_blank" rel="noopener"><img src="/api/eventos/fotos/${id}" alt="Foto del lugar" loading="lazy"></a>`).join('')}</div>` : ''}
-        </section>
+        </section>`}
         ${
           hist.length
             ? `<section class="card form-card" aria-labelledby="evHisT">
@@ -827,7 +832,10 @@ export function mountEvento(root, route) {
   if ($('#evMapVer', root)) {
     const { map, destroy } = baseMap($('#evMapVer', root));
     limpieza.push(destroy);
-    if (e.tipo === 'asamblea' && e.lat) {
+    if (e.tipo === 'recorrido' && e.soloInicio && e.lat) {
+      L.marker([e.lat, e.lng], { icon: puntoIcono('A', '#16a34a'), interactive: false }).addTo(map);
+      map.setView([e.lat, e.lng], 17);
+    } else if (e.tipo === 'asamblea' && e.lat) {
       L.marker([e.lat, e.lng], { icon: pinIcono(), interactive: false }).addTo(map);
       map.setView([e.lat, e.lng], 17);
     } else if (e.ruta) {

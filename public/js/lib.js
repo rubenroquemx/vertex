@@ -71,6 +71,29 @@ const fmtSeccion = (s) => (s === null || s === undefined || s === '' ? '' : Stri
 const fmtDateTime = (iso) =>
   new Date(iso).toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+// ---------- Nombre(s) y apellidos por separado (todas las cuentas) ----------
+// Campos con ids `{p}Name` (nombres) y `{p}Apellidos`; los errores de la API llegan como nombres/apellidos
+const camposNombre = (p, u = null, { ej = ['María', 'López Hernández'], auto = 'off' } = {}) => `
+  <div class="field-row">
+    <div class="field">
+      <label for="${p}Name">Nombre(s) <span class="req" aria-hidden="true">*</span></label>
+      <input class="input" id="${p}Name" name="nombres" maxlength="60" autocomplete="${auto === 'off' ? 'off' : 'given-name'}" value="${esc(u?.nombres || '')}" placeholder="ej. ${esc(ej[0])}" required>
+      <p class="field__error" id="${p}Name-err"></p>
+    </div>
+    <div class="field">
+      <label for="${p}Apellidos">Apellidos <span class="req" aria-hidden="true">*</span></label>
+      <input class="input" id="${p}Apellidos" name="apellidos" maxlength="60" autocomplete="${auto === 'off' ? 'off' : 'family-name'}" value="${esc(u?.apellidos || '')}" placeholder="ej. ${esc(ej[1])}" required>
+      <p class="field__error" id="${p}Apellidos-err"></p>
+    </div>
+  </div>`;
+// Nombre completo a partir de los dos campos (para sugerir el usuario de acceso)
+const nombreCompleto = (root, p) =>
+  [$(`#${p}Name`, root)?.value, $(`#${p}Apellidos`, root)?.value].map((v) => String(v || '').trim()).filter(Boolean).join(' ');
+// Escucha cambios en cualquiera de los dos campos
+const alCambiarNombre = (root, p, fn) => [`#${p}Name`, `#${p}Apellidos`].forEach((id) => $(id, root)?.addEventListener('input', fn));
+// Nombre(s) de pila para saludar («Hola, José Manuel»)
+const nombrePila = (u) => String(u?.nombres || u?.name || '').trim();
+
 // ---------- Formularios: errores junto a cada campo ----------
 // fields: { nombreDelCampoEnLaApi: idDelInput }; cada input tiene un <p id="{id}-err">
 function fieldErrorSetter(root, fields) {
@@ -239,6 +262,10 @@ export {
   avatarInner,
   api,
   fieldErrorSetter,
+  camposNombre,
+  nombreCompleto,
+  alCambiarNombre,
+  nombrePila,
   submitWith,
   toast,
   uploadFile,

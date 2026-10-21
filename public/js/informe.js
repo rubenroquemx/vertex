@@ -5,7 +5,7 @@ import { icon, $, esc, fmtNum, fmtDateTime, api, fieldErrorSetter, navigate } fr
 import { barras30 } from './panel-sa.js';
 import { barra } from './escritorio-cpv.js';
 
-const DOC = icon('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>');
+export const DOC = icon('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>');
 const PRINT = icon('<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/>');
 const FECHA = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 const fecha = (key, fmt = FECHA) => fmt.format(new Date(`${key}T12:00:00Z`));

@@ -6,6 +6,16 @@ const territory = require('./territory');
 
 const clean = (v) => String(v ?? '').trim().replace(/\s+/g, ' ');
 
+// Nombre(s) y apellidos de una cuenta. Las cuentas anteriores solo tienen el nombre completo:
+// se separa con la regla habitual (los dos últimos vocablos son los apellidos)
+function partesNombre(u) {
+  if (u?.nombres) return { nombres: u.nombres, apellidos: u.apellidos || '' };
+  const w = String(u?.name || '').trim().split(/\s+/).filter(Boolean);
+  if (w.length <= 1) return { nombres: w[0] || '', apellidos: '' };
+  const n = w.length >= 3 ? w.length - 2 : 1;
+  return { nombres: w.slice(0, n).join(' '), apellidos: w.slice(n).join(' ') };
+}
+
 // Datos de contacto comunes (alta de cuentas y perfil)
 function cleanContact(body) {
   const data = {
@@ -14,7 +24,14 @@ function cleanContact(body) {
     email: String(body.email || '').trim().toLowerCase(),
   };
   const errors = {};
-  if (data.name.length < 3 || data.name.length > 120) errors.name = 'Escribe el nombre completo (3 a 120 caracteres).';
+  // Los formularios capturan nombre(s) y apellidos por separado; `name` queda como el nombre completo
+  if ('nombres' in (body || {}) || 'apellidos' in (body || {})) {
+    data.nombres = clean(body.nombres);
+    data.apellidos = clean(body.apellidos);
+    data.name = `${data.nombres} ${data.apellidos}`.trim();
+    if (data.nombres.length < 2 || data.nombres.length > 60) errors.nombres = 'Escribe el nombre o los nombres (2 a 60 caracteres).';
+    if (data.apellidos.length < 2 || data.apellidos.length > 60) errors.apellidos = 'Escribe los apellidos (2 a 60 caracteres).';
+  } else if (data.name.length < 3 || data.name.length > 120) errors.name = 'Escribe el nombre completo (3 a 120 caracteres).';
   if (data.phone && data.phone.length !== 10) errors.phone = 'El teléfono debe tener 10 dígitos.';
   if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) errors.email = 'El correo no es válido.';
   return { data, errors };
@@ -97,4 +114,4 @@ function validateCoordinador(body, { current = null } = {}) {
   };
 }
 
-module.exports = { cleanContact, suggestUsername, checkUsername, validateCuenta, validateCoordinador };
+module.exports = { partesNombre, cleanContact, suggestUsername, checkUsername, validateCuenta, validateCoordinador };

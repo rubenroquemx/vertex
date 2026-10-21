@@ -537,7 +537,24 @@ function filtroRed(viewer) {
   };
 }
 
+// El Promotor solo ve lo que viene: sin resultados, sin eventos pasados y, en los recorridos,
+// solo el punto de inicio con la fecha y la hora de inicio (sin la ruta)
+const esPromotor = (viewer) => viewer.role === 'promotor';
+const pasado = (e) => e.estado !== 'programado' || (e.inicio && diaDe(e.inicio) < hoyKey());
+
 function resumenFila(viewer, e, extra = {}) {
+  const fila = resumenBase(viewer, e, extra);
+  if (!esPromotor(viewer)) return fila;
+  return {
+    ...fila,
+    reporteTardio: false,
+    sinDetalle: pasado(e),
+    ...(pasado(e) ? { asistentes: null } : {}),
+    ...(e.tipo === 'recorrido' ? { fin: null, asistentes: null } : {}),
+  };
+}
+
+function resumenBase(viewer, e, extra) {
   return {
     id: e.id,
     folio: `EV-${String(e.folio).padStart(5, '0')}`,
@@ -602,7 +619,8 @@ async function detalle(viewer, id) {
   const yo = reporta(viewer, e);
   // La lista de asistencia y su cotejo: el CPV, quien reporta y el super administrador
   const verLista = e.estado === 'realizado' && (esCPV || yo || rol === 'sa');
-  return {
+  if (esPromotor(viewer) && pasado(e)) throw new EventoError('Este evento ya pasó.', 404);
+  const out = {
     ...resumenFila(viewer, e),
     lat: e.lat,
     lng: e.lng,
@@ -630,6 +648,13 @@ async function detalle(viewer, id) {
     },
     reportarDesde: dia,
   };
+  if (!esPromotor(viewer)) return out;
+  Object.assign(out, { reporte: null, reportadoAt: null, asistencia: null, fotosTestimonio: [] });
+  if (e.tipo === 'recorrido') {
+    const ini = e.ruta?.puntos?.[0];
+    Object.assign(out, { soloInicio: true, lat: ini ? ini[0] : e.lat, lng: ini ? ini[1] : e.lng, ruta: null, reporta: null, necesidades: [], notas: '', fotosLugar: [] });
+  }
+  return out;
 }
 
 async function historialDe(viewer, id) {
@@ -641,9 +666,10 @@ async function historialDe(viewer, id) {
 
 async function foto(viewer, fotoId) {
   if (!/^\d+$/.test(String(fotoId))) throw new EventoError('Foto no encontrada', 404);
-  const { rows } = await query('SELECT f.image, f.evento_id FROM evento_fotos f WHERE f.id = $1', [fotoId]);
+  const { rows } = await query('SELECT f.image, f.evento_id, f.clase FROM evento_fotos f WHERE f.id = $1', [fotoId]);
   if (!rows.length) throw new EventoError('Foto no encontrada', 404);
-  await cargar(viewer, rows[0].evento_id);
+  const { e } = await cargar(viewer, rows[0].evento_id);
+  if (esPromotor(viewer) && (rows[0].clase !== 'lugar' || pasado(e) || e.tipo === 'recorrido')) throw new EventoError('Foto no encontrada', 404);
   return rows[0].image;
 }
 

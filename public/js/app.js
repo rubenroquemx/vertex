@@ -19,6 +19,10 @@ import {
   homeControl,
   abrirEnArea,
   navigate,
+  camposNombre,
+  nombreCompleto,
+  alCambiarNombre,
+  nombrePila,
 } from './lib.js';
 import { viewCoordinador, mountCoordinador, I as CI, showAccessDialog, generatePassword, debounce } from './coordinador.js';
 import { openDeleteFlow } from './eliminar.js';
@@ -34,6 +38,7 @@ import { viewEscritorioZona, mountEscritorioZona } from './escritorio-zona.js';
 import { viewEscritorioSeccion, mountEscritorioSeccion } from './escritorio-seccion.js';
 import { viewRevision, mountRevision } from './revision.js';
 import { viewEscritorioPromotor } from './escritorio-promotor.js';
+import { viewMiSeccion, mountMiSeccion } from './mi-seccion.js';
 import { viewInforme, mountInforme } from './informe.js';
 import { viewExternas, mountExternas, viewListaPersonas, mountListaPersonas } from './externas.js';
 import { viewAgenda, mountAgenda, viewEventos, viewFormEvento, mountFormEvento, viewEvento, mountEvento, viewReporte, mountReporte } from './agenda.js';
@@ -165,6 +170,8 @@ function buildMenu(me) {
         // `fab`: en celulares va como botón + al centro de la barra inferior
         { path: '/promovidos/nuevo', title: 'Nuevo promovido', icon: 'plus', fab: true, view: viewNuevoPromovido, mount: mountNuevoPromovido },
         { path: '/promovidos', title: 'Promovidos', icon: 'users', view: viewPromovidos },
+        // Mapa de la sección donde promueve
+        { path: '/mi-seccion', title: 'Mi sección', icon: 'map', view: viewMiSeccion, mount: mountMiSeccion },
         AGENDA,
       ],
     });
@@ -246,11 +253,7 @@ async function viewEstructura(route) {
           <button class="icon-btn icon-btn--always" type="button" data-action="close" aria-label="Cerrar">${ICONS.close}</button>
         </div>
         <p class="dialog__meta">Dependerá de: <strong>${esc(me.user.name)}</strong></p>
-        <div class="field">
-          <label for="nuName">Nombre completo <span class="req" aria-hidden="true">*</span></label>
-          <input class="input" id="nuName" name="name" required autocomplete="off" maxlength="120" placeholder="ej. María López Hernández">
-          <p class="field__error" id="nuName-err"></p>
-        </div>
+        ${camposNombre('nu')}
         <div class="field-row">
           <div class="field">
             <label for="nuUser">Usuario de acceso <span class="req" aria-hidden="true">*</span></label>
@@ -686,7 +689,7 @@ function mountEstructura(root, route) {
 
   $('#fSearch', root).addEventListener('input', refresh);
 
-  const fields = { name: 'nuName', username: 'nuUser', password: 'nuPass', phone: 'nuPhone', email: 'nuEmail' };
+  const fields = { nombres: 'nuName', apellidos: 'nuApellidos', username: 'nuUser', password: 'nuPass', phone: 'nuPhone', email: 'nuEmail' };
   const setErrors = fieldErrorSetter(root, fields);
 
   // Usuario sugerido a partir del nombre (editable) y verificación de disponibilidad
@@ -703,11 +706,12 @@ function mountEstructura(root, route) {
     $('#nuUser-err', root).textContent = r.error || '';
     userOk.textContent = r.available ? 'Disponible' : '';
   }, 350);
-  $('#nuName', root).addEventListener(
-    'input',
+  alCambiarNombre(
+    root,
+    'nu',
     debounce(async () => {
       if (userTouched) return;
-      const name = $('#nuName', root).value.trim();
+      const name = nombreCompleto(root, 'nu');
       if (name.length < 3) return;
       const r = await api(`/api/usernames/suggest?name=${encodeURIComponent(name)}`).catch(() => null);
       if (r?.username && !userTouched) {
@@ -1324,11 +1328,7 @@ function viewPerfil() {
       <section class="card" aria-labelledby="pdTitle">
         <h3 class="card__title" id="pdTitle">Datos personales</h3>
         <form id="pfForm" novalidate>
-          <div class="field">
-            <label for="pfName">Nombre <span class="req" aria-hidden="true">*</span></label>
-            <input class="input" id="pfName" name="name" required maxlength="120" autocomplete="name" value="${esc(u.name)}">
-            <p class="field__error" id="pfName-err"></p>
-          </div>
+          ${camposNombre('pf', u, { auto: 'on' })}
           <div class="field">
             <label for="pfAbout">Acerca de mí</label>
             <textarea class="input textarea" id="pfAbout" name="about" rows="4" maxlength="500" aria-describedby="pfAbout-help">${esc(u.about)}</textarea>
@@ -1483,7 +1483,7 @@ function mountPerfil(root) {
   const pfForm = $('#pfForm', root);
   const about = $('#pfAbout', root);
   about.addEventListener('input', () => ($('#pfAboutCount', root).textContent = about.value.length));
-  const pfErrors = fieldErrorSetter(root, { name: 'pfName', about: 'pfAbout', phone: 'pfPhone', email: 'pfEmail' });
+  const pfErrors = fieldErrorSetter(root, { nombres: 'pfName', apellidos: 'pfApellidos', about: 'pfAbout', phone: 'pfPhone', email: 'pfEmail' });
   pfForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(pfForm));
@@ -1550,6 +1550,7 @@ const CORTO = {
   '/promovidos': 'Promovidos',
   '/material': 'Material',
   '/agenda': 'Agenda',
+  '/mi-seccion': 'Sección',
   '/directorio': 'Directorio',
   '/estructuras-externas': 'Externas',
   '/zonas': 'Zonas',
@@ -1696,7 +1697,16 @@ async function render() {
   if (ok && route.mount) state.cleanup = route.mount(view, route, params) || null;
   etiquetarTablas(view);
   if (ok && location.pathname === '/') mostrarBienvenida();
+  if (ok && location.pathname === '/') saludar();
   view.focus({ preventScroll: true });
+}
+
+// Saludo al inicio del panel de cada nivel de la estructura (del CPV al Promotor)
+const SALUDO = new Set(['coord_promocion', 'coord_zona', 'resp_seccion', 'promotor']);
+function saludar() {
+  const u = state.me?.user;
+  if (!u || !SALUDO.has(state.me.role.key) || $('.saludo', view)) return;
+  view.insertAdjacentHTML('afterbegin', `<h2 class="saludo">Hola, ${esc(nombrePila(u))}</h2>`);
 }
 
 // Tablas que en celular se muestran como tarjetas: cada celda lleva el nombre de su columna
@@ -1726,7 +1736,7 @@ function mostrarBienvenida() {
   view.insertAdjacentHTML(
     'afterbegin',
     `<section class="card bienvenida" id="bienvenida" aria-labelledby="bienT">
-      <div><h3 id="bienT">Bienvenido a VERTEX, ${esc(state.me.user.name.split(' ')[0])}</h3>
+      <div><h3 id="bienT">Bienvenido a VERTEX, ${esc(nombrePila(state.me.user).split(' ')[0])}</h3>
       <ol>${pasos.map((p) => `<li>${esc(p)}</li>`).join('')}</ol></div>
       <button class="btn btn--secondary btn--sm" type="button" id="bienOk">Entendido</button>
     </section>`
@@ -2067,7 +2077,7 @@ async function showLogin(aviso = '') {
           : ''
       }
     </main>
-    <footer class="login__footer">Creado por <a href="https://www.instagram.com/rubenroqueguzman/" target="_blank" rel="noopener noreferrer">Rubén Roque</a></footer>`;
+    <footer class="login__footer">Creado por <a href="https://legislab.app" target="_blank" rel="noopener">LegisLab</a></footer>`;
   const form = $('#loginForm');
   const err = $('#lgErr');
   $('#lgUser').focus();

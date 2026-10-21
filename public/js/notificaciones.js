@@ -31,6 +31,8 @@ export function pintarContador(n) {
   if (!badge || !link) return;
   badge.hidden = !n;
   badge.textContent = n > 99 ? '99+' : String(n);
+  // Con pendientes por ver la campana se pinta de rojo y se mueve
+  link.classList.toggle('has-nuevas', Boolean(n));
   const txt = n ? `Notificaciones: ${n} sin leer` : 'Notificaciones';
   link.setAttribute('aria-label', txt);
   link.title = txt;

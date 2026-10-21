@@ -3,7 +3,7 @@
 import { ICONS, esc, fmtNum, fmtSeccion, fmtDateTime, api } from './lib.js';
 import { I } from './coordinador.js';
 import { pendientes, sesion, esErrorDeRed } from './offline.js';
-import { botonInforme } from './informe.js';
+import { botonInforme, DOC } from './informe.js';
 
 const ESTADO = {
   validado: { t: 'Aprobado', c: '#16a34a' },
@@ -102,7 +102,10 @@ export async function viewEscritorioPromotor() {
         <p class="ep-hero__pie">${d.seccion !== null ? `Sección ${fmtSeccion(d.seccion)} · ` : ''}${fmtNum(d.eleccion.dias)} días para la elección</p>
       </div>
     </section>
-    <a class="btn ep-capturar" href="/promovidos/nuevo" data-link>${ICONS.plus}<span>Capturar promovido</span></a>`;
+    <div class="ep-acciones">
+      <a class="btn ep-capturar" href="/promovidos/nuevo" data-link>${ICONS.plus}<span>Capturar promovido</span></a>
+      <a class="btn ep-informe" href="/informe" data-link>${DOC}<span>Generar informe</span></a>
+    </div>`;
 
   const corregir = d.corregir.length
     ? `<section class="card ep-corregir" aria-labelledby="epCoT">
@@ -154,10 +157,12 @@ export async function viewEscritorioPromotor() {
           ? `<ul class="ep-lista">${d.recientes
               .map((r) => {
                 const s = ESTADO[r.estatus] || ESTADO.en_revision;
-                return `<li><a href="/promovidos/${r.id}" data-link class="ep-item ep-item--fila">
+                // Los aprobados ya no se abren
+                const tag = r.estatus === 'validado' ? 'div' : 'a';
+                return `<li><${tag}${tag === 'a' ? ` href="/promovidos/${r.id}" data-link` : ''} class="ep-item ep-item--fila">
                   <span class="vz-sw" style="background:${s.c}" aria-hidden="true"></span>
                   <span class="ep-item__fila"><strong>${esc(r.nombre)}</strong><span>${s.t} · ${esc(hace(r.at))}</span></span>
-                </a></li>`;
+                </${tag}></li>`;
               })
               .join('')}</ul>`
           : '<p class="muted">Aún no has capturado promovidos. Toca «Capturar promovido» para empezar.</p>'

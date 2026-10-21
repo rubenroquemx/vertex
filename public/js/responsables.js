@@ -1,7 +1,7 @@
 // Responsables de Sección del Coordinador de Zona: resumen + alta/edición con mapa.
 // Se asigna una sola sección de la zona; cada sección admite un solo responsable.
 import { downloadBackup } from './eliminar.js';
-import { ICONS, $, esc, fmtNum, fmtSeccion, api, fieldErrorSetter, submitWith, toast, homeControl, navigate } from './lib.js';
+import { ICONS, $, esc, fmtNum, fmtSeccion, api, fieldErrorSetter, camposNombre, nombreCompleto, alCambiarNombre, submitWith, toast, homeControl, navigate } from './lib.js';
 import { I, generatePassword, debounce, showAccessDialog } from './coordinador.js';
 import { baseMap, seccionesGeo } from './zonas.js';
 
@@ -198,11 +198,7 @@ export async function viewResponsable(route, params = []) {
               <h3 id="rs1">1. Responsable de sección y cuenta de acceso</h3>
               <span class="form-card__aside">Campos requeridos <span class="req">*</span></span>
             </header>
-            <div class="field">
-              <label for="cName">Nombre completo <span class="req" aria-hidden="true">*</span></label>
-              <input class="input" id="cName" name="name" maxlength="120" autocomplete="off" value="${esc(current?.name || '')}" placeholder="ej. María López Hernández" required>
-              <p class="field__error" id="cName-err"></p>
-            </div>
+            ${camposNombre('c', current)}
             <div class="field-row">
               <div class="field">
                 <label for="cUser">Usuario de acceso <span class="req" aria-hidden="true">*</span></label>
@@ -302,11 +298,12 @@ export function mountResponsable(root, route) {
     $('#cUser-err', root).textContent = r.error || '';
     userOk.textContent = r.available ? 'Disponible' : '';
   }, 350);
-  $('#cName', root).addEventListener(
-    'input',
+  alCambiarNombre(
+    root,
+    'c',
     debounce(async () => {
       if (userTouched) return;
-      const name = $('#cName', root).value.trim();
+      const name = nombreCompleto(root, 'c');
       if (name.length < 3) return;
       const r = await api(`/api/usernames/suggest?name=${encodeURIComponent(name)}`).catch(() => null);
       if (r?.username && !userTouched) {
@@ -432,7 +429,7 @@ export function mountResponsable(root, route) {
   renderTotals();
 
   // ---------- Guardar ----------
-  const baseSetErrors = fieldErrorSetter(root, { name: 'cName', username: 'cUser', password: 'cPass', phone: 'cPhone', email: 'cEmail' });
+  const baseSetErrors = fieldErrorSetter(root, { nombres: 'cName', apellidos: 'cApellidos', username: 'cUser', password: 'cPass', phone: 'cPhone', email: 'cEmail' });
   const setErrors = (errs = {}) => {
     $('#rTerr-err', root).textContent = errs.territorio || '';
     baseSetErrors(errs);

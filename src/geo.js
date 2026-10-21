@@ -247,6 +247,7 @@ async function persistAll(results) {
   for (const { clave, meta, catalog } of results) {
     states.set(clave, { meta, catalog });
     for (const k of [...layerCache.keys()]) if (k.startsWith(`${clave}:`)) layerCache.delete(k);
+    seccionIdx.delete(clave);
   }
 }
 
@@ -349,13 +350,28 @@ async function layer(clave, layerKey) {
   return t ? JSON.parse(t) : null;
 }
 
+// Contorno de una sola sección (para que el celular no descargue la capa completa de la entidad).
+// El índice sección → geometría se arma una vez por entidad.
+const seccionIdx = new Map();
+async function seccionFeature(clave, seccion) {
+  const c = toClave(clave);
+  if (c === null || !states.has(c)) return null;
+  if (!seccionIdx.has(c)) {
+    const idx = new Map();
+    for (const f of (await layer(c, 'seccion'))?.features || []) idx.set(Number(f.properties?.seccion), f);
+    seccionIdx.set(c, idx);
+  }
+  return seccionIdx.get(c).get(Number(seccion)) || null;
+}
+
 async function removeState(clave) {
   const c = toClave(clave);
   if (c === null || !states.has(c)) return false;
   await query('DELETE FROM geo_states WHERE clave = $1', [c]);
   states.delete(c);
   for (const k of [...layerCache.keys()]) if (k.startsWith(`${c}:`)) layerCache.delete(k);
+  seccionIdx.delete(c);
   return true;
 }
 
-module.exports = { init, importZip, persistAll, listStates, getState, layerText, layer, removeState, ImportError, LAYERS };
+module.exports = { init, importZip, persistAll, listStates, getState, layerText, layer, seccionFeature, removeState, ImportError, LAYERS };

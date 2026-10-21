@@ -1,6 +1,6 @@
 // Alta y edición del Coordinador de Promoción del Voto (super administrador).
 // Pantalla dividida: formulario (50 %) + mapa del territorio (50 %).
-import { icon, ICONS, $, esc, fmtNum, api, fieldErrorSetter, submitWith, toast, GEO_STYLE, homeControl, navigate, abrirEnArea } from './lib.js';
+import { icon, ICONS, $, esc, fmtNum, api, fieldErrorSetter, camposNombre, nombreCompleto, alCambiarNombre, submitWith, toast, GEO_STYLE, homeControl, navigate, abrirEnArea } from './lib.js';
 
 export const I = {
   user: icon('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 16 0v1"/>'),
@@ -139,11 +139,7 @@ export async function viewCoordinador(route, params = []) {
               <h3 id="s1">1. Datos del titular</h3>
               <span class="form-card__aside">Campos requeridos <span class="req">*</span></span>
             </header>
-            <div class="field">
-              <label for="cName">Nombre completo <span class="req" aria-hidden="true">*</span></label>
-              <input class="input" id="cName" name="name" maxlength="120" autocomplete="off" value="${esc(c.name || '')}" required>
-              <p class="field__error" id="cName-err"></p>
-            </div>
+            ${camposNombre('c', c)}
             <div class="field-row">
               <div class="field">
                 <label for="cPhone">Teléfono móvil (WhatsApp) <span class="req" aria-hidden="true">*</span></label>
@@ -324,7 +320,7 @@ export function mountCoordinador(root, route) {
   }, 350);
   const suggest = debounce(async () => {
     if (userTouched) return;
-    const name = $('#cName', root).value.trim();
+    const name = nombreCompleto(root, 'c');
     if (name.length < 3) return;
     const r = await api(`/api/usernames/suggest?name=${encodeURIComponent(name)}`).catch(() => null);
     if (r?.username && !userTouched) {
@@ -332,7 +328,7 @@ export function mountCoordinador(root, route) {
       checkUser();
     }
   }, 400);
-  $('#cName', root).addEventListener('input', suggest);
+  alCambiarNombre(root, 'c', suggest);
   userInput.addEventListener('input', () => {
     userTouched = true;
     userInput.value = userInput.value.toLowerCase().replace(/\s/g, '');
@@ -566,7 +562,8 @@ export function mountCoordinador(root, route) {
 
   // ---------- Guardar ----------
   const fieldIds = {
-    name: 'cName',
+    nombres: 'cName',
+    apellidos: 'cApellidos',
     phone: 'cPhone',
     email: 'cEmail',
     candidato: 'cCandidato',

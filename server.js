@@ -43,7 +43,7 @@ const { fmtSeccion } = require('./src/formato');
 const padron = require('./src/padron');
 const territory = require('./src/territory');
 const { PARTIDOS } = require('./src/partidos');
-const { cleanContact, suggestUsername, checkUsername, validateCuenta, validateCoordinador } = require('./src/validate');
+const { partesNombre, cleanContact, suggestUsername, checkUsername, validateCuenta, validateCoordinador } = require('./src/validate');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -129,6 +129,7 @@ const publicUser = (u) => {
   return {
     id: u.id,
     name: u.name,
+    ...partesNombre(u),
     role: u.role,
     roleName: getRole(u.role).name,
     parentId: u.parentId,
@@ -831,6 +832,26 @@ app.get('/api/panel/seccion', requireUser, (req, res) => {
 app.get('/api/escritorio/promotor', requireUser, requirePromotor, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await escritorioPromotor.promotor(req.user));
+});
+// Mi sección (Promotor): el contorno de la sección de su Responsable, sin el resto de la entidad
+app.get('/api/mi-seccion', requireUser, requirePromotor, async (req, res) => {
+  const rs = users.get(req.user.parentId);
+  const t = rs?.territorio;
+  const seccion = t?.secciones?.[0] ?? null;
+  if (seccion === null || !t.entidad) return res.json({ seccion: null });
+  const st = geo.getState(t.entidad);
+  const cat = st?.catalog.secciones.find((s) => s.clave === Number(seccion));
+  const mun = cat ? st.catalog.municipios.find((m) => m.clave === cat.municipio) : null;
+  res.set('Cache-Control', 'private, max-age=300');
+  res.json({
+    seccion: Number(seccion),
+    entidad: st?.catalog.entidad.nombre || null,
+    municipio: mun?.nombre || null,
+    tipo: cat?.tipo ?? null,
+    distritoLocal: cat?.distritoLocal ?? null,
+    distritoFederal: cat?.distritoFederal ?? null,
+    feature: await geo.seccionFeature(t.entidad, seccion),
+  });
 });
 app.get('/api/escritorio/zona', requireUser, requireRole('coord_zona'), async (req, res) => res.json(await memo(`zona:${req.user.id}`, 20000, () => escritorioZona.zona(req.user))));
 app.get('/api/escritorio/cpv', requireUser, requireCPV, async (req, res) => res.json(await memo(`cpv:${req.user.id}`, 20000, () => escritorio.cpv(req.user))));

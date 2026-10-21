@@ -749,14 +749,15 @@ export async function viewPromovidos() {
               <h3 class="promo-grupo__titulo" id="g-${g.clave}"><span class="promo-dot ${g.clase}" aria-hidden="true"></span>${g.titulo}<span class="promo-grupo__n">${fmtNum(del.length)}</span></h3>
               <ul class="promo-list">${del
                 .map(
-                  (p) => `<li class="promo-fila"><a class="promo-item" href="/promovidos/${p.id}" data-link>
+                  // Los aprobados ya no se abren: no hay nada que corregir
+                  (p) => `<li class="promo-fila${g.clave === 'aprobado' ? ' is-fijo' : ''}">${g.clave === 'aprobado' ? '<div class="promo-item">' : `<a class="promo-item" href="/promovidos/${p.id}" data-link>`}
                     <span class="promo-ini ${g.clase}" aria-hidden="true">${esc(p.iniciales)}</span>
                     <span class="promo-item__txt">
                       <strong>${esc(p.nombre)}</strong>
                       <span class="promo-item__mod">Última modificación: ${esc(fmtDateTime(p.modificado))}</span>
                     </span>
                     <span class="sr-only">${g.titulo}</span>
-                  </a>
+                  ${g.clave === 'aprobado' ? '</div>' : '</a>'}
                   <span class="promo-contacto">${
                     p.telefono
                       ? `<a class="icon-btn promo-contacto__btn" href="tel:+52${esc(p.telefono)}" title="Llamar" aria-label="Llamar a ${esc(p.nombre)}">${I.phone}</a>

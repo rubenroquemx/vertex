@@ -59,7 +59,25 @@ const PASO_DE = {
   fracc: 4,
 };
 const CLAVE_RE = /^[A-Z]{6}\d{8}[HMX]\d{3}$/;
-const CURP_RE = /^[A-Z]{4}\d{6}[HMX][A-Z]{5}[A-Z\d]\d$/;
+// CURP: si no es válida, dice qué parte revisar (las mismas reglas en el teléfono y en el servidor)
+const ENTIDADES_CURP = new Set('AS BC BS CC CL CM CS CH DF DG GT GR HG JC MC MN MS NT NL OC PL QT QR SP SL SR TC TS TL VZ YN ZS NE'.split(' '));
+function motivoCurp(curp) {
+  const c = String(curp || '');
+  if (c.length !== 18) return `La CURP tiene 18 caracteres (escribiste ${c.length}).`;
+  if (!/^[A-Z]{4}$/.test(c.slice(0, 4))) return 'Los primeros 4 caracteres de la CURP son letras.';
+  if (!/[AEIOUX]/.test(c[1])) return `El 2.º carácter de la CURP es una vocal (o X); dice «${c[1]}».`;
+  const fecha = c.slice(4, 10);
+  if (!/^\d{6}$/.test(fecha)) return 'Los caracteres 5 al 10 de la CURP son la fecha de nacimiento (6 números, AAMMDD).';
+  const mes = Number(fecha.slice(2, 4));
+  const dia = Number(fecha.slice(4, 6));
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return `La fecha de nacimiento de la CURP (${fecha}) no es válida: revisa los caracteres 5 al 10.`;
+  if (!/[HMX]/.test(c[10])) return `El carácter 11 de la CURP es el sexo (H o M); dice «${c[10]}».`;
+  if (!ENTIDADES_CURP.has(c.slice(11, 13))) return `Los caracteres 12 y 13 de la CURP son el estado de nacimiento; «${c.slice(11, 13)}» no es un estado.`;
+  if (!/^[B-DF-HJ-NP-TV-Z]{3}$/.test(c.slice(13, 16))) return `Los caracteres 14 al 16 de la CURP son consonantes; dice «${c.slice(13, 16)}».`;
+  if (!/^[A-Z\d]$/.test(c[16])) return 'El carácter 17 de la CURP es una letra o un número.';
+  if (!/^\d$/.test(c[17])) return `El último carácter de la CURP es un número; dice «${c[17]}».`;
+  return null;
+}
 
 // `editando`: id del promovido al editar (cancelar regresa a su ficha)
 const acciones = (paso, editando = null) => `
@@ -492,7 +510,8 @@ export function mountNuevoPromovido(root, route) {
       if (val('pPaterno').length < 2) e.paterno = 'Escribe el apellido paterno.';
       if (val('pNombres').length < 2) e.nombres = 'Escribe el nombre o nombres.';
       if (!CLAVE_RE.test(val('pClave'))) e.claveElector = 'La clave de elector tiene 18 caracteres: 6 letras, 8 números, H/M y 3 números.';
-      if (!CURP_RE.test(val('pCurp'))) e.curp = 'La CURP tiene 18 caracteres.';
+      const errCurp = motivoCurp(val('pCurp').toUpperCase().replace(/\s/g, ''));
+      if (errCurp) e.curp = errCurp;
       if (val('pTelefono').length !== 10) e.telefono = 'Escribe el teléfono (WhatsApp) de 10 dígitos.';
     }
     if (n === 4) {

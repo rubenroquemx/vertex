@@ -1,10 +1,12 @@
-// Configuración del Super administrador: pestañas "WhatsApp (Evolution API)", "Cotizador" y "General".
+// Configuración del Super administrador: pestañas "WhatsApp (Evolution API)", "Cotizador", "General" y "Novedades".
 import { icon, ICONS, $, esc, fmtNum, fmtDateTime, api, fieldErrorSetter, toast, abrirEnArea, navigate } from './lib.js';
+import { panelNovedades } from './novedades.js';
 
 const TABS = [
   { key: 'whatsapp', name: 'WhatsApp (Evolution API)' },
   { key: 'costos', name: 'Cotizador' },
   { key: 'general', name: 'General' },
+  { key: 'novedades', name: 'Novedades' },
 ];
 const I = {
   plug: icon('<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v4"/>'),
@@ -12,7 +14,14 @@ const I = {
 };
 
 export async function viewConfiguracionSA(route) {
-  const [wa, aviso, ejemplo, cz, gen] = await Promise.all([api('/api/configuracion/whatsapp'), api('/api/privacidad'), api('/api/configuracion/ejemplo'), api('/api/configuracion/costos'), api('/api/configuracion/generador')]);
+  const [wa, aviso, ejemplo, cz, gen, ver] = await Promise.all([
+    api('/api/configuracion/whatsapp'),
+    api('/api/privacidad'),
+    api('/api/configuracion/ejemplo'),
+    api('/api/configuracion/costos'),
+    api('/api/configuracion/generador'),
+    api('/api/version').catch(() => null),
+  ]);
   route.data = wa;
   route.costos = cz;
   route.gen = gen;
@@ -30,6 +39,7 @@ export async function viewConfiguracionSA(route) {
     <section class="tabs__panel" role="tabpanel" id="panel-whatsapp" aria-labelledby="tab-whatsapp" ${route.tab === 'whatsapp' ? '' : 'hidden'}>${panelWhatsapp(route.data)}</section>
     <section class="tabs__panel" role="tabpanel" id="panel-costos" aria-labelledby="tab-costos" ${route.tab === 'costos' ? '' : 'hidden'}>${panelCostos(route.costos)}</section>
     <section class="tabs__panel" role="tabpanel" id="panel-general" aria-labelledby="tab-general" ${route.tab === 'general' ? '' : 'hidden'}>${panelGeneral(aviso, ejemplo)}${panelGenerador(route.gen)}</section>
+    <section class="tabs__panel" role="tabpanel" id="panel-novedades" aria-labelledby="tab-novedades" ${route.tab === 'novedades' ? '' : 'hidden'}>${panelNovedades(ver)}</section>
     <dialog class="dialog" id="waDialog" aria-labelledby="waDlgT"></dialog>`;
 }
 

@@ -3293,3 +3293,15 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
 .input.is-ocr { box-shadow: inset 0 0 0 2px #3b82f6; background: #eff6ff; }
 :root[data-theme="dark"] .ocr-aviso { background: #172554; color: #bfdbfe; }
 :root[data-theme="dark"] .input.is-ocr { background: #172554; }
+
+/* Novedades de VERTEX (registro de cambios en Configuración) */
+.nov { display: grid; gap: var(--space-xl); }
+.nov-ver__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-md) var(--space-lg); margin-bottom: var(--space-md); }
+.nov-ver__head h3 { margin: 0; font-size: 18px; }
+.nov-ver__fecha { margin-left: auto; font-size: 13px; color: var(--color-muted-foreground); }
+.nov-ver__titulo { margin: 0 0 var(--space-lg); font-weight: 700; }
+.nov-area + .nov-area { margin-top: var(--space-lg); }
+.nov-area h4 { margin: 0 0 var(--space-sm); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--color-muted-foreground); }
+.nov-area ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
+.cfg-nov .dash-card__head { margin-bottom: var(--space-md); }
+@media (max-width: 767px) { .nov-ver__fecha { margin-left: 0; width: 100%; } }

@@ -1,0 +1,82 @@
+# Lanzamiento de VERTEX 2.0 — lista de revisión
+
+Versión actual en producción: **1.1.0** (21 oct 2026). Objetivo: anunciar la **2.0.0** cuando todo lo
+marcado como **bloqueante** esté cumplido. Ordenado de mayor a menor riesgo.
+
+Quién: **R** = Rubén (pruebas en campo y decisiones) · **C** = Claude (código, pruebas automáticas, despliegue).
+
+---
+
+## 1. Pruebas en campo (bloqueante)
+
+Lo que se construyó del 19 al 21 de octubre solo se ha probado en local con datos de ejemplo.
+
+- [ ] **Lector de la INE** (R): capturar 10 INE reales en el servidor de prueba, de modelos distintos
+      (con y sin holograma, buena y poca luz). Anotar qué campos salieron bien y cuáles no.
+      Criterio: el reverso acierta la vigencia en 8 de 10 y el frente la clave de elector y la CURP en 7 de 10;
+      si no, se ajusta o se deja apagado para la 2.0.
+- [ ] **Captura sin internet de punta a punta** (R): capturar 3 promovidos en modo avión, volver a tener
+      señal y confirmar que se envían solos y llegan a la bandeja del Responsable.
+- [ ] **Confirmación de asistencia con selfie** (R): un evento real (o de prueba con hora cercana) con 2 o 3
+      personas: confirmar, enviar selfie, recibir el aviso al terminar y comprobar que a las 72 horas se
+      retira a quien no envió selfie.
+- [ ] **Notificaciones push** (R): activarlas en un Android y en un iPhone con la app instalada en la pantalla
+      de inicio; confirmar que llegan con la app cerrada y que al tocarlas abren la pantalla correcta.
+- [ ] **Activaciones de material** (R): un Responsable recibe una orden, reporta una activación con 5 fotos y
+      su Coordinador de Zona la ve con lo repartido.
+- [ ] **Mi sección** (R): crear y borrar puntos de interés y una casilla desde el celular, como Responsable y
+      como Promotor.
+- [ ] **Vista restringida de la agenda** (R): con un Coordinador de Zona, un Responsable y un Promotor,
+      comprobar que no ven reportes ni eventos pasados, y que quien reporta sí ve todo.
+
+## 2. Pruebas automáticas mínimas (bloqueante)
+
+Hoy el proyecto no tiene ninguna. Se cubre lo que más duele si falla:
+
+- [ ] **Validación de promovidos** (C): CURP, clave de elector, sección, vigencia y duplicados por CPV
+      (incluye que el teléfono y el servidor validen igual).
+- [ ] **Envíos sin internet** (C): que un envío repetido (mismo identificador del teléfono) no duplique.
+- [ ] **Existencias de material** (C): entradas, órdenes, recepciones y activaciones nunca dejan existencia negativa.
+- [ ] **Plazos de asistencia** (C): aviso al terminar (hora de fin o 3 h) y retiro a las 72 h.
+- [ ] **Permisos** (C): cada nivel solo ve y modifica lo suyo (agenda restringida, puntos de la sección,
+      selfies, fotos de activaciones).
+- [ ] **Lector de la INE** (C): análisis de la zona de lectura mecánica y del frente con textos de ejemplo.
+- [ ] Correr las pruebas antes de cada despliegue (C).
+
+## 3. Seguridad (bloqueante)
+
+- [ ] **Paquetes con alertas altas** (C): actualizar `sharp`, `adm-zip` y `uuid` (`npm audit`) y volver a
+      probar fotos, importación de bases de datos y respaldos.
+- [ ] **Revisión de seguridad de lo nuevo** (C): rutas de activaciones, puntos, asistencia, selfies y lectura
+      de la INE (límites de tamaño, permisos, que no se guarden ni registren datos personales de más).
+- [ ] **Aviso de privacidad** (R): actualizarlo si hace falta para la selfie de asistencia y la lectura
+      automática de la INE.
+
+## 4. Despliegue y datos (bloqueante)
+
+- [ ] **Separar prueba y producción** (C): rama `estable` para producción; `main` sigue para prueba.
+      Producción solo se actualiza al pasar de `main` a `estable`.
+- [ ] **Respaldo antes del lanzamiento** (R/C): respaldo completo de la base de producción antes de desplegar la 2.0.
+- [ ] **Migraciones** (C): confirmar en producción que la 16, 17 y 18 están aplicadas y que no hay datos a medias.
+- [ ] **Plan de regreso** (C): cómo volver a la 1.1.0 si algo sale mal (commit, imagen y respaldo).
+
+## 5. Producto y comunicación
+
+- [x] **Registro de cambios** en Configuración del CPV y del Super admin (versión actual y anterior).
+- [ ] **Número de versión** (C): marcar 2.0.0 en la app y en su registro de cambios.
+- [ ] **Notas de la 2.0** (R/C): resumen en lenguaje sencillo para CPV y coordinadores.
+- [ ] **Guías breves** (R): cómo usar Activaciones, Mi sección, confirmación de asistencia y el lector de la INE.
+- [ ] **Página informativa** (R/C): capturas y textos con las funciones nuevas.
+
+## 6. Pendientes menores (no bloquean)
+
+- [ ] Datos de ejemplo: promovidos asignados a otro Responsable (caso de Gerardo Mendoza) y órdenes recibidas sin artículos.
+- [ ] Vigilante de archivos en desarrollo (Windows) que reinicia el servidor solo.
+- [ ] Nombres leídos del reverso de la INE: el relleno «<<<» a veces se lee como letras (hoy se usan los del frente).
+
+---
+
+## Criterio para anunciar la 2.0
+
+Todo lo **bloqueante** (secciones 1 a 4) cumplido, pruebas automáticas pasando, respaldo hecho y una
+semana sin errores reportados en el servidor de prueba con uso real.

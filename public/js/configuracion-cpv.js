@@ -2,6 +2,7 @@
 // Vista previa en vivo; guardar pide contraseña y queda en bitácora.
 import { ICONS, $, esc, fmtNum, fmtDateTime, api, fieldErrorSetter, toast, abrirEnArea } from './lib.js';
 import { debounce } from './coordinador.js';
+import { panelNovedades } from './novedades.js';
 
 const ceil = (x) => Math.ceil(x - 1e-9);
 const EJEMPLO = 1000;
@@ -14,7 +15,8 @@ function calcEjemplo(cfg) {
 }
 
 export async function viewConfiguracionCPV(route) {
-  route.data = await api('/api/configuracion/cpv');
+  const [cfg, ver] = await Promise.all([api('/api/configuracion/cpv'), api('/api/version').catch(() => null)]);
+  route.data = cfg;
   const { config: c } = route.data;
   return `
     <div class="page-head">
@@ -77,6 +79,14 @@ export async function viewConfiguracionCPV(route) {
           <span class="muted">Registrado en bitácora</span>
         </header>
         <div id="cfgHist"></div>
+      </section>
+
+      <section class="cfg-wide cfg-nov" aria-labelledby="cfgNovT">
+        <header class="dash-card__head">
+          <h3 id="cfgNovT">Novedades de VERTEX</h3>
+          ${ver ? `<span class="muted">Versión ${esc(ver.actual)}</span>` : ''}
+        </header>
+        ${panelNovedades(ver)}
       </section>
     </div>
 

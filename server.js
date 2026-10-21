@@ -41,6 +41,7 @@ const ejemplo = require('./src/ejemplo');
 const material = require('./src/material');
 const puntos = require('./src/puntos');
 const ineOcr = require('./src/ine-ocr');
+const version = require('./src/version');
 const { fmtSeccion } = require('./src/formato');
 const padron = require('./src/padron');
 const territory = require('./src/territory');
@@ -875,6 +876,10 @@ app.get('/api/mi-seccion', requireUser, soloRoles('promotor', 'resp_seccion'), a
     puntos: await puntos.lista(req.user),
     puedeCasilla: req.user.role === 'resp_seccion',
   });
+});
+// Versión de VERTEX y registro de cambios (solo la actual y la anterior), para Configuración
+app.get('/api/version', requireUser, soloRoles('superadmin', 'coord_promocion'), (req, res) => {
+  res.json({ actual: version.actual().version, versiones: version.recientes() });
 });
 // Lectura de la INE (prototipo): prellena la captura con lo que Tesseract lee en el frente o el reverso.
 // La foto se lee en memoria y no se guarda.

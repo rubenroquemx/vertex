@@ -1,0 +1,57 @@
+# Cada cambio en main: corre las pruebas automáticas y, solo si pasan, despliega el servidor de prueba
+# (vertex.legislab.app). Producción (rama estable) se sigue desplegando a mano.
+# Requiere el secreto PRUEBA_DEPLOY_URL (Settings › Secrets and variables › Actions) con la URL del
+# webhook de despliegue del servicio legislab › vertex en Easypanel.
+name: Pruebas y despliegue a prueba
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: prueba
+  cancel-in-progress: true
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_PASSWORD: pruebas
+          POSTGRES_DB: vertex
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:pruebas@localhost:5432/vertex
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  desplegar-prueba:
+    needs: pruebas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Desplegar en el servidor de prueba
+        env:
+          URL: ${{ secrets.PRUEBA_DEPLOY_URL }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "::error::Falta el secreto PRUEBA_DEPLOY_URL (URL del webhook de despliegue de prueba)."
+            exit 1
+          fi
+          curl -fsS -X POST "$URL"

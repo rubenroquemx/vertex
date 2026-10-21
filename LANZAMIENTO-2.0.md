@@ -29,19 +29,22 @@ Lo que se construyó del 19 al 21 de octubre solo se ha probado en local con dat
 - [ ] **Vista restringida de la agenda** (R): con un Coordinador de Zona, un Responsable y un Promotor,
       comprobar que no ven reportes ni eventos pasados, y que quien reporta sí ve todo.
 
-## 2. Pruebas automáticas mínimas (bloqueante)
+## 2. Pruebas automáticas mínimas (bloqueante) — hechas el 21 oct
 
-Hoy el proyecto no tiene ninguna. Se cubre lo que más duele si falla:
+`npm test` corre 29 pruebas en menos de 2 segundos (`node --test`, sin dependencias nuevas). Las de
+integración usan un esquema temporal en el Postgres de desarrollo que se crea y se borra en cada corrida;
+sin base de datos se omiten y corren solo las 18 unitarias.
 
-- [ ] **Validación de promovidos** (C): CURP, clave de elector, sección, vigencia y duplicados por CPV
-      (incluye que el teléfono y el servidor validen igual).
-- [ ] **Envíos sin internet** (C): que un envío repetido (mismo identificador del teléfono) no duplique.
-- [ ] **Existencias de material** (C): entradas, órdenes, recepciones y activaciones nunca dejan existencia negativa.
-- [ ] **Plazos de asistencia** (C): aviso al terminar (hora de fin o 3 h) y retiro a las 72 h.
-- [ ] **Permisos** (C): cada nivel solo ve y modifica lo suyo (agenda restringida, puntos de la sección,
-      selfies, fotos de activaciones).
-- [ ] **Lector de la INE** (C): análisis de la zona de lectura mecánica y del frente con textos de ejemplo.
-- [ ] Correr las pruebas antes de cada despliegue (C).
+- [x] **Validación de promovidos** (C): CURP válidas e inválidas con su mensaje, clave de elector, sección y
+      duplicados por CPV; el teléfono y el servidor validan la CURP exactamente igual (`test/curp.test.js`).
+- [x] **Envíos sin internet** (C): un envío repetido con el mismo identificador del teléfono no duplica.
+- [x] **Existencias de material** (C): órdenes, recepciones y activaciones; lo por recibir no se reparte; dos
+      activaciones al mismo tiempo que exceden la existencia: solo pasa una.
+- [x] **Plazos de asistencia** (C): fin del evento (hora de fin o 3 h), selfie desde que inicia y hasta 72 h
+      después, aviso al terminar y retiro sin selfie, con sus notificaciones.
+- [x] **Permisos** (C): vista restringida de la agenda, eventos pasados, selfies, puntos y casillas.
+- [x] **Lector de la INE** (C): zona de lectura mecánica y frente con dígitos verificadores y correcciones.
+- [ ] Correr `npm test` antes de cada despliegue (C).
 
 ## 3. Seguridad (bloqueante)
 

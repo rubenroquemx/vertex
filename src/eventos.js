@@ -934,6 +934,8 @@ module.exports = {
   cancelarAsistencia,
   enviarSelfie,
   selfieDe,
+  // Solo para las pruebas automáticas
+  _pruebas: { finDe, limiteSelfie, puedeSelfie, restringido, pasado, resumenFila, HORAS_EVENTO, HORAS_SELFIE },
   foto,
   recordatorios,
   rutaPorCalles,

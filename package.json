@@ -11,7 +11,8 @@
     "icons": "node scripts/generate-icons.js",
     "empaquetar": "node scripts/empaquetar.js",
     "exportar-cuentas": "node scripts/exportar-cuentas.js",
-    "datos-ejemplo": "node --env-file-if-exists=.env scripts/datos-ejemplo.js"
+    "datos-ejemplo": "node --env-file-if-exists=.env scripts/datos-ejemplo.js",
+    "test": "node --env-file-if-exists=.env --test"
   },
   "engines": {
     "node": ">=18"

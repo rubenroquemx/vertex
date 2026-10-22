@@ -14,8 +14,10 @@ const ICONO = {
   'material.activacion': ic('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/>'),
   'evento.selfie': ic('<path d="M3 8a2 2 0 0 1 2-2h2l2-3h6l2 3h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="4"/>'),
   'evento.asistencia_retirada': ic('<circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/>'),
+  'cpv.aviso': ic('<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>'),
   'promovido.observacion': ic('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>'),
 };
+const MEGAFONO = ic('<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>');
 const CAMPANA = ic('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>');
 
 // «hace 5 min», «hace 3 h»; después de un día, la fecha completa
@@ -79,13 +81,19 @@ const grupo = (titulo, lista) =>
     ? `<section class="notif-grupo"><h3 class="promo-grupo__titulo">${titulo}</h3><ul class="notif-lista">${lista.map(item).join('')}</ul></section>`
     : '';
 
-export async function viewNotificaciones() {
+export async function viewNotificaciones(route, params, state) {
   const { noLeidas, items } = await api('/api/notificaciones');
   pintarContador(noLeidas);
+  // El CPV envía avisos a su estructura desde aquí (en el celular, la campana es su acceso)
+  const enviar =
+    state?.me?.role?.key === 'coord_promocion'
+      ? `<a class="btn notif-enviar" href="/avisos" data-link>${MEGAFONO}<span>Enviar aviso a mi estructura</span></a>`
+      : '';
   if (!items.length) {
-    return `<div class="empty">${CAMPANA}<strong>Sin notificaciones</strong><span>Aquí te avisaremos de lo que pase en tu equipo.</span></div>`;
+    return `${enviar}<div class="empty">${CAMPANA}<strong>Sin notificaciones</strong><span>Aquí te avisaremos de lo que pase en tu equipo.</span></div>`;
   }
   return `
+    ${enviar}
     ${noLeidas ? `<div class="notif-acciones"><button class="btn btn--secondary btn--sm" type="button" id="notifTodas">Marcar todas como leídas</button></div>` : ''}
     ${grupo('Nuevas', items.filter((n) => !n.leida))}
     ${grupo('Anteriores', items.filter((n) => n.leida))}`;

@@ -597,6 +597,27 @@ const MIGRATIONS = [
       CREATE INDEX evento_asistencias_pend_idx ON evento_asistencias(evento_id) WHERE estado = 'confirmada';
     `,
   },
+  {
+    id: 19,
+    name: 'centro de avisos del CPV (notificaciones a su estructura por nivel, zona o sección)',
+    sql: `
+      CREATE TABLE avisos_cpv (
+        id             uuid PRIMARY KEY,
+        cpv_id         uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        autor_id       uuid REFERENCES users(id) ON DELETE SET NULL,
+        titulo         text NOT NULL,
+        cuerpo         text NOT NULL,
+        niveles        text[] NOT NULL,
+        alcance        text NOT NULL CHECK (alcance IN ('global', 'zonas', 'secciones')),
+        zonas          uuid[] NOT NULL DEFAULT '{}',
+        secciones      integer[] NOT NULL DEFAULT '{}',
+        destinatarios  integer NOT NULL,
+        con_push       integer NOT NULL,
+        created_at     timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX avisos_cpv_idx ON avisos_cpv(cpv_id, created_at DESC);
+    `,
+  },
 ];
 
 async function migrate() {

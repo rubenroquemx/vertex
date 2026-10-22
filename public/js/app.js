@@ -39,6 +39,7 @@ import { viewEscritorioSeccion, mountEscritorioSeccion } from './escritorio-secc
 import { viewRevision, mountRevision } from './revision.js';
 import { viewEscritorioPromotor } from './escritorio-promotor.js';
 import { viewMiSeccion, mountMiSeccion } from './mi-seccion.js';
+import { viewAvisos, mountAvisos } from './avisos.js';
 import { viewInforme, mountInforme } from './informe.js';
 import { viewExternas, mountExternas, viewListaPersonas, mountListaPersonas } from './externas.js';
 import { viewAgenda, mountAgenda, viewEventos, viewFormEvento, mountFormEvento, viewEvento, mountEvento, viewReporte, mountReporte } from './agenda.js';
@@ -85,6 +86,8 @@ const AGENDA = { path: '/agenda', title: 'Agenda', icon: 'calendar', view: (r, p
 const DIRECTORIO = { path: '/directorio', title: 'Directorio', icon: 'directorio', view: viewDirectorio, mount: mountDirectorio };
 // Mapa de la sección (Responsable de Sección y Promotor)
 const MI_SECCION = { path: '/mi-seccion', title: 'Mi sección', icon: 'map', view: viewMiSeccion, mount: mountMiSeccion };
+// Centro de avisos del CPV (notificaciones a su estructura). En el celular se abre desde la campana.
+const AVISOS = { path: '/avisos', title: 'Centro de avisos', icon: 'aviso', dock: false, view: viewAvisos, mount: mountAvisos };
 const EXTERNAS = { path: '/estructuras-externas', title: 'Estructuras externas', icon: 'users', dock: false, view: (r, p) => viewExternas(r, p, state), mount: mountExternas };
 
 function buildMenu(me) {
@@ -120,7 +123,7 @@ function buildMenu(me) {
         EXTERNAS,
       ],
     });
-    groups.push({ label: 'Operación', items: [AGENDA, DIRECTORIO, MATERIAL] });
+    groups.push({ label: 'Operación', items: [AGENDA, DIRECTORIO, MATERIAL, AVISOS] });
     groups.push({
       label: 'Sistema',
       items: [{ path: '/configuracion', title: 'Configuración', icon: 'settings', view: viewConfiguracionCPV, mount: mountConfiguracionCPV }],
@@ -2332,7 +2335,7 @@ async function boot() {
   // Perfil personal: disponible para todos los niveles desde la sección de usuario
   state.routes.set('/perfil', { path: '/perfil', title: 'Mi perfil', view: viewPerfil, mount: mountPerfil });
   // Notificaciones: todos los niveles, desde la campana de la barra superior
-  state.routes.set('/notificaciones', { path: '/notificaciones', title: 'Notificaciones', view: viewNotificaciones, mount: mountNotificaciones });
+  state.routes.set('/notificaciones', { path: '/notificaciones', title: 'Notificaciones', view: (r, p) => viewNotificaciones(r, p, state), mount: mountNotificaciones });
   // Informe por periodo con FODA: todos los niveles, desde el botón de su panel
   state.routes.set('/informe', { path: '/informe', title: 'Informe', view: viewInforme, mount: mountInforme });
   // Rutas con parámetros

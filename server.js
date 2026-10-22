@@ -42,6 +42,7 @@ const material = require('./src/material');
 const puntos = require('./src/puntos');
 const ineOcr = require('./src/ine-ocr');
 const version = require('./src/version');
+const avisos = require('./src/avisos');
 const { fmtSeccion } = require('./src/formato');
 const padron = require('./src/padron');
 const territory = require('./src/territory');
@@ -877,6 +878,25 @@ app.get('/api/mi-seccion', requireUser, soloRoles('promotor', 'resp_seccion'), a
     puedeCasilla: req.user.role === 'resp_seccion',
   });
 });
+// Centro de avisos del CPV: notificaciones a su estructura por nivel y alcance (global, zonas o secciones)
+const conAvisos = (fn) => async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (err) {
+    if (!(err instanceof avisos.AvisoError)) throw err;
+    res.status(err.status).json(err.fields ? { error: err.message, fields: err.fields } : { error: err.message });
+  }
+};
+app.get('/api/avisos', requireUser, requireCPV, conAvisos(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ ...avisos.opciones(req.user), historial: await avisos.historial(req.user) });
+}));
+app.post('/api/avisos/conteo', requireUser, requireCPV, conAvisos(async (req, res) => res.json(await avisos.conteo(req.user, req.body))));
+app.post('/api/avisos', requireUser, requireCPV, conAvisos(async (req, res) => {
+  const r = await avisos.enviar(req.user, req.realUser, req.body || {});
+  await audit.add({ action: 'aviso.enviado', by: req.realUser.id, as: req.user.id, aviso: r.id, destinatarios: r.destinatarios });
+  res.status(201).json(r);
+}));
 // Versión de VERTEX y registro de cambios (solo la actual y la anterior), para Configuración
 app.get('/api/version', requireUser, soloRoles('superadmin', 'coord_promocion'), (req, res) => {
   res.json({ actual: version.actual().version, versiones: version.recientes() });

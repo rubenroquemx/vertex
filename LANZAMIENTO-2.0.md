@@ -2,7 +2,7 @@
 
 Nombres de versión: la línea **1.x se llama «White»** (1.0, 1.1, 1.2…) y la **2.0 será «Goodman»**.
 
-Versión actual en producción: **1.1.0** (21 oct 2026). Objetivo: anunciar la **2.0.0** cuando todo lo
+Versión actual en producción: **1.2.0 «White»** (22 oct 2026). Objetivo: anunciar la **2.0.0** cuando todo lo
 marcado como **bloqueante** esté cumplido. Ordenado de mayor a menor riesgo.
 
 Quién: **R** = Rubén (pruebas en campo y decisiones) · **C** = Claude (código, pruebas automáticas, despliegue).

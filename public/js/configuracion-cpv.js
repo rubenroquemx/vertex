@@ -84,7 +84,7 @@ export async function viewConfiguracionCPV(route) {
       <section class="cfg-wide cfg-nov" aria-labelledby="cfgNovT">
         <header class="dash-card__head">
           <h3 id="cfgNovT">Novedades de VERTEX</h3>
-          ${ver ? `<span class="muted">Versión ${esc(ver.actual)}</span>` : ''}
+          ${ver ? `<span class="muted">Versión ${esc(ver.actual)}${ver.nombre ? ` · ${esc(ver.nombre)}` : ''}</span>` : ''}
         </header>
         ${panelNovedades(ver)}
       </section>

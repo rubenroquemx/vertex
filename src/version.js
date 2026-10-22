@@ -1,7 +1,28 @@
 // Versiones de VERTEX y su registro de cambios (de la más reciente a la más antigua).
 // Para publicar una versión: agregarla al inicio de VERSIONES y poner el mismo número en package.json.
 // En Configuración (CPV y super administrador) solo se muestran la versión actual y la anterior.
+// Cada versión mayor tiene nombre: la 1.x es «White» y la 2.x será «Goodman».
+const NOMBRES = { 1: 'White', 2: 'Goodman' };
 const VERSIONES = [
+  {
+    version: '1.2.0',
+    fecha: '2026-10-22',
+    titulo: 'Centro de avisos del CPV',
+    cambios: [
+      {
+        area: 'Centro de avisos',
+        textos: [
+          'El CPV envía avisos a su estructura: llegan como notificación al celular y quedan en la campana de cada persona.',
+          'Se elige a quién (Coordinadores de Zona, Responsables de Sección y Promotores) y dónde (toda la estructura, por zona o por sección), y antes de enviar se ve a cuántas personas llega.',
+          'Historial de avisos enviados. En la computadora está en el menú (Operación › Centro de avisos); en el celular, en Notificaciones.',
+        ],
+      },
+      {
+        area: 'Calidad',
+        textos: ['Cada actualización pasa por pruebas automáticas antes de publicarse.'],
+      },
+    ],
+  },
   {
     version: '1.1.0',
     fecha: '2026-10-21',
@@ -92,8 +113,12 @@ const VERSIONES = [
   },
 ];
 
-const actual = () => VERSIONES[0];
-// Solo la versión actual y la anterior
-const recientes = () => VERSIONES.slice(0, 2);
+// Nombre de la versión según su número mayor (1.2.0 → «White»)
+const nombreDe = (version) => NOMBRES[Number(String(version).split('.')[0])] || null;
+const conNombre = (v) => ({ ...v, nombre: nombreDe(v.version) });
 
-module.exports = { VERSIONES, actual, recientes };
+const actual = () => conNombre(VERSIONES[0]);
+// Solo la versión actual y la anterior
+const recientes = () => VERSIONES.slice(0, 2).map(conNombre);
+
+module.exports = { VERSIONES, NOMBRES, nombreDe, actual, recientes };

@@ -3345,3 +3345,4 @@ h2 .asis { margin-left: var(--space-md); font-size: 14px; }
   .av-alcance { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-radius: var(--radius); }
   .av-alcance .seg__btn { justify-content: center; text-align: center; padding: 6px 8px; border-radius: var(--radius); }
 }
+.nov-ver__nombre { display: inline-block; margin-left: 6px; padding: 1px 10px; border-radius: var(--radius-pill); background: var(--color-primary); color: var(--color-on-primary); font-size: 13px; font-weight: 700; letter-spacing: .04em; vertical-align: 2px; }

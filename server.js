@@ -899,7 +899,8 @@ app.post('/api/avisos', requireUser, requireCPV, conAvisos(async (req, res) => {
 }));
 // Versión de VERTEX y registro de cambios (solo la actual y la anterior), para Configuración
 app.get('/api/version', requireUser, soloRoles('superadmin', 'coord_promocion'), (req, res) => {
-  res.json({ actual: version.actual().version, versiones: version.recientes() });
+  const a = version.actual();
+  res.json({ actual: a.version, nombre: a.nombre, versiones: version.recientes() });
 });
 // Lectura de la INE (prototipo): prellena la captura con lo que Tesseract lee en el frente o el reverso.
 // La foto se lee en memoria y no se guarda.

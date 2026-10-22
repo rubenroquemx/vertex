@@ -14,7 +14,7 @@ export function panelNovedades(d) {
           (v, i) => `
         <section class="card nov-ver" aria-labelledby="nov-${i}">
           <header class="nov-ver__head">
-            <h3 id="nov-${i}">Versión ${esc(v.version)}</h3>
+            <h3 id="nov-${i}">Versión ${esc(v.version)}${v.nombre ? ` <span class="nov-ver__nombre">${esc(v.nombre)}</span>` : ''}</h3>
             ${i === 0 ? '<span class="estatus estatus--aprobado">Versión actual</span>' : '<span class="estatus estatus--neutro">Anterior</span>'}
             <span class="nov-ver__fecha">${esc(fecha(v.fecha))}</span>
           </header>
